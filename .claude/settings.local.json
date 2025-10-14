@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.rs)",
+      "Bash(cargo check:*)",
+      "Bash(git add:*)",
+      "Bash(cargo:*)",
+      "Bash(chmod:*)",
+      "Bash(python3:*)",
+      "Bash(RUST_LOG=info cargo run -- context-length-test.toml)",
+      "Bash(curl:*)",
+      "Bash(rm:*)",
+      "Bash(git commit:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(ls:*)",
+      "Bash(git restore:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(./target/release/llm-bench:*)",
+      "Bash(cat:*)",
+      "Bash(timeout:*)",
+      "Bash(cp:*)",
+      "Bash(git checkout:*)",
+      "Bash(for:*)",
+      "Bash(do)",
+      "Bash(if ! grep -q \"^\\[metrics\\]\" \"$file\")",
+      "Bash(! grep -q \"^# \\[metrics\\]\" \"$file\")",
+      "Bash(then)",
+      "Bash(echo \"$file\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(git rm:*)",
+      "Bash(tree:*)",
+      "Bash(awk:*)",
+      "Bash(pip3 install:*)"
+    ],
+    "deny": []
+  }
+}

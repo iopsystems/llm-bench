@@ -1,0 +1,26 @@
+# Rust
+target/
+Cargo.lock
+*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+results/
+*.log
+*.local.toml
+*.local.jsonl
+
+# Test outputs
+*-results.json
+*-results.csv
+benchmark-*.json

@@ -1,0 +1,26 @@
+# Basic benchmarking configuration
+[endpoint]
+base_url = "http://localhost:8080"
+model = "gpt-3.5-turbo"
+timeout = 30
+
+[load]
+concurrent_requests = 1
+total_requests = 10
+
+[input]
+file = "examples/prompts/openorca-10000.jsonl"
+
+[output]
+format = "console"
+
+[log]
+# Log level: "error", "warn", "info", "debug", "trace"
+level = "info"
+
+# Optional: Metrics capture configuration
+# Uncomment to enable periodic metric snapshots to parquet format
+# [metrics]
+# output = "metrics.parquet"        # Output file path (parquet format)
+# interval = "1s"                   # Snapshot interval (e.g., "1s", "500ms")
+# batch_size = 10000                # Optional: batch size for parquet conversion

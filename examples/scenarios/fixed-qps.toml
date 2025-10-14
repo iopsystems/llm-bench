@@ -1,0 +1,25 @@
+# Fixed QPS mode configuration
+[endpoint]
+base_url = "http://localhost:8080/v1"
+model = "gpt-3.5-turbo"
+timeout = 30
+
+[load]
+qps = 2.5  # 2.5 requests per second
+concurrent_requests = 10  # Max in-flight requests
+total_requests = 100
+
+[input]
+file = "examples/prompts/openorca-10000.jsonl"
+
+[output]
+format = "json"
+file = "qps-results.json"
+
+[log]
+level = "info"
+
+# Optional: Enable high-resolution metrics capture
+# [metrics]
+# output = "metrics.parquet"
+# interval = "1s"

@@ -1,0 +1,32 @@
+# Example configuration with Poisson arrival distribution
+# Poisson arrivals model realistic traffic patterns with variable inter-arrival times
+
+[endpoint]
+base_url = "http://localhost:8080/v1"
+model = "llama-3.1-8b-instruct"
+timeout = 60
+
+[load]
+# Fixed QPS with Poisson distribution
+qps = 10.0
+arrival_distribution = "poisson"  # or "uniform" for fixed intervals (default)
+concurrent_requests = 20  # Max in-flight requests
+duration_seconds = 60
+
+# Optional warmup
+warmup_duration = 5  # Warmup for 5 seconds before main test
+
+[input]
+file = "examples/prompts/openorca-10000.jsonl"
+shuffle = true
+
+[output]
+format = "console"
+
+[log]
+level = "info"
+
+# Optional: Enable high-resolution metrics capture
+# [metrics]
+# output = "metrics.parquet"
+# interval = "1s"

@@ -1,0 +1,214 @@
+# llm-bench Configuration Example
+# This file demonstrates all available configuration options.
+# Copy this file and uncomment/modify options as needed for your use case.
+
+# =============================================================================
+# Endpoint Configuration
+# =============================================================================
+[endpoint]
+# Base URL of the OpenAI-compatible API endpoint
+base_url = "http://localhost:8080/v1"
+
+# Model name to use for requests
+# If omitted, llm-bench will query the /v1/models endpoint to auto-detect
+# Example: "llama-3.1-8b-instruct", "gpt-4", etc.
+# model = "llama-3.1-8b-instruct"
+
+# Request timeout in seconds
+# Default: 60
+timeout = 60
+
+# API key for authentication (if required by your server)
+# api_key = "sk-..."
+
+# Retry Configuration
+# Number of times to retry failed requests (0 = no retries)
+# Retriable errors: timeouts, connection errors, HTTP 5xx server errors
+# Non-retriable errors: HTTP 4xx client errors, parse errors
+# Default: 0 (no retries)
+# max_retries = 3
+
+# Initial delay before first retry in milliseconds
+# Delay grows exponentially with jitter: base_delay * 2^attempt * (0.5-1.0)
+# Default: 100ms
+# retry_initial_delay_ms = 100
+
+# Maximum retry delay in milliseconds (caps exponential growth)
+# Default: 10000ms (10 seconds)
+# retry_max_delay_ms = 10000
+
+# =============================================================================
+# Load Configuration
+# =============================================================================
+[load]
+# LOAD PATTERN: Choose between concurrent mode or fixed QPS mode
+# If 'qps' is set -> Fixed QPS mode
+# If 'qps' is NOT set -> Concurrent mode
+
+# --- Concurrent Mode Settings ---
+# Number of concurrent workers sending requests
+# In concurrent mode: This is the main load control
+# In fixed QPS mode: This is the max in-flight requests limit
+# Default: 10
+concurrent_requests = 10
+
+# --- Fixed QPS Mode Settings ---
+# Target queries per second (enables fixed QPS mode when set)
+# Example: 10.0 = 10 requests per second
+# qps = 10.0
+
+# Request arrival distribution pattern (only applies to QPS mode)
+# Options:
+#   - "uniform" (default): Fixed intervals between requests (deterministic)
+#   - "poisson": Variable intervals following exponential distribution (realistic traffic)
+# Default: "uniform"
+# arrival_distribution = "uniform"
+
+# --- Test Duration Settings ---
+# Specify EITHER total_requests OR duration_seconds (not both)
+
+# Total number of requests to send
+total_requests = 100
+
+# OR: Run for a specific duration in seconds
+# duration_seconds = 60
+
+# --- Warmup Settings ---
+# Warmup phase to exclude cold start effects from metrics
+# Specify EITHER warmup_requests OR warmup_duration (or neither)
+
+# Number of warmup requests to send before main test
+# warmup_requests = 10
+
+# OR: Warmup duration in seconds
+# warmup_duration = 5
+
+# =============================================================================
+# Input Configuration
+# =============================================================================
+[input]
+# Path to JSONL file containing prompts
+# Each line should be: {"prompt": "your prompt here", "max_tokens": 100}
+# max_tokens is optional per prompt
+file = "examples/prompts/openorca-10000.jsonl"
+
+# Shuffle prompts before running (recommended for realistic testing)
+# Default: false
+shuffle = true
+
+# Limit to first N prompts from file (useful for quick tests)
+# sample_size = 50
+
+# =============================================================================
+# Output Configuration
+# =============================================================================
+[output]
+# Output format for results
+# Options: "console" (default), "json"
+#
+# console: Human-readable output with detailed metrics
+# json:    Machine-readable structured output
+#          - With file: writes JSON to file, shows brief summary
+#          - Without file: outputs JSON to stdout (for piping)
+#
+# Default: "console"
+format = "console"
+
+# Output file path (optional, only used for json format)
+# - If specified: JSON written to file, brief summary to console
+# - If omitted: JSON written to stdout (for piping to jq, etc.)
+# file = "results.json"
+
+# Suppress periodic stats output during benchmark
+# Useful for quiet operation or when JSON goes to stdout
+# Default: false
+# quiet = false
+
+# Enable detailed trace logging to file
+# trace_log = "trace.log"
+
+# =============================================================================
+# Runtime Configuration
+# =============================================================================
+[runtime]
+# Number of Tokio worker threads
+# Default: number of CPU cores
+# worker_threads = 8
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+[log]
+# Log level for console output
+# Options: "error", "warn", "info", "debug", "trace"
+# Default: "info"
+level = "info"
+
+# =============================================================================
+# Metrics Configuration (Optional)
+# =============================================================================
+# Enable high-resolution metrics capture to Parquet files
+# Useful for detailed performance analysis and graphing
+# [metrics]
+# output = "metrics.parquet"
+# interval = "1s"  # Snapshot interval (e.g., "1s", "500ms", "1m")
+# batch_size = 1000  # Parquet batch size
+
+# =============================================================================
+# Admin Server Configuration (Optional)
+# =============================================================================
+# HTTP server for live metrics viewing during benchmark
+# [admin]
+# enabled = true
+# listen = "127.0.0.1:9090"
+
+# =============================================================================
+# Common Configuration Patterns
+# =============================================================================
+
+# Workload Patterns
+# -----------------
+
+# Pattern 1: Simple Concurrent Load Test
+# [load]
+# concurrent_requests = 10
+# total_requests = 100
+
+# Pattern 2: Fixed QPS with Uniform Arrival (Capacity Testing)
+# [load]
+# qps = 10.0
+# arrival_distribution = "uniform"
+# concurrent_requests = 20
+# total_requests = 1000
+
+# Pattern 3: Fixed QPS with Poisson Arrival (Realistic Traffic)
+# [load]
+# qps = 10.0
+# arrival_distribution = "poisson"
+# concurrent_requests = 20
+# duration_seconds = 60
+
+# Pattern 4: Duration-Based Soak Test
+# [load]
+# concurrent_requests = 10
+# duration_seconds = 300  # 5 minutes
+# warmup_duration = 10
+
+# Feature Examples
+# ----------------
+# These features can be combined with any workload pattern above
+
+# Auto-Detect Model from Server
+# [endpoint]
+# base_url = "http://localhost:8080/v1"
+# # Omit 'model' field - will query /v1/models endpoint
+
+# High-Resolution Metrics Capture
+# [metrics]
+# output = "benchmark_metrics.parquet"
+# interval = "1s"
+#
+# After the test, you can analyze the parquet file with tools like:
+# - pandas (Python)
+# - DuckDB (SQL)
+# - Apache Arrow (various languages)
