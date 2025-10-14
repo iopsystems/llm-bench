@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2025-10-14
+
+### Bug Fixes
+
+- Fixed success rate calculation in benchmark reports. Previously, success rate was calculated as `successful_requests / total_sent_requests`, which included in-flight requests that hadn't completed yet in duration-based tests. Now correctly calculated as `successful_requests / completed_requests`, providing an accurate success rate for completed requests only.
+
 ## [0.1.0] - 2025-01-15
 
 ### Initial Release

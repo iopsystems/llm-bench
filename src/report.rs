@@ -211,12 +211,15 @@ impl ReportBuilder {
 
         let retries = REQUESTS_RETRIED.value();
 
+        // Calculate completed requests (successful + failed)
+        let completed_requests = requests_success + requests_failed + requests_timeout;
+
         let summary = Summary {
             total_requests: requests_sent,
             successful_requests: requests_success,
             failed_requests: requests_failed + requests_timeout,
-            success_rate: if requests_sent > 0 {
-                requests_success as f64 / requests_sent as f64
+            success_rate: if completed_requests > 0 {
+                requests_success as f64 / completed_requests as f64
             } else {
                 0.0
             },
