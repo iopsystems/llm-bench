@@ -1,13 +1,76 @@
 use anyhow::Result;
 use llm_bench::{Cli, Config};
-use log::{debug, info};
+use log::{debug, info, LevelFilter, Metadata, Record};
 use ringlog::{File, LogBuilder, MultiLogBuilder, Output, Stderr};
+use std::collections::HashMap;
+use std::io::Write;
+use std::sync::Mutex;
 
 /// Maximum log file size before rotation (10MB)
 const LOG_FILE_MAX_SIZE: u64 = 1024 * 1024 * 10;
 
-/// Log flush interval in milliseconds
-const LOG_FLUSH_INTERVAL_MS: u64 = 100;
+/// Parse log filter strings like "hyper=info" into a map of module prefix to level filter
+fn parse_log_filters(filters: &[String]) -> HashMap<String, LevelFilter> {
+    let mut map = HashMap::new();
+    for filter in filters {
+        if let Some((module, level)) = filter.split_once('=') {
+            let level_filter = match level.to_lowercase().as_str() {
+                "error" => LevelFilter::Error,
+                "warn" => LevelFilter::Warn,
+                "info" => LevelFilter::Info,
+                "debug" => LevelFilter::Debug,
+                "trace" => LevelFilter::Trace,
+                "off" => LevelFilter::Off,
+                _ => continue,
+            };
+            map.insert(module.to_string(), level_filter);
+        }
+    }
+    map
+}
+
+/// Check if a log record should be filtered based on per-module filters
+fn should_log(metadata: &Metadata, filters: &HashMap<String, LevelFilter>) -> bool {
+    let target = metadata.target();
+
+    // Check each filter to see if it matches this target
+    for (module_prefix, level_filter) in filters {
+        if target.starts_with(module_prefix) {
+            return metadata.level() <= *level_filter;
+        }
+    }
+
+    // If no filter matched, allow the log (will be caught by global level filter)
+    true
+}
+
+/// Custom logger with per-module filtering that wraps ringlog
+struct FilteredLogger {
+    output: Mutex<Box<dyn Output>>,
+    max_level: LevelFilter,
+    filters: HashMap<String, LevelFilter>,
+}
+
+impl log::Log for FilteredLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= self.max_level && should_log(metadata, &self.filters)
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            if let Ok(mut output) = self.output.lock() {
+                let message = format!("{}\n", record.args());
+                let _ = output.write_all(message.as_bytes());
+            }
+        }
+    }
+
+    fn flush(&self) {
+        if let Ok(mut output) = self.output.lock() {
+            let _ = output.flush();
+        }
+    }
+}
 
 fn main() -> Result<()> {
     // Parse CLI arguments
@@ -16,7 +79,7 @@ fn main() -> Result<()> {
     // Load configuration first to check verbosity setting
     let config = Config::load(&cli.config)?;
 
-    // Set up logging with ringlog
+    // Set up logging with ringlog and per-module filtering
     let log_level = config.log.level.to_level_filter();
 
     // Configure output destination
@@ -29,27 +92,33 @@ fn main() -> Result<()> {
         Box::new(Stderr::new())
     };
 
-    // Build the base logger
-    let base_log = LogBuilder::new()
-        .output(output)
-        .build()
-        .expect("failed to initialize logger");
+    // Parse per-module filters from config
+    let filters = parse_log_filters(&config.log.filter);
 
-    // Create the multi-logger with level filtering
-    let drain = MultiLogBuilder::new()
-        .level_filter(log_level)
-        .default(base_log)
-        .build()
-        .start();
+    // Create logger with per-module filtering if configured
+    if filters.is_empty() {
+        // No filters - use ringlog directly
+        let base_log = LogBuilder::new()
+            .output(output)
+            .build()
+            .expect("failed to initialize logger");
 
-    // Spawn thread to flush logs periodically
-    std::thread::spawn(move || {
-        let mut drain = drain;
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(LOG_FLUSH_INTERVAL_MS));
-            let _ = drain.flush();
-        }
-    });
+        let _drain = MultiLogBuilder::new()
+            .level_filter(log_level)
+            .default(base_log)
+            .build()
+            .start();
+    } else {
+        // Use custom filtered logger
+        let logger = FilteredLogger {
+            output: Mutex::new(output),
+            max_level: log_level,
+            filters,
+        };
+
+        log::set_boxed_logger(Box::new(logger)).expect("failed to set logger");
+        log::set_max_level(log_level);
+    }
 
     // Print clean startup message
     if !config.output.quiet {

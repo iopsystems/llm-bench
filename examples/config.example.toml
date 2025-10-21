@@ -37,6 +37,21 @@ timeout = 60
 # Default: 10000ms (10 seconds)
 # retry_max_delay_ms = 10000
 
+# Server Readiness Check Configuration (Optional)
+# IMPORTANT: Readiness check is DISABLED by default (health_check_timeout = 0)
+# When enabled, llm-bench polls /v1/models until the server is ready
+# Useful when starting the server and llm-bench simultaneously (e.g., vLLM loading models)
+# Works with all OpenAI-compatible backends since /v1/models is required by the spec
+
+# Maximum time to wait for server to become ready (in seconds)
+# Set to > 0 to enable readiness checking
+# Default: 0 (disabled)
+# health_check_timeout = 300
+
+# Interval between readiness check retries (in seconds)
+# Default: 5
+# health_check_interval = 5
+
 # =============================================================================
 # Load Configuration
 # =============================================================================

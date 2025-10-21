@@ -97,6 +97,18 @@ impl BenchmarkRunner {
         // Initialize metrics
         Metrics::init();
 
+        // Wait for server to be ready if timeout is set (> 0)
+        // This is optional and useful when starting servers that need time to load models
+        if config.endpoint.health_check_timeout > 0 {
+            crate::client::check_server_ready(
+                &config.endpoint.base_url,
+                config.endpoint.api_key.as_deref(),
+                Duration::from_secs(config.endpoint.health_check_timeout),
+                Duration::from_secs(config.endpoint.health_check_interval),
+            )
+            .await?;
+        }
+
         // Detect model from server if not provided
         let model = if let Some(model) = config.endpoint.model.clone() {
             model
@@ -215,13 +227,17 @@ impl BenchmarkRunner {
         // Set running flag
         crate::metrics::RUNNING.store(true, std::sync::atomic::Ordering::Relaxed);
 
+        // Create notification for warmup completion
+        let warmup_complete = Arc::new(tokio::sync::Notify::new());
+
         // Spawn periodic stats output task (unless in quiet mode or JSON to stdout)
         let json_to_stdout = matches!(self.config.output.format, crate::config::OutputFormat::Json)
             && self.config.output.file.is_none();
         let stats_handle = if !self.config.output.quiet && !json_to_stdout {
             let config = self.config.clone();
+            let warmup_notify = Arc::clone(&warmup_complete);
             Some(tokio::spawn(async move {
-                crate::stats::periodic_stats(config).await;
+                crate::stats::periodic_stats(config, warmup_notify).await;
             }))
         } else {
             None
@@ -241,11 +257,11 @@ impl BenchmarkRunner {
 
         // Run benchmark (without generating report)
         // If qps is set, use fixed QPS mode; otherwise use concurrent mode
-        if self.config.load.qps.is_some() {
-            self.run_qps_mode_internal(start_instant).await?
+        let test_duration = if self.config.load.qps.is_some() {
+            self.run_qps_mode_internal(start_instant, warmup_complete).await?
         } else {
-            self.run_concurrent_mode_internal(start_instant).await?
-        }
+            self.run_concurrent_mode_internal(start_instant, warmup_complete).await?
+        };
 
         // Stop metrics capture
         crate::metrics::RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -261,11 +277,12 @@ impl BenchmarkRunner {
         // Add a small delay to ensure all output is flushed
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // Generate report after all background tasks are done
+        // Generate report after all background tasks are done (use actual test duration)
+        let report_builder = report_builder.with_duration(test_duration);
         self.generate_report(report_builder).await
     }
 
-    async fn run_concurrent_mode_internal(&self, start_instant: Instant) -> Result<()> {
+    async fn run_concurrent_mode_internal(&self, start_instant: Instant, warmup_complete: Arc<tokio::sync::Notify>) -> Result<Duration> {
         info!(
             "Running in concurrent mode with {} workers",
             self.config.load.concurrent_requests
@@ -293,6 +310,9 @@ impl BenchmarkRunner {
             info!("Starting warmup phase: {} requests", warmup_count);
         } else if let Some(duration) = warmup_duration {
             info!("Starting warmup phase: {} seconds", duration.as_secs());
+        } else {
+            // No warmup - signal immediately
+            warmup_complete.notify_one();
         }
 
         let completed = Arc::new(AtomicUsize::new(0));
@@ -300,6 +320,9 @@ impl BenchmarkRunner {
         let mut handles = Vec::new();
         let prompt_index = Arc::new(AtomicUsize::new(0));
         let warmup_completed = Arc::new(AtomicUsize::new(0));
+
+        // Track when main test starts (initialize now if no warmup, otherwise set after warmup)
+        let mut test_start = Instant::now();
 
         if let Some(total) = total_requests {
             // Fixed request count mode
@@ -331,6 +354,10 @@ impl BenchmarkRunner {
                     let _ = handle.await?;
                 }
                 info!("Warmup complete, starting main test");
+                // Signal stats task to start intervals
+                warmup_complete.notify_one();
+                // Reset test_start after warmup
+                test_start = Instant::now();
             }
 
             // Run main test requests
@@ -403,10 +430,14 @@ impl BenchmarkRunner {
                 }
 
                 info!("Warmup complete, starting main test");
+                // Signal stats task to start intervals
+                warmup_complete.notify_one();
+                // Reset test_start after warmup
+                test_start = Instant::now();
             }
 
             // Main test phase
-            let deadline = Instant::now() + duration;
+            let deadline = test_start + duration;
             info!("Running main test for {} seconds", duration.as_secs());
 
             // Spawn worker tasks
@@ -489,8 +520,13 @@ impl BenchmarkRunner {
             }
         }
 
-        let duration = start_instant.elapsed();
-        info!("Benchmark completed in {:.1}s", duration.as_secs_f64());
+        // Calculate actual test duration (excluding warmup)
+        let test_duration = test_start.elapsed();
+        let total_duration = start_instant.elapsed();
+
+        info!("Benchmark completed in {:.1}s total ({:.1}s test)",
+              total_duration.as_secs_f64(),
+              test_duration.as_secs_f64());
 
         // Log warmup summary if applicable
         if warmup_count > 0 || warmup_duration.is_some() {
@@ -499,10 +535,10 @@ impl BenchmarkRunner {
             info!("Main test: {} requests", completed.load(Ordering::Relaxed));
         }
 
-        Ok(())
+        Ok(test_duration)
     }
 
-    async fn run_qps_mode_internal(&self, start_instant: Instant) -> Result<()> {
+    async fn run_qps_mode_internal(&self, start_instant: Instant, warmup_complete: Arc<tokio::sync::Notify>) -> Result<Duration> {
         let qps = self
             .config
             .load
@@ -528,6 +564,9 @@ impl BenchmarkRunner {
             info!("Starting warmup phase: {} requests", warmup_count);
         } else if let Some(duration) = warmup_duration {
             info!("Starting warmup phase: {} seconds", duration.as_secs());
+        } else {
+            // No warmup - signal immediately
+            warmup_complete.notify_one();
         }
 
         // Determine test duration or request count
@@ -548,6 +587,9 @@ impl BenchmarkRunner {
         // Maximum concurrent requests in QPS mode (configurable via concurrent_requests)
         let max_concurrent = self.config.load.concurrent_requests;
         let semaphore = Arc::new(Semaphore::new(max_concurrent));
+
+        // Track when main test starts (initialize now if no warmup, otherwise set after warmup)
+        let mut test_start = Instant::now();
 
         // Run warmup phase if configured
         if warmup_count > 0 {
@@ -579,6 +621,10 @@ impl BenchmarkRunner {
             }
 
             info!("Warmup complete, starting main test");
+            // Signal stats task to start intervals
+            warmup_complete.notify_one();
+            // Reset test_start after warmup
+            test_start = Instant::now();
         } else if let Some(warmup_dur) = warmup_duration {
             let warmup_deadline = Instant::now() + warmup_dur;
 
@@ -610,10 +656,14 @@ impl BenchmarkRunner {
             }
 
             info!("Warmup complete, starting main test");
+            // Signal stats task to start intervals
+            warmup_complete.notify_one();
+            // Reset test_start after warmup
+            test_start = Instant::now();
         }
 
         // Calculate deadline for main test
-        let deadline = duration_limit.map(|d| Instant::now() + d);
+        let deadline = duration_limit.map(|d| test_start + d);
 
         // Main test loop
         loop {
@@ -693,8 +743,13 @@ impl BenchmarkRunner {
             }
         }
 
-        let duration = start_instant.elapsed();
-        info!("Benchmark completed in {:.1}s", duration.as_secs_f64());
+        // Calculate actual test duration (excluding warmup)
+        let test_duration = test_start.elapsed();
+        let total_duration = start_instant.elapsed();
+
+        info!("Benchmark completed in {:.1}s total ({:.1}s test)",
+              total_duration.as_secs_f64(),
+              test_duration.as_secs_f64());
 
         // Log warmup summary if applicable
         if warmup_count > 0 || warmup_duration.is_some() {
@@ -703,7 +758,7 @@ impl BenchmarkRunner {
         }
         info!("Main test: {} requests", completed.load(Ordering::Relaxed));
 
-        Ok(())
+        Ok(test_duration)
     }
 
     async fn generate_report(&self, report_builder: ReportBuilder) -> Result<()> {
@@ -782,6 +837,16 @@ impl BenchmarkRunner {
                     let total_duration = request_start.elapsed();
                     Metrics::record_latency(total_duration);
                     Metrics::record_tokens(input_tokens, output_tokens);
+
+                    // Calculate and record TPOT (Time per Output Token, excluding first token)
+                    // TPOT = (total_duration - TTFT) / (num_output_tokens - 1)
+                    if let Some(ttft) = stream.time_to_first_token() {
+                        if output_tokens > 1 {
+                            let generation_duration = total_duration.saturating_sub(ttft);
+                            let tpot = generation_duration.as_nanos() as u64 / (output_tokens - 1);
+                            Metrics::record_tpot(Duration::from_nanos(tpot));
+                        }
+                    }
 
                     Metrics::record_request_complete(RequestStatus::Success);
                 }
@@ -895,28 +960,46 @@ impl BenchmarkRunner {
         );
 
         println!(
-            "{} TTFT (ms): p50: {:.0} p90: {:.0} p99: {:.0}",
+            "{} TTFT (ms): mean: {:.1} p50: {:.0} p90: {:.0} p95: {:.0} p99: {:.0}",
             timestamp,
+            report.latency.ttft_mean_ms,
             report.latency.ttft_p50_ms,
             report.latency.ttft_p90_ms,
+            report.latency.ttft_p95_ms,
             report.latency.ttft_p99_ms
         );
 
+        if report.latency.tpot_p50_ms > 0.0 {
+            println!(
+                "{} TPOT (ms): mean: {:.1} p50: {:.0} p90: {:.0} p95: {:.0} p99: {:.0}",
+                timestamp,
+                report.latency.tpot_mean_ms,
+                report.latency.tpot_p50_ms,
+                report.latency.tpot_p90_ms,
+                report.latency.tpot_p95_ms,
+                report.latency.tpot_p99_ms
+            );
+        }
+
         if report.latency.itl_p50_ms > 0.0 {
             println!(
-                "{} ITL (ms): p50: {:.0} p90: {:.0} p99: {:.0}",
+                "{} ITL (ms): mean: {:.1} p50: {:.0} p90: {:.0} p95: {:.0} p99: {:.0}",
                 timestamp,
+                report.latency.itl_mean_ms,
                 report.latency.itl_p50_ms,
                 report.latency.itl_p90_ms,
+                report.latency.itl_p95_ms,
                 report.latency.itl_p99_ms
             );
         }
 
         println!(
-            "{} Request Latency (ms): p50: {:.0} p90: {:.0} p99: {:.0}",
+            "{} Request Latency (ms): mean: {:.1} p50: {:.0} p90: {:.0} p95: {:.0} p99: {:.0}",
             timestamp,
+            report.latency.request_mean_ms,
             report.latency.request_p50_ms,
             report.latency.request_p90_ms,
+            report.latency.request_p95_ms,
             report.latency.request_p99_ms
         );
 

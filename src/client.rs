@@ -175,10 +175,11 @@ impl OpenAIClient {
         let client = Client::builder()
             .timeout(config.timeout)
             .pool_max_idle_per_host(config.pool_size) // Match concurrency for optimal connection reuse
-            .pool_idle_timeout(Duration::from_secs(90)) // Keep connections alive
-            .tcp_keepalive(Duration::from_secs(30)) // TCP keep-alive
+            .pool_idle_timeout(Duration::from_secs(300)) // Keep connections alive for 5 minutes
+            .tcp_keepalive(Duration::from_secs(60)) // TCP keep-alive every 60 seconds
             .http2_keep_alive_interval(Duration::from_secs(30)) // HTTP/2 keep-alive
             .http2_keep_alive_timeout(Duration::from_secs(20))
+            .http2_keep_alive_while_idle(true) // Send keep-alive even when idle
             .build()?;
 
         Ok(Self {
@@ -283,7 +284,9 @@ impl OpenAIClient {
 
         let url = format!("{}/chat/completions", self.base_url);
 
-        let mut req = self.client.post(&url).json(&request);
+        let mut req = self.client.post(&url)
+            .json(&request)
+            .header("Connection", "keep-alive"); // Ensure HTTP/1.1 keep-alive
 
         if let Some(api_key) = &self.api_key {
             req = req.header("Authorization", format!("Bearer {}", api_key));
@@ -300,7 +303,16 @@ impl OpenAIClient {
                 } else if e.is_timeout() {
                     return Err(ClientError::Timeout(Duration::from_secs(60)).into());
                 } else if e.is_request() {
-                    return Err(ClientError::Other(format!("Request error: {}", e)).into());
+                    // Check if this is a connection-related request error
+                    let err_msg = e.to_string();
+                    if err_msg.contains("connection closed")
+                        || err_msg.contains("connection reset")
+                        || err_msg.contains("broken pipe")
+                        || err_msg.contains("connection refused") {
+                        return Err(ClientError::Connection(format!("Request error: {}", e)).into());
+                    } else {
+                        return Err(ClientError::Other(format!("Request error: {}", e)).into());
+                    }
                 } else {
                     return Err(ClientError::Other(e.to_string()).into());
                 }
@@ -389,9 +401,16 @@ pub struct StreamResponse {
 
 impl StreamResponse {
     pub async fn next_chunk(&mut self) -> Result<Option<ChatCompletionChunk>> {
-        let bytes = self.response.chunk().await?;
+        loop {
+            let bytes = self.response.chunk().await?;
 
-        if let Some(data) = bytes {
+            // If no more data from server, stream is done
+            if bytes.is_none() {
+                return Ok(None);
+            }
+
+            let data = bytes.unwrap();
+
             // Parse SSE format
             let text = String::from_utf8_lossy(&data);
             for line in text.lines() {
@@ -430,9 +449,10 @@ impl StreamResponse {
                     }
                 }
             }
-        }
 
-        Ok(None)
+            // If this chunk had no parseable data, loop and read the next chunk
+            // instead of signaling end-of-stream
+        }
     }
 
     pub fn time_to_first_token(&self) -> Option<Duration> {
@@ -445,6 +465,99 @@ impl StreamResponse {
 
     pub fn inter_token_latencies(&self) -> &[Duration] {
         &self.inter_token_latencies
+    }
+}
+
+/// Wait for server to become ready by polling /v1/models endpoint
+///
+/// This function polls the /v1/models endpoint until it returns a successful response
+/// or the timeout is exceeded. This is useful when starting a server and llm-bench
+/// simultaneously, allowing llm-bench to wait for the server to be ready.
+///
+/// Using /v1/models is better than a dedicated health endpoint because:
+/// - All OpenAI-compatible backends must support it
+/// - Success means the server is actually ready to handle requests, not just "alive"
+/// - Works with vLLM, TGI, llama.cpp, Ollama, etc.
+///
+/// # Arguments
+///
+/// * `base_url` - The base URL of the server (e.g., "http://localhost:8080/v1")
+/// * `api_key` - Optional API key for authentication
+/// * `total_timeout` - Maximum time to wait for server to be ready
+/// * `retry_interval` - Time to wait between retry attempts
+///
+/// # Returns
+///
+/// Returns Ok(()) if server becomes ready, or an error if timeout is exceeded
+pub async fn check_server_ready(
+    base_url: &str,
+    api_key: Option<&str>,
+    total_timeout: Duration,
+    retry_interval: Duration,
+) -> Result<()> {
+    let start_time = Instant::now();
+    let mut attempt = 0;
+
+    log::info!("Waiting for server to be ready at {}...", base_url);
+
+    loop {
+        attempt += 1;
+
+        log::debug!("Server readiness check attempt {}: GET {}/models", attempt, base_url);
+
+        // Try to list models with a short timeout per request
+        match tokio::time::timeout(
+            Duration::from_secs(10),
+            list_models(base_url, api_key, Duration::from_secs(10))
+        ).await {
+            Ok(Ok(models)) => {
+                log::info!(
+                    "Server is ready ({} model{} available after {:.1}s)",
+                    models.len(),
+                    if models.len() == 1 { "" } else { "s" },
+                    start_time.elapsed().as_secs_f64()
+                );
+                return Ok(());
+            }
+            Ok(Err(e)) => {
+                log::debug!("Models endpoint returned error: {}", e);
+            }
+            Err(_) => {
+                log::debug!("Models endpoint request timed out");
+            }
+        }
+
+        // Check if we've exceeded the timeout
+        if start_time.elapsed() >= total_timeout {
+            anyhow::bail!(
+                "Server readiness timeout after {:.1}s. Server at {} did not become ready.",
+                total_timeout.as_secs_f64(),
+                base_url
+            );
+        }
+
+        // Wait before next attempt
+        let elapsed = start_time.elapsed();
+        let remaining = total_timeout.saturating_sub(elapsed);
+
+        if remaining.is_zero() {
+            anyhow::bail!(
+                "Server readiness timeout after {:.1}s. Server at {} did not become ready.",
+                total_timeout.as_secs_f64(),
+                base_url
+            );
+        }
+
+        // Log progress every 30 seconds
+        if attempt % 6 == 0 {
+            log::info!(
+                "Still waiting for server (elapsed: {:.0}s, timeout: {:.0}s)...",
+                elapsed.as_secs_f64(),
+                total_timeout.as_secs_f64()
+            );
+        }
+
+        tokio::time::sleep(retry_interval.min(remaining)).await;
     }
 }
 

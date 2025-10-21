@@ -32,6 +32,10 @@ pub struct EndpointConfig {
     pub retry_initial_delay_ms: u64,
     #[serde(default = "default_retry_max_delay_ms")]
     pub retry_max_delay_ms: u64,
+    #[serde(default = "default_health_check_timeout")]
+    pub health_check_timeout: u64, // Total time to wait for server readiness in seconds (0 = disabled)
+    #[serde(default = "default_health_check_interval")]
+    pub health_check_interval: u64, // Interval between readiness check retries in seconds
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -91,6 +95,9 @@ pub struct RuntimeConfig {
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: LogLevel,
+    /// Per-module log level overrides (e.g., ["hyper=info", "h2=warn"])
+    #[serde(default)]
+    pub filter: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,6 +170,7 @@ impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level: default_log_level(),
+            filter: Vec::new(),
         }
     }
 }
@@ -177,6 +185,14 @@ fn default_retry_initial_delay_ms() -> u64 {
 
 fn default_retry_max_delay_ms() -> u64 {
     10000 // 10 seconds
+}
+
+fn default_health_check_timeout() -> u64 {
+    0 // Disabled by default
+}
+
+fn default_health_check_interval() -> u64 {
+    5 // 5 seconds
 }
 
 fn default_concurrent_requests() -> usize {

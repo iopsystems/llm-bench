@@ -120,14 +120,14 @@ pub static TOKENS_OUTPUT: LazyCounter = LazyCounter::new(Counter::default);
 pub static REQUESTS_INFLIGHT: LazyGauge = LazyGauge::new(Gauge::default);
 
 // Latency metrics (in nanoseconds)
-// Histogram parameters: (grouping_power=5, max_value_power=64)
-// This gives 32 buckets per power of 2, covering the full 64-bit range
+// Histogram parameters: (grouping_power=7, max_value_power=64)
+// This gives 128 buckets per power of 2 (~0.54% relative precision), covering the full 64-bit range
 #[metric(
     name = "ttft",
     description = "Time to first token in nanoseconds",
     metadata = { unit = "nanoseconds" }
 )]
-pub static TTFT: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static TTFT: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 // Context-length-aware TTFT histograms
 // Buckets based on production usage patterns
@@ -136,42 +136,50 @@ pub static TTFT: AtomicHistogram = AtomicHistogram::new(5, 64);
     description = "TTFT for small contexts (0-200 tokens) - Simple Q&A",
     metadata = { unit = "nanoseconds", context_size = "small" }
 )]
-pub static TTFT_SMALL: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static TTFT_SMALL: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "ttft_medium",
     description = "TTFT for medium contexts (200-500 tokens) - Short conversations",
     metadata = { unit = "nanoseconds", context_size = "medium" }
 )]
-pub static TTFT_MEDIUM: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static TTFT_MEDIUM: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "ttft_large",
     description = "TTFT for large contexts (500-2000 tokens) - Technical/code help",
     metadata = { unit = "nanoseconds", context_size = "large" }
 )]
-pub static TTFT_LARGE: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static TTFT_LARGE: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "ttft_xlarge",
     description = "TTFT for extra large contexts (2000-8000 tokens) - Document analysis",
     metadata = { unit = "nanoseconds", context_size = "xlarge" }
 )]
-pub static TTFT_XLARGE: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static TTFT_XLARGE: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "ttft_xxlarge",
     description = "TTFT for huge contexts (8000+ tokens) - Long context/RAG",
     metadata = { unit = "nanoseconds", context_size = "xxlarge" }
 )]
-pub static TTFT_XXLARGE: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static TTFT_XXLARGE: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "request_latency",
     description = "Total request latency in nanoseconds",
     metadata = { unit = "nanoseconds" }
 )]
-pub static REQUEST_LATENCY: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static REQUEST_LATENCY: AtomicHistogram = AtomicHistogram::new(7, 64);
+
+// Time per output token (excluding first token)
+#[metric(
+    name = "tpot",
+    description = "Time per output token (excluding first token) in nanoseconds",
+    metadata = { unit = "nanoseconds" }
+)]
+pub static TPOT: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 // Inter-token latency
 #[metric(
@@ -179,7 +187,7 @@ pub static REQUEST_LATENCY: AtomicHistogram = AtomicHistogram::new(5, 64);
     description = "Inter-token latency in nanoseconds",
     metadata = { unit = "nanoseconds" }
 )]
-pub static INTER_TOKEN_LATENCY: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static INTER_TOKEN_LATENCY: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 // Context-aware ITL histograms
 #[metric(
@@ -187,35 +195,35 @@ pub static INTER_TOKEN_LATENCY: AtomicHistogram = AtomicHistogram::new(5, 64);
     description = "Inter-token latency for small contexts (0-200 tokens)",
     metadata = { unit = "nanoseconds", context_size = "small" }
 )]
-pub static ITL_SMALL: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static ITL_SMALL: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "itl_medium",
     description = "Inter-token latency for medium contexts (201-500 tokens)",
     metadata = { unit = "nanoseconds", context_size = "medium" }
 )]
-pub static ITL_MEDIUM: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static ITL_MEDIUM: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "itl_large",
     description = "Inter-token latency for large contexts (501-1000 tokens)",
     metadata = { unit = "nanoseconds", context_size = "large" }
 )]
-pub static ITL_LARGE: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static ITL_LARGE: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "itl_xlarge",
     description = "Inter-token latency for xlarge contexts (1001-2000 tokens)",
     metadata = { unit = "nanoseconds", context_size = "xlarge" }
 )]
-pub static ITL_XLARGE: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static ITL_XLARGE: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 #[metric(
     name = "itl_xxlarge",
     description = "Inter-token latency for xxlarge contexts (2001+ tokens)",
     metadata = { unit = "nanoseconds", context_size = "xxlarge" }
 )]
-pub static ITL_XXLARGE: AtomicHistogram = AtomicHistogram::new(5, 64);
+pub static ITL_XXLARGE: AtomicHistogram = AtomicHistogram::new(7, 64);
 
 pub struct Metrics;
 
@@ -287,6 +295,10 @@ impl Metrics {
                 let _ = TTFT_XXLARGE.increment(nanos); // ~1% of production traffic
             }
         }
+    }
+
+    pub fn record_tpot(duration: Duration) {
+        let _ = TPOT.increment(duration.as_nanos() as u64);
     }
 
     pub fn record_inter_token_latency(duration: Duration) {
