@@ -61,6 +61,7 @@ pub struct SaturationStep {
     pub duration_secs: f64,
     pub requests_completed: u64,
     pub output_tokens_per_sec: f64,
+    pub requests_per_sec: f64,
     pub ttft_p50_ms: f64,
     pub ttft_p99_ms: f64,
     pub ttft_p999_ms: f64,
@@ -148,6 +149,7 @@ impl SaturationSearchState {
         let delta_output_tokens = current_output_tokens.saturating_sub(self.step_output_tokens);
         let delta_requests = current_requests_success.saturating_sub(self.step_requests_success);
         let output_tokens_per_sec = delta_output_tokens as f64 / elapsed_secs;
+        let requests_per_sec = delta_requests as f64 / elapsed_secs;
 
         let delta_ttft = compute_delta(&current_ttft, &self.step_ttft_snapshot);
         let delta_itl = compute_delta(&current_itl, &self.step_itl_snapshot);
@@ -206,6 +208,7 @@ impl SaturationSearchState {
             duration_secs: elapsed_secs,
             requests_completed: delta_requests,
             output_tokens_per_sec,
+            requests_per_sec,
             ttft_p50_ms: ttft_p50,
             ttft_p99_ms: ttft_p99,
             ttft_p999_ms: ttft_p999,
@@ -422,10 +425,10 @@ fn output_tokens_total() -> u64 {
 fn print_header() {
     println!();
     println!(
-        "{:>6} | {:>12} | {:>12} | {:>12} | {:>12} | {:>12} | Result",
-        "Step", "Concurrency", "Tokens/s", "TTFT p99", "ITL p99", "TPOT p99"
+        "{:>6} | {:>12} | {:>10} | {:>10} | {:>12} | {:>12} | {:>12} | Result",
+        "Step", "Concurrency", "Req/s", "Tokens/s", "TTFT p99", "ITL p99", "TPOT p99"
     );
-    println!("{}", "-".repeat(90));
+    println!("{}", "-".repeat(101));
 }
 
 fn print_step(step_num: usize, step: &SaturationStep) {
@@ -436,9 +439,10 @@ fn print_step(step_num: usize, step: &SaturationStep) {
     };
 
     println!(
-        "{:>6} | {:>12} | {:>10.1} | {:>9.0}ms | {:>9.0}ms | {:>9.0}ms | {}",
+        "{:>6} | {:>12} | {:>10.2} | {:>10.1} | {:>10.0}ms | {:>10.0}ms | {:>10.0}ms | {}",
         step_num,
         step.concurrency,
+        step.requests_per_sec,
         step.output_tokens_per_sec,
         step.ttft_p99_ms,
         step.itl_p99_ms,
@@ -448,7 +452,15 @@ fn print_step(step_num: usize, step: &SaturationStep) {
 }
 
 fn print_summary(results: &SaturationResults) {
-    println!("{}", "-".repeat(90));
+    println!("{}", "-".repeat(101));
+    println!();
+    println!("Saturation Search Complete — Per-Step Summary");
+    println!();
+    print_header();
+    for (i, step) in results.steps.iter().enumerate() {
+        print_step(i + 1, step);
+    }
+    println!("{}", "-".repeat(101));
     println!();
     if let Some(max_c) = results.max_compliant_concurrency {
         let best_step = results
@@ -461,7 +473,6 @@ fn print_summary(results: &SaturationResults) {
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
-        println!("Saturation Search Complete");
         println!("  Max compliant concurrency: {}", max_c);
         if let Some(step) = best_step {
             println!(
@@ -470,7 +481,6 @@ fn print_summary(results: &SaturationResults) {
             );
         }
     } else {
-        println!("Saturation Search Complete");
         println!("  No compliant concurrency found — SLO failed at start_concurrency");
     }
     println!();

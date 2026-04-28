@@ -17,6 +17,7 @@ use crate::config::Config;
 use crate::distribution::RequestDistribution;
 use crate::metrics::{ErrorType, Metrics, RequestStatus};
 use crate::report::ReportBuilder;
+use crate::saturation::SaturationResults;
 use crate::tokenizer::Tokenizer;
 
 /// A prompt to be sent to the LLM server.
@@ -354,15 +355,21 @@ impl BenchmarkRunner {
         };
 
         // Run benchmark (without generating report)
-        let test_duration = if self.config.saturation.is_some() {
-            self.run_saturation_mode_internal(start_instant, warmup_complete)
-                .await?
+        let (test_duration, sat_results) = if self.config.saturation.is_some() {
+            let (d, r) = self
+                .run_saturation_mode_internal(start_instant, warmup_complete)
+                .await?;
+            (d, Some(r))
         } else if self.config.load.qps.is_some() {
-            self.run_qps_mode_internal(start_instant, warmup_complete)
-                .await?
+            let d = self
+                .run_qps_mode_internal(start_instant, warmup_complete)
+                .await?;
+            (d, None)
         } else {
-            self.run_concurrent_mode_internal(start_instant, warmup_complete)
-                .await?
+            let d = self
+                .run_concurrent_mode_internal(start_instant, warmup_complete)
+                .await?;
+            (d, None)
         };
 
         // Stop metrics capture
@@ -380,7 +387,10 @@ impl BenchmarkRunner {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Generate report after all background tasks are done (use actual test duration)
-        let report_builder = report_builder.with_duration(test_duration);
+        let mut report_builder = report_builder.with_duration(test_duration);
+        if let Some(sat) = sat_results {
+            report_builder = report_builder.with_saturation_results(sat);
+        }
         self.generate_report(report_builder).await
     }
 
@@ -653,7 +663,7 @@ impl BenchmarkRunner {
         &self,
         start_instant: Instant,
         warmup_complete: Arc<tokio::sync::Notify>,
-    ) -> Result<Duration> {
+    ) -> Result<(Duration, SaturationResults)> {
         let sat_config = self.config.saturation.as_ref().unwrap().clone();
         let start_concurrency = sat_config.start_concurrency;
         let max_concurrency = sat_config.max_concurrency;
@@ -784,6 +794,7 @@ impl BenchmarkRunner {
 
         let test_duration = test_start.elapsed();
         let total_duration = start_instant.elapsed();
+        let sat_results = sat_state.results();
 
         info!(
             "Saturation search completed in {:.1}s total ({:.1}s test)",
@@ -791,7 +802,7 @@ impl BenchmarkRunner {
             test_duration.as_secs_f64()
         );
 
-        Ok(test_duration)
+        Ok((test_duration, sat_results))
     }
 
     async fn run_qps_mode_internal(
