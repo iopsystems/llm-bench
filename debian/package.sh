@@ -123,13 +123,14 @@ nextgroup install rust
 curl -sSf https://sh.rustup.rs | sh /dev/stdin -y
 . "$HOME/.cargo/env"
 
-nextgroup build source package
-dpkg-source --build .
-
 nextgroup generate changelog
 export RELEASE="$RELEASE"
 cp -p debian/changelog /tmp/changelog
 trap 'cp -fp /tmp/changelog debian/changelog' EXIT
+./debian/gen-changelog.sh | tee debian/changelog
+
+nextgroup build source package
+dpkg-source --build .
 
 nextgroup install build dependencies
 apt-get -q build-dep -y ../llm-perf*.dsc
