@@ -108,7 +108,7 @@ pub enum Workload {
 pub struct BenchmarkRunner {
     client: Arc<OpenAIClient>,
     config: Config,
-    workloads: Arc<Vec<Workload>>,  // Wrapped in Arc to avoid cloning
+    workloads: Arc<Vec<Workload>>, // Wrapped in Arc to avoid cloning
     tokenizer: Arc<Tokenizer>,
 }
 
@@ -228,7 +228,7 @@ impl BenchmarkRunner {
         Ok(Self {
             client: Arc::new(client),
             config,
-            workloads: Arc::new(workloads),  // Wrap in Arc
+            workloads: Arc::new(workloads), // Wrap in Arc
             tokenizer: Arc::new(tokenizer),
         })
     }
