@@ -1222,12 +1222,8 @@ impl BenchmarkRunner {
                 Metrics::record_turn();
             }
 
-            let request = client.create_messages_request(
-                messages.clone(),
-                conversation.max_tokens,
-                None,
-                None,
-            );
+            let request =
+                client.create_messages_request(&messages, conversation.max_tokens, None, None);
 
             match client.chat_completion_stream(request).await {
                 Ok(mut stream) => {

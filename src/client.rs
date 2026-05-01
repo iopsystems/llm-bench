@@ -367,27 +367,23 @@ impl OpenAIClient {
         logprobs: Option<bool>,
         top_logprobs: Option<u8>,
     ) -> ChatCompletionRequest {
-        self.create_messages_request(
-            vec![Message {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-            }],
-            max_tokens,
-            logprobs,
-            top_logprobs,
-        )
+        let message = Message {
+            role: "user".to_string(),
+            content: prompt.to_string(),
+        };
+        self.create_messages_request(&[message], max_tokens, logprobs, top_logprobs)
     }
 
     pub fn create_messages_request(
         &self,
-        messages: Vec<Message>,
+        messages: &[Message],
         max_tokens: Option<u32>,
         logprobs: Option<bool>,
         top_logprobs: Option<u8>,
     ) -> ChatCompletionRequest {
         ChatCompletionRequest {
             model: self.model.clone(),
-            messages,
+            messages: messages.to_vec(),
             max_tokens,
             temperature: None,
             top_p: None,
