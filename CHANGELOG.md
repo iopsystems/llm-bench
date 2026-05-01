@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.16] - 2026-05-01
+
+### Features
+
+- Add system prompt from file support (#73)
+
+### Performance
+
+- Pre-allocate output buffer in admin human_metrics endpoint (#72)
+- Pre-allocate capacity for streaming response strings (#71)
+- Eliminate `messages.clone()` in multi-turn conversation loop (#70)
+- Eliminate workload and system prompt cloning (#69)
+
+### Bug Fixes
+
+- Simplify rpmbuild cleanup command (#67)
+
+### Changes
+
+- Reduce unnecessary allocations
+
 ## [0.1.14] - 2026-04-30
 
 ### Infrastructure
