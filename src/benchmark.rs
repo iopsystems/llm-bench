@@ -1228,7 +1228,7 @@ impl BenchmarkRunner {
             match client.chat_completion_stream(request).await {
                 Ok(mut stream) => {
                     // Consume stream, collect response content for conversation history
-                    let mut response_content = String::new();
+                    let mut response_content = String::with_capacity(1024);
 
                     loop {
                         match stream.next_chunk().await {
@@ -1387,7 +1387,7 @@ impl BenchmarkRunner {
         match client.chat_completion_stream(request).await {
             Ok(mut stream) => {
                 // Consume the stream to measure TTFT and total time
-                let mut total_content = String::new();
+                let mut total_content = String::with_capacity(1024);
 
                 loop {
                     match stream.next_chunk().await {
