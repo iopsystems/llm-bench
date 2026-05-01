@@ -112,8 +112,10 @@ async fn human_metrics() -> Result<impl warp::Reply, Infallible> {
     use histogram::SampleQuantiles;
     use metriken::Value;
 
-    let mut lines = Vec::new();
     let quantile_values = [0.5, 0.9, 0.95, 0.99, 0.999];
+
+    // Collect all metric lines first, then sort
+    let mut lines = Vec::new();
 
     for metric in &metriken::metrics() {
         let name = metric.name();
@@ -163,7 +165,13 @@ async fn human_metrics() -> Result<impl warp::Reply, Infallible> {
     }
 
     lines.sort();
-    let content = lines.join("\n") + "\n";
+    // Pre-allocate output string based on line count
+    let mut content = String::with_capacity(lines.len() * 40);
+    for line in lines {
+        content.push_str(&line);
+        content.push('\n');
+    }
+
     Ok(warp::reply::with_header(
         content,
         "content-type",
