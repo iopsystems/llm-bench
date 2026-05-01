@@ -137,6 +137,13 @@ file = "examples/prompts/openorca-10000.jsonl"
 # If set, it replaces any system prompt in the dataset.
 # system_prompt = "You are a helpful AI assistant specialized in coding tasks."
 
+# System Prompt from File (Optional)
+# Path to a file containing the system prompt to use for all requests.
+# This is an alternative to system_prompt (inline string).
+# The path is relative to the current working directory (where the config file is located).
+# If both system_prompt and system_prompt_file are set, system_prompt takes precedence.
+# system_prompt_file = "prompts/system.md"
+
 # =============================================================================
 # Output Configuration
 # =============================================================================

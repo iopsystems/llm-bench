@@ -19,6 +19,7 @@ use crate::metrics::{ErrorType, Metrics, RequestStatus};
 use crate::report::ReportBuilder;
 use crate::saturation::SaturationResults;
 use crate::tokenizer::Tokenizer;
+use tokio::fs::read_to_string;
 
 /// A prompt to be sent to the LLM server.
 ///
@@ -211,7 +212,25 @@ impl BenchmarkRunner {
             info!("Loaded {} prompts", workloads.len());
         }
 
-        let system_prompt = Arc::new(config.input.system_prompt.clone());
+        // Load system prompt: first try inline string, then file if specified
+        let system_prompt_str = if let Some(ref inline) = config.input.system_prompt {
+            inline.clone()
+        } else if let Some(file_path) = &config.input.system_prompt_file {
+            if let Ok(content) = read_to_string(file_path).await {
+                info!("Loaded system prompt from file: {}", file_path.display());
+                content
+            } else {
+                warn!("Failed to read system prompt file: {}", file_path.display());
+                return Err(anyhow::anyhow!(
+                    "Failed to read system prompt file: {}",
+                    file_path.display()
+                ));
+            }
+        } else {
+            String::new()
+        };
+
+        let system_prompt = Arc::new(Some(system_prompt_str));
         Ok(Self {
             client: Arc::new(client),
             config,

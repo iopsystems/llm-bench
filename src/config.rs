@@ -82,6 +82,12 @@ pub struct InputConfig {
     /// agentic workloads where you want to test with specific system instructions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Path to a file containing the system prompt. If provided, the file will be read
+    /// and used as the system prompt. This is an alternative to `system_prompt` which
+    /// allows specifying the prompt inline. The file path is relative to the config file
+    /// unless it is an absolute path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
