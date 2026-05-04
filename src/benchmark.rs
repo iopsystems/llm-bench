@@ -13,7 +13,7 @@ use tokio::sync::Semaphore;
 use tokio::time::{sleep, timeout};
 
 use crate::client::{ClientError, Message, OpenAIClient};
-use crate::config::Config;
+use crate::config::{Config, resolve_max_tokens};
 use crate::distribution::RequestDistribution;
 use crate::metrics::{ErrorType, Metrics, RequestStatus};
 use crate::report::ReportBuilder;
@@ -477,6 +477,7 @@ impl BenchmarkRunner {
 
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
+                let default_max_tokens = self.config.endpoint.max_tokens;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -491,6 +492,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         true,
+                        default_max_tokens,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -523,6 +525,7 @@ impl BenchmarkRunner {
 
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
+                let default_max_tokens = self.config.endpoint.max_tokens;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -537,6 +540,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         false,
+                        default_max_tokens,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -564,6 +568,7 @@ impl BenchmarkRunner {
 
                     // Capture system_prompt for this closure
                     let system_prompt = Arc::clone(&self.system_prompt);
+                    let default_max_tokens = self.config.endpoint.max_tokens;
 
                     let handle = tokio::spawn(async move {
                         while Instant::now() < warmup_deadline {
@@ -582,6 +587,7 @@ impl BenchmarkRunner {
                                 workload,
                                 idx,
                                 true,
+                                default_max_tokens,
                             )
                             .await;
                             warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -620,6 +626,7 @@ impl BenchmarkRunner {
 
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
+                let default_max_tokens = self.config.endpoint.max_tokens;
 
                 let handle = tokio::spawn(async move {
                     while !should_stop.load(Ordering::Relaxed) {
@@ -657,6 +664,7 @@ impl BenchmarkRunner {
                             workload,
                             idx,
                             false,
+                            default_max_tokens,
                         );
                         match tokio::time::timeout(remaining, request_future).await {
                             Ok(_) => {
@@ -749,6 +757,7 @@ impl BenchmarkRunner {
 
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
+                let default_max_tokens = self.config.endpoint.max_tokens;
 
                 let handle = tokio::spawn(async move {
                     while Instant::now() < warmup_deadline {
@@ -765,6 +774,7 @@ impl BenchmarkRunner {
                             workload,
                             idx,
                             true,
+                            default_max_tokens,
                         )
                         .await;
                     }
@@ -803,6 +813,7 @@ impl BenchmarkRunner {
             let workloads = Arc::clone(&self.workloads);
             // Capture system_prompt for this closure
             let system_prompt = Arc::clone(&self.system_prompt);
+            let default_max_tokens = self.config.endpoint.max_tokens;
 
             handles.push(tokio::spawn(async move {
                 loop {
@@ -829,6 +840,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         false,
+                        default_max_tokens,
                     )
                     .await;
                 }
@@ -939,6 +951,7 @@ impl BenchmarkRunner {
                 let semaphore = Arc::clone(&semaphore);
                 let warmup_completed = Arc::clone(&warmup_completed);
                 let system_prompt_clone = Arc::clone(&system_prompt);
+                let default_max_tokens = self.config.endpoint.max_tokens;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -953,6 +966,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         true,
+                        default_max_tokens,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -986,6 +1000,7 @@ impl BenchmarkRunner {
                 let semaphore = Arc::clone(&semaphore);
                 let warmup_completed = Arc::clone(&warmup_completed);
                 let system_prompt_closure = Arc::clone(&system_prompt_clone);
+                let default_max_tokens = self.config.endpoint.max_tokens;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -1000,6 +1015,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         true,
+                        default_max_tokens,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1061,6 +1077,7 @@ impl BenchmarkRunner {
             let completed = Arc::clone(&completed);
             let request_timeout = remaining;
             let system_prompt_for_closure = Arc::clone(&system_prompt);
+            let default_max_tokens = self.config.endpoint.max_tokens;
 
             let handle = tokio::spawn(async move {
                 let workload = &workloads[workload_idx];
@@ -1077,6 +1094,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         false,
+                        default_max_tokens,
                     );
                     match timeout(timeout_duration, request_future).await {
                         Ok(result) => {
@@ -1100,6 +1118,7 @@ impl BenchmarkRunner {
                         workload,
                         idx,
                         false,
+                        default_max_tokens,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -1173,17 +1192,34 @@ impl BenchmarkRunner {
         workload: &Workload,
         index: usize,
         is_warmup: bool,
+        default_max_tokens: Option<u32>,
     ) -> Result<()> {
         match workload {
             Workload::SingleTurn(prompt) => {
-                Self::execute_request(client, tokenizer, prompt, index, is_warmup).await
+                Self::execute_request(
+                    client,
+                    tokenizer,
+                    prompt,
+                    index,
+                    is_warmup,
+                    default_max_tokens,
+                )
+                .await
             }
             Workload::MultiTurn(conversation) => {
                 let conversation = Conversation {
                     system_prompt: system_prompt.clone(),
                     ..conversation.clone()
                 };
-                Self::execute_conversation(client, tokenizer, conversation, index, is_warmup).await
+                Self::execute_conversation(
+                    client,
+                    tokenizer,
+                    conversation,
+                    index,
+                    is_warmup,
+                    default_max_tokens,
+                )
+                .await
             }
         }
     }
@@ -1194,6 +1230,7 @@ impl BenchmarkRunner {
         conversation: Conversation,
         index: usize,
         is_warmup: bool,
+        default_max_tokens: Option<u32>,
     ) -> Result<()> {
         debug!(
             "Executing conversation {} ({} turns, warmup: {})",
@@ -1241,8 +1278,8 @@ impl BenchmarkRunner {
                 Metrics::record_turn();
             }
 
-            let request =
-                client.create_messages_request(&messages, conversation.max_tokens, None, None);
+            let max_tokens = resolve_max_tokens(default_max_tokens, conversation.max_tokens);
+            let request = client.create_messages_request(&messages, max_tokens, None, None);
 
             match client.chat_completion_stream(request).await {
                 Ok(mut stream) => {
@@ -1389,6 +1426,7 @@ impl BenchmarkRunner {
         prompt: &Prompt,
         index: usize,
         is_warmup: bool,
+        default_max_tokens: Option<u32>,
     ) -> Result<()> {
         debug!("Executing request {} (warmup: {})", index, is_warmup);
 
@@ -1401,7 +1439,8 @@ impl BenchmarkRunner {
 
         // Add per-request cache-busting to ensure every request is unique
         let cache_bust_prompt = format!("[req-{}] {}", index, prompt.prompt);
-        let request = client.create_request(&cache_bust_prompt, prompt.max_tokens, None, None);
+        let max_tokens = resolve_max_tokens(default_max_tokens, prompt.max_tokens);
+        let request = client.create_request(&cache_bust_prompt, max_tokens, None, None);
 
         match client.chat_completion_stream(request).await {
             Ok(mut stream) => {

@@ -369,7 +369,7 @@ async fn run_logprobs_collection(
 
         let request = client.create_request(
             &prompt.prompt,
-            prompt.max_tokens,
+            llm_perf::config::resolve_max_tokens(config.endpoint.max_tokens, prompt.max_tokens),
             Some(true),
             Some(lp_config.top_logprobs),
         );

@@ -1,6 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Resolve the effective `max_tokens` for a request.
+///
+/// Endpoint-level configuration takes precedence over workload-level values so
+/// a single config file can enforce a consistent response cap across modes.
+pub fn resolve_max_tokens(
+    endpoint_max_tokens: Option<u32>,
+    workload_max_tokens: Option<u32>,
+) -> Option<u32> {
+    endpoint_max_tokens.or(workload_max_tokens)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub endpoint: EndpointConfig,
@@ -28,6 +39,8 @@ pub struct EndpointConfig {
     pub model: Option<String>, // If not provided, will auto-detect from server
     #[serde(default = "default_timeout")]
     pub timeout: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
     #[serde(default)]
@@ -380,6 +393,12 @@ impl Config {
             anyhow::bail!("logprobs.top_logprobs must be between 1 and 20");
         }
 
+        if let Some(max_tokens) = self.endpoint.max_tokens
+            && max_tokens == 0
+        {
+            anyhow::bail!("endpoint.max_tokens must be greater than 0");
+        }
+
         if let Some(ref sat) = self.saturation {
             if !sat.slo.has_any() {
                 anyhow::bail!(
@@ -404,5 +423,25 @@ impl Config {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_max_tokens;
+
+    #[test]
+    fn endpoint_max_tokens_overrides_workload_value() {
+        assert_eq!(resolve_max_tokens(Some(128), Some(32)), Some(128));
+    }
+
+    #[test]
+    fn workload_max_tokens_is_used_when_endpoint_override_is_absent() {
+        assert_eq!(resolve_max_tokens(None, Some(32)), Some(32));
+    }
+
+    #[test]
+    fn no_max_tokens_when_neither_source_sets_it() {
+        assert_eq!(resolve_max_tokens(None, None), None);
     }
 }

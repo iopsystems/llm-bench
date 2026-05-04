@@ -18,6 +18,11 @@ base_url = "http://localhost:8080/v1"
 # Default: 60
 timeout = 60
 
+# Maximum number of tokens to generate per response (optional)
+# If set, this value is sent as max_tokens in every request body.
+# This config value takes precedence over per-prompt max_tokens in the input JSONL.
+# max_tokens = 128
+
 # API key for authentication (if required by your server)
 # api_key = "sk-..."
 
