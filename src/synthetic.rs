@@ -1,6 +1,3 @@
-// Copyright 2025 GuideLLM Contributors
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-
 //! Synthetic data generation for benchmarking LLM servers.
 //!
 //! This module provides functionality to generate synthetic prompts with exact token counts,
