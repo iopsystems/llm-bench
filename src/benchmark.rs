@@ -186,7 +186,7 @@ impl BenchmarkRunner {
             }
 
             let synthetic_config = config.input.synthetic.as_ref().unwrap();
-            let sample_size = config.input.sample_size.unwrap_or(100);
+            let sample_size = config.input.sample_size.unwrap_or(10000);
             let seed = config.input.seed.unwrap_or(42);
 
             info!("Generating {} synthetic workloads", sample_size);

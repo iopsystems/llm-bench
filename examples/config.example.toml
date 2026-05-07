@@ -159,7 +159,7 @@ file = "examples/prompts/openorca-10000.jsonl"
 #
 # [input]
 # file = "synthetic"     # Magic value to enable synthetic mode
-# sample_size = 1000     # Number of prompts to generate
+# sample_size = 10000    # Number of prompts to generate (default: 10000)
 # seed = 42              # Random seed for reproducibility
 #
 # [input.synthetic]
