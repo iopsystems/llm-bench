@@ -459,57 +459,57 @@ impl Config {
             }
 
             // Validate prompt token bounds
-            if let Some(min) = synthetic.prompt_tokens_min {
-                if min > synthetic.prompt_tokens {
-                    anyhow::bail!(
-                        "input.synthetic.prompt_tokens_min ({}) must be <= prompt_tokens ({})",
-                        min,
-                        synthetic.prompt_tokens
-                    );
-                }
+            if let Some(min) = synthetic.prompt_tokens_min
+                && min > synthetic.prompt_tokens
+            {
+                anyhow::bail!(
+                    "input.synthetic.prompt_tokens_min ({}) must be <= prompt_tokens ({})",
+                    min,
+                    synthetic.prompt_tokens
+                );
             }
-            if let Some(max) = synthetic.prompt_tokens_max {
-                if max < synthetic.prompt_tokens {
-                    anyhow::bail!(
-                        "input.synthetic.prompt_tokens_max ({}) must be >= prompt_tokens ({})",
-                        max,
-                        synthetic.prompt_tokens
-                    );
-                }
+            if let Some(max) = synthetic.prompt_tokens_max
+                && max < synthetic.prompt_tokens
+            {
+                anyhow::bail!(
+                    "input.synthetic.prompt_tokens_max ({}) must be >= prompt_tokens ({})",
+                    max,
+                    synthetic.prompt_tokens
+                );
             }
-            if let Some(stdev) = synthetic.prompt_tokens_stdev {
-                if stdev == 0 {
-                    anyhow::bail!(
-                        "input.synthetic.prompt_tokens_stdev must be greater than 0 if specified"
-                    );
-                }
+            if let Some(stdev) = synthetic.prompt_tokens_stdev
+                && stdev == 0
+            {
+                anyhow::bail!(
+                    "input.synthetic.prompt_tokens_stdev must be greater than 0 if specified"
+                );
             }
 
             // Validate output token bounds
-            if let Some(min) = synthetic.output_tokens_min {
-                if min > synthetic.output_tokens {
-                    anyhow::bail!(
-                        "input.synthetic.output_tokens_min ({}) must be <= output_tokens ({})",
-                        min,
-                        synthetic.output_tokens
-                    );
-                }
+            if let Some(min) = synthetic.output_tokens_min
+                && min > synthetic.output_tokens
+            {
+                anyhow::bail!(
+                    "input.synthetic.output_tokens_min ({}) must be <= output_tokens ({})",
+                    min,
+                    synthetic.output_tokens
+                );
             }
-            if let Some(max) = synthetic.output_tokens_max {
-                if max < synthetic.output_tokens {
-                    anyhow::bail!(
-                        "input.synthetic.output_tokens_max ({}) must be >= output_tokens ({})",
-                        max,
-                        synthetic.output_tokens
-                    );
-                }
+            if let Some(max) = synthetic.output_tokens_max
+                && max < synthetic.output_tokens
+            {
+                anyhow::bail!(
+                    "input.synthetic.output_tokens_max ({}) must be >= output_tokens ({})",
+                    max,
+                    synthetic.output_tokens
+                );
             }
-            if let Some(stdev) = synthetic.output_tokens_stdev {
-                if stdev == 0 {
-                    anyhow::bail!(
-                        "input.synthetic.output_tokens_stdev must be greater than 0 if specified"
-                    );
-                }
+            if let Some(stdev) = synthetic.output_tokens_stdev
+                && stdev == 0
+            {
+                anyhow::bail!(
+                    "input.synthetic.output_tokens_stdev must be greater than 0 if specified"
+                );
             }
 
             // Ensure synthetic config is provided when file = "synthetic"

@@ -79,7 +79,7 @@ impl TokenDistribution {
                 // Uniform distribution between min and max
                 self.rng.gen_range(self.min..=self.max)
             }
-            Some(stdev) if stdev == 0 => {
+            Some(0) => {
                 // No variance
                 self.average
             }
@@ -211,7 +211,7 @@ impl SyntheticDataGenerator {
         let mut high = text.len();
 
         while low < high {
-            let mid = (low + high + 1) / 2;
+            let mid = (low + high).div_ceil(2);
             let tokens = self.tokenizer.count_tokens(&text[..mid]);
 
             if tokens <= target_tokens {
@@ -272,7 +272,7 @@ mod tests {
         for _ in 0..100 {
             let sample = dist.sample();
             assert!(
-                sample >= 50 && sample <= 150,
+                (50..=150).contains(&sample),
                 "Sample {} outside bounds [50, 150]",
                 sample
             );
@@ -287,7 +287,7 @@ mod tests {
         for _ in 0..1000 {
             let sample = dist.sample();
             assert!(
-                sample >= 50 && sample <= 150,
+                (50..=150).contains(&sample),
                 "Sample {} outside bounds [50, 150]",
                 sample
             );
@@ -342,7 +342,7 @@ mod tests {
         // Verify token count is close to target (allow some tolerance due to tokenization)
         let token_count = tokenizer.count_tokens(&text);
         assert!(
-            token_count >= 48 && token_count <= 52,
+            (48..=52).contains(&token_count),
             "Token count {} should be close to target 50",
             token_count
         );
