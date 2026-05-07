@@ -13,6 +13,7 @@ pub mod report;
 pub mod saturation;
 pub mod snapshot;
 pub mod stats;
+pub mod synthetic;
 pub mod tokenizer;
 
 pub use benchmark::BenchmarkRunner;

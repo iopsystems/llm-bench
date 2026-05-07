@@ -176,40 +176,67 @@ impl BenchmarkRunner {
         })?;
 
         // Create tokenizer
-        let tokenizer = Tokenizer::new(&model)?;
+        let tokenizer = Arc::new(Tokenizer::new(&model)?);
 
-        // Resolve input path (auto-downloads known datasets from HuggingFace if needed)
-        let input_path = crate::dataset::resolve_input(&config.input.file).await?;
+        // Load or generate workloads
+        let workloads: Vec<Workload> = if config.input.file.to_str() == Some("synthetic") {
+            // Synthetic mode - generate random prompts
+            if config.input.synthetic.is_none() {
+                anyhow::bail!("Synthetic mode requires [input.synthetic] configuration");
+            }
 
-        // Load workloads (auto-detects single-turn prompts vs multi-turn conversations)
-        let workloads = Self::load_workloads(&input_path).await?;
-        let mut workloads: Vec<Workload> = if let Some(sample_size) = config.input.sample_size {
-            workloads.into_iter().take(sample_size).collect()
+            let synthetic_config = config.input.synthetic.as_ref().unwrap();
+            let sample_size = config.input.sample_size.unwrap_or(100);
+            let seed = config.input.seed.unwrap_or(42);
+
+            info!("Generating {} synthetic workloads", sample_size);
+            crate::synthetic::generate_synthetic_workloads(
+                synthetic_config,
+                Arc::clone(&tokenizer),
+                sample_size,
+                seed,
+            )?
         } else {
-            workloads
+            // File/dataset mode - load from disk or HuggingFace
+            let input_path = crate::dataset::resolve_input(&config.input.file).await?;
+            let workloads = Self::load_workloads(&input_path).await?;
+
+            let workloads: Vec<Workload> = if let Some(sample_size) = config.input.sample_size {
+                workloads.into_iter().take(sample_size).collect()
+            } else {
+                workloads
+            };
+
+            // Deterministic shuffle if seed is set
+            if let Some(seed) = config.input.seed {
+                let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                let mut shuffled = workloads;
+                shuffled.shuffle(&mut rng);
+                info!("Shuffled workloads with seed {}", seed);
+                shuffled
+            } else {
+                workloads
+            }
         };
 
-        // Deterministic shuffle if seed is set
-        if let Some(seed) = config.input.seed {
-            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            workloads.shuffle(&mut rng);
-            info!("Shuffled workloads with seed {}", seed);
-        }
-
-        // Log what we loaded
-        let (single_count, multi_count) = workloads.iter().fold((0, 0), |(s, m), w| match w {
-            Workload::SingleTurn(_) => (s + 1, m),
-            Workload::MultiTurn(_) => (s, m + 1),
-        });
-        if multi_count > 0 {
-            info!(
-                "Loaded {} workloads ({} single-turn, {} multi-turn conversations)",
-                workloads.len(),
-                single_count,
-                multi_count
-            );
+        // Log what we loaded or generated
+        if config.input.file.to_str() == Some("synthetic") {
+            info!("Generated {} synthetic prompts", workloads.len());
         } else {
-            info!("Loaded {} prompts", workloads.len());
+            let (single_count, multi_count) = workloads.iter().fold((0, 0), |(s, m), w| match w {
+                Workload::SingleTurn(_) => (s + 1, m),
+                Workload::MultiTurn(_) => (s, m + 1),
+            });
+            if multi_count > 0 {
+                info!(
+                    "Loaded {} workloads ({} single-turn, {} multi-turn conversations)",
+                    workloads.len(),
+                    single_count,
+                    multi_count
+                );
+            } else {
+                info!("Loaded {} prompts", workloads.len());
+            }
         }
 
         // Load system prompt: first try inline string, then file if specified
@@ -235,7 +262,7 @@ impl BenchmarkRunner {
             client: Arc::new(client),
             config,
             workloads: Arc::new(workloads), // Wrap in Arc
-            tokenizer: Arc::new(tokenizer),
+            tokenizer,
             system_prompt, // Arc-wrapped to avoid per-request cloning
         })
     }

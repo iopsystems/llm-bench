@@ -150,6 +150,49 @@ file = "examples/prompts/openorca-10000.jsonl"
 # system_prompt_file = "prompts/system.md"
 
 # =============================================================================
+# Synthetic Data Configuration (Optional)
+# =============================================================================
+# Generate synthetic prompts instead of loading from files.
+# Useful for testing server capacity with controlled token distributions.
+#
+# To enable synthetic mode, set file = "synthetic" and configure [input.synthetic]:
+#
+# [input]
+# file = "synthetic"     # Magic value to enable synthetic mode
+# sample_size = 1000     # Number of prompts to generate
+# seed = 42              # Random seed for reproducibility
+#
+# [input.synthetic]
+# # Required: average token counts
+# prompt_tokens = 512
+# output_tokens = 128
+#
+# # Optional: Gaussian distribution parameters
+# prompt_tokens_stdev = 100     # Standard deviation for prompt length
+# prompt_tokens_min = 256       # Minimum prompt tokens (hard limit)
+# prompt_tokens_max = 1024      # Maximum prompt tokens (hard limit)
+#
+# output_tokens_stdev = 32      # Standard deviation for expected output length
+# output_tokens_min = 64        # Minimum output tokens (hard limit)
+# output_tokens_max = 256       # Maximum output tokens (hard limit)
+#
+# Examples:
+#
+# 1. Fixed token counts (all prompts exactly 512 tokens, expecting 128 output):
+#    [input.synthetic]
+#    prompt_tokens = 512
+#    output_tokens = 128
+#
+# 2. Variable token counts with Gaussian distribution:
+#    [input.synthetic]
+#    prompt_tokens = 1024
+#    prompt_tokens_stdev = 256
+#    prompt_tokens_min = 512
+#    prompt_tokens_max = 2048
+#    output_tokens = 256
+#    output_tokens_stdev = 64
+
+# =============================================================================
 # Output Configuration
 # =============================================================================
 [output]
