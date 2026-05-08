@@ -25,7 +25,10 @@ fn main() -> Result<()> {
             output.as_deref(),
         ),
         ref cmd @ Command::MmluPro { .. } => run_mmlu_pro_mode(cmd),
-        Command::GeneratePrompts { ref config, ref output } => run_generate_prompts(config, output),
+        Command::GeneratePrompts {
+            ref config,
+            ref output,
+        } => run_generate_prompts(config, output),
     }
 }
 
@@ -418,7 +421,10 @@ async fn run_logprobs_collection(
     Ok(())
 }
 
-fn run_generate_prompts(config_path: &std::path::Path, output_path: &std::path::Path) -> Result<()> {
+fn run_generate_prompts(
+    config_path: &std::path::Path,
+    output_path: &std::path::Path,
+) -> Result<()> {
     use llm_perf::benchmark::Workload;
     use std::io::Write;
 
@@ -433,9 +439,7 @@ fn run_generate_prompts(config_path: &std::path::Path, output_path: &std::path::
     }
 
     if config.input.synthetic.is_none() {
-        anyhow::bail!(
-            "generate-prompts command requires [input.synthetic] configuration"
-        );
+        anyhow::bail!("generate-prompts command requires [input.synthetic] configuration");
     }
 
     // Set up non-blocking logging
