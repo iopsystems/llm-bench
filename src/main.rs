@@ -25,6 +25,7 @@ fn main() -> Result<()> {
             output.as_deref(),
         ),
         ref cmd @ Command::MmluPro { .. } => run_mmlu_pro_mode(cmd),
+        Command::GeneratePrompts { ref config, ref output } => run_generate_prompts(config, output),
     }
 }
 
@@ -413,6 +414,81 @@ async fn run_logprobs_collection(
         println!("   Prompts processed: {}", total);
         println!("   Output: {}", lp_config.output.display());
     }
+
+    Ok(())
+}
+
+fn run_generate_prompts(config_path: &std::path::Path, output_path: &std::path::Path) -> Result<()> {
+    use llm_perf::benchmark::Workload;
+    use std::io::Write;
+
+    // Load configuration
+    let config = Config::load(&config_path.to_path_buf())?;
+
+    // Validate that synthetic mode is configured
+    if !config.input.is_synthetic() {
+        anyhow::bail!(
+            "generate-prompts command requires synthetic mode (file = \"synthetic\") in config"
+        );
+    }
+
+    if config.input.synthetic.is_none() {
+        anyhow::bail!(
+            "generate-prompts command requires [input.synthetic] configuration"
+        );
+    }
+
+    // Set up non-blocking logging
+    let _guard = setup_logging(&config)?;
+
+    println!("Generating prompts from {}", config_path.display());
+    println!("Output: {}", output_path.display());
+    println!();
+
+    // Get synthetic config
+    let synthetic_config = config.input.synthetic.as_ref().unwrap();
+    let sample_size = config.input.sample_size.unwrap_or(10000);
+    let seed = config.input.seed.unwrap_or(42);
+
+    // Create tokenizer
+    let model_name = config.endpoint.model.as_deref().unwrap_or("gpt-3.5-turbo");
+    let tokenizer = std::sync::Arc::new(llm_perf::tokenizer::Tokenizer::new(model_name)?);
+
+    info!("Generating {} synthetic prompts", sample_size);
+
+    // Generate workloads
+    let workloads = llm_perf::synthetic::generate_synthetic_workloads(
+        synthetic_config,
+        tokenizer,
+        sample_size,
+        seed,
+        config.endpoint.max_tokens,
+    )?;
+
+    info!("Writing prompts to {}", output_path.display());
+
+    // Write to JSONL file
+    let file = std::fs::File::create(output_path)?;
+    let mut writer = std::io::BufWriter::new(file);
+
+    for workload in workloads {
+        match workload {
+            Workload::SingleTurn(prompt) => {
+                let json = serde_json::to_string(&prompt)?;
+                writeln!(writer, "{}", json)?;
+            }
+            Workload::MultiTurn(_) => {
+                // Skip multi-turn workloads (shouldn't happen with synthetic)
+                continue;
+            }
+        }
+    }
+
+    writer.flush()?;
+
+    println!();
+    println!("Successfully generated {} prompts", sample_size);
+    println!("Output written to: {}", output_path.display());
 
     Ok(())
 }

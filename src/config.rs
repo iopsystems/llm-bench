@@ -81,6 +81,10 @@ pub struct LoadConfig {
     pub warmup_duration: Option<u64>, // Warmup duration in seconds (alternative to warmup_requests)
 }
 
+fn default_add_prefix() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticConfig {
     /// Average number of tokens in generated prompts
@@ -94,17 +98,10 @@ pub struct SyntheticConfig {
     /// Maximum prompt token count (hard limit)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_max: Option<usize>,
-    /// Average number of expected output tokens
-    pub output_tokens: usize,
-    /// Standard deviation for output token count (Gaussian distribution)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_tokens_stdev: Option<usize>,
-    /// Minimum output token count (hard limit)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_tokens_min: Option<usize>,
-    /// Maximum output token count (hard limit)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_tokens_max: Option<usize>,
+    /// Whether to add unique [synthetic-{index}] prefix for cache busting
+    /// Default: true
+    #[serde(default = "default_add_prefix")]
+    pub add_prefix: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +128,13 @@ pub struct InputConfig {
     /// random prompts with controlled token distributions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub synthetic: Option<SyntheticConfig>,
+}
+
+impl InputConfig {
+    /// Check if synthetic mode is enabled
+    pub fn is_synthetic(&self) -> bool {
+        self.file.to_str() == Some("synthetic")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -452,6 +456,13 @@ impl Config {
                 .map_err(|e| anyhow::anyhow!("saturation.sample_window: {}", e))?;
         }
 
+        // Validate synthetic mode requirements
+        if self.input.is_synthetic() && self.endpoint.max_tokens.is_none() {
+            anyhow::bail!(
+                "Synthetic mode (file = \"synthetic\") requires endpoint.max_tokens to be set"
+            );
+        }
+
         // Validate synthetic configuration if present
         if let Some(ref synthetic) = self.input.synthetic {
             if synthetic.prompt_tokens == 0 {
@@ -484,40 +495,13 @@ impl Config {
                     "input.synthetic.prompt_tokens_stdev must be greater than 0 if specified"
                 );
             }
+        }
 
-            // Validate output token bounds
-            if let Some(min) = synthetic.output_tokens_min
-                && min > synthetic.output_tokens
-            {
-                anyhow::bail!(
-                    "input.synthetic.output_tokens_min ({}) must be <= output_tokens ({})",
-                    min,
-                    synthetic.output_tokens
-                );
-            }
-            if let Some(max) = synthetic.output_tokens_max
-                && max < synthetic.output_tokens
-            {
-                anyhow::bail!(
-                    "input.synthetic.output_tokens_max ({}) must be >= output_tokens ({})",
-                    max,
-                    synthetic.output_tokens
-                );
-            }
-            if let Some(stdev) = synthetic.output_tokens_stdev
-                && stdev == 0
-            {
-                anyhow::bail!(
-                    "input.synthetic.output_tokens_stdev must be greater than 0 if specified"
-                );
-            }
-
-            // Ensure synthetic config is provided when file = "synthetic"
-            if self.input.file.to_str() == Some("synthetic") && self.input.synthetic.is_none() {
-                anyhow::bail!(
-                    "Synthetic mode (file = \"synthetic\") requires [input.synthetic] configuration"
-                );
-            }
+        // Ensure synthetic config is provided when file = "synthetic"
+        if self.input.is_synthetic() && self.input.synthetic.is_none() {
+            anyhow::bail!(
+                "Synthetic mode (file = \"synthetic\") requires [input.synthetic] configuration"
+            );
         }
 
         Ok(())

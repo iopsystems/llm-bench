@@ -2,7 +2,7 @@ use anyhow::Result;
 use log::{debug, info, warn};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -25,12 +25,12 @@ use tokio::fs::read_to_string;
 ///
 /// Prompts are loaded from JSONL files where each line contains a JSON object
 /// with a "prompt" field and an optional "max_tokens" field.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Prompt {
     /// The text prompt to send to the LLM
     pub prompt: String,
     /// Maximum number of tokens to generate in the response (optional)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
 }
 
@@ -179,7 +179,7 @@ impl BenchmarkRunner {
         let tokenizer = Arc::new(Tokenizer::new(&model)?);
 
         // Load or generate workloads
-        let workloads: Vec<Workload> = if config.input.file.to_str() == Some("synthetic") {
+        let workloads: Vec<Workload> = if config.input.is_synthetic() {
             // Synthetic mode - generate random prompts
             if config.input.synthetic.is_none() {
                 anyhow::bail!("Synthetic mode requires [input.synthetic] configuration");
@@ -195,6 +195,7 @@ impl BenchmarkRunner {
                 Arc::clone(&tokenizer),
                 sample_size,
                 seed,
+                config.endpoint.max_tokens,
             )?
         } else {
             // File/dataset mode - load from disk or HuggingFace
@@ -220,7 +221,7 @@ impl BenchmarkRunner {
         };
 
         // Log what we loaded or generated
-        if config.input.file.to_str() == Some("synthetic") {
+        if config.input.is_synthetic() {
             info!("Generated {} synthetic prompts", workloads.len());
         } else {
             let (single_count, multi_count) = workloads.iter().fold((0, 0), |(s, m), w| match w {

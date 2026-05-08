@@ -72,6 +72,13 @@ pub enum Command {
         #[arg(long)]
         comment: Option<String>,
     },
+    /// Generate prompts from config and save to JSONL file
+    GeneratePrompts {
+        /// Path to the TOML configuration file
+        config: PathBuf,
+        /// Path to output JSONL file
+        output: PathBuf,
+    },
 }
 
 impl Cli {
@@ -89,6 +96,7 @@ impl Cli {
                     | "logprobs"
                     | "kl-divergence"
                     | "mmlu-pro"
+                    | "generate-prompts"
                     | "help"
                     | "--help"
                     | "-h"

@@ -107,7 +107,7 @@ total_requests = 100
 # Input Configuration
 # =============================================================================
 [input]
-# Path to JSONL file, or a known dataset name for auto-download from HuggingFace.
+# Path to JSONL file, a known dataset name for auto-download from HuggingFace, or "synthetic" to enable synthetic prompt generation.
 #
 # Known dataset names (downloaded and cached on first use):
 #   "openorca"  — Open-Orca/OpenOrca GPT-4 subset (~1 GB download, 1M single-turn prompts)
@@ -126,6 +126,14 @@ total_requests = 100
 #   - Each conversation occupies one worker slot for all its turns (tests KV cache / prefix caching)
 #   - Both formats can be mixed in the same file
 #   - max_tokens is optional per prompt/conversation
+#
+# Synthetic prompt generation:
+#   - file = "synthetic" to generate synthetic prompts
+#   - max_tokens in [endpoint] is required for synthetic mode (used to calculate prompt lengths)
+#   - prompt_tokens controls the prompt length
+#   - prompt_tokens_stdev, prompt_tokens_min, prompt_tokens_max (optional)control variability and limits of prompt lengths
+#   - add_prefix (default: true) adds a unique prefix "[synthetic-{index}] " to each prompt
+#   - sample_size controls how many synthetic prompts to generate (default: 10000)
 file = "examples/prompts/openorca-10000.jsonl"
 
 # Seed for deterministic shuffling (recommended for realistic but reproducible testing)
@@ -148,49 +156,6 @@ file = "examples/prompts/openorca-10000.jsonl"
 # The path is relative to the current working directory (where the config file is located).
 # If both system_prompt and system_prompt_file are set, system_prompt takes precedence.
 # system_prompt_file = "prompts/system.md"
-
-# =============================================================================
-# Synthetic Data Configuration (Optional)
-# =============================================================================
-# Generate synthetic prompts instead of loading from files.
-# Useful for testing server capacity with controlled token distributions.
-#
-# To enable synthetic mode, set file = "synthetic" and configure [input.synthetic]:
-#
-# [input]
-# file = "synthetic"     # Magic value to enable synthetic mode
-# sample_size = 10000    # Number of prompts to generate (default: 10000)
-# seed = 42              # Random seed for reproducibility
-#
-# [input.synthetic]
-# # Required: average token counts
-# prompt_tokens = 512
-# output_tokens = 128
-#
-# # Optional: Gaussian distribution parameters
-# prompt_tokens_stdev = 100     # Standard deviation for prompt length
-# prompt_tokens_min = 256       # Minimum prompt tokens (hard limit)
-# prompt_tokens_max = 1024      # Maximum prompt tokens (hard limit)
-#
-# output_tokens_stdev = 32      # Standard deviation for expected output length
-# output_tokens_min = 64        # Minimum output tokens (hard limit)
-# output_tokens_max = 256       # Maximum output tokens (hard limit)
-#
-# Examples:
-#
-# 1. Fixed token counts (all prompts exactly 512 tokens, expecting 128 output):
-#    [input.synthetic]
-#    prompt_tokens = 512
-#    output_tokens = 128
-#
-# 2. Variable token counts with Gaussian distribution:
-#    [input.synthetic]
-#    prompt_tokens = 1024
-#    prompt_tokens_stdev = 256
-#    prompt_tokens_min = 512
-#    prompt_tokens_max = 2048
-#    output_tokens = 256
-#    output_tokens_stdev = 64
 
 # =============================================================================
 # Output Configuration

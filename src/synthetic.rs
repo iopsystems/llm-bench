@@ -97,9 +97,9 @@ impl TokenDistribution {
 /// Generates synthetic prompts with exact token counts.
 pub struct SyntheticDataGenerator {
     prompt_dist: TokenDistribution,
-    output_dist: TokenDistribution,
     tokenizer: Arc<Tokenizer>,
     seed: u64,
+    add_prefix: bool,
 }
 
 impl SyntheticDataGenerator {
@@ -113,32 +113,21 @@ impl SyntheticDataGenerator {
                 config.prompt_tokens_max,
                 seed,
             ),
-            output_dist: TokenDistribution::new(
-                config.output_tokens,
-                config.output_tokens_stdev,
-                config.output_tokens_min,
-                config.output_tokens_max,
-                seed + 1, // Different seed for output distribution
-            ),
             tokenizer,
             seed,
+            add_prefix: config.add_prefix,
         }
     }
 
     /// Generate a single workload with sampled token counts.
-    pub fn generate_workload(&mut self, index: usize) -> Workload {
+    pub fn generate_workload(&mut self, index: usize, max_tokens: Option<u32>) -> Workload {
         let prompt_tokens = self.prompt_dist.sample();
-        let output_tokens = self.output_dist.sample();
 
         let prompt_text = self.generate_prompt(prompt_tokens, index);
 
         Workload::SingleTurn(Prompt {
             prompt: prompt_text,
-            max_tokens: if output_tokens > 0 {
-                Some(output_tokens as u32)
-            } else {
-                None
-            },
+            max_tokens,
         })
     }
 
@@ -151,8 +140,12 @@ impl SyntheticDataGenerator {
     /// 4. If not enough tokens, retry with more chars
     /// 5. Truncate to exact token count
     fn generate_prompt(&self, token_count: usize, index: usize) -> String {
-        // Add unique prefix for cache busting
-        let prefix = format!("[synthetic-{}] ", index);
+        // Add unique prefix for cache busting (if enabled)
+        let prefix = if self.add_prefix {
+            format!("[synthetic-{}] ", index)
+        } else {
+            String::new()
+        };
 
         const AVG_CHARS_PER_TOKEN: usize = 5;
         const MARGIN_OF_SAFETY: f64 = 1.5;
@@ -232,6 +225,7 @@ impl SyntheticDataGenerator {
 /// * `tokenizer` - Tokenizer for counting tokens
 /// * `sample_size` - Number of workloads to generate
 /// * `seed` - Random seed for reproducibility
+/// * `max_tokens` - Maximum tokens to generate per request (from endpoint.max_tokens)
 ///
 /// # Returns
 /// Vector of generated workloads
@@ -240,11 +234,12 @@ pub fn generate_synthetic_workloads(
     tokenizer: Arc<Tokenizer>,
     sample_size: usize,
     seed: u64,
+    max_tokens: Option<u32>,
 ) -> Result<Vec<Workload>> {
     let mut generator = SyntheticDataGenerator::new(config, tokenizer, seed);
 
     let workloads: Vec<Workload> = (0..sample_size)
-        .map(|i| generator.generate_workload(i))
+        .map(|i| generator.generate_workload(i, max_tokens))
         .collect();
 
     Ok(workloads)
@@ -324,10 +319,7 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            output_tokens: 20,
-            output_tokens_stdev: None,
-            output_tokens_min: None,
-            output_tokens_max: None,
+            add_prefix: true,
         };
 
         let generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
@@ -357,14 +349,11 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            output_tokens: 50,
-            output_tokens_stdev: None,
-            output_tokens_min: None,
-            output_tokens_max: None,
+            add_prefix: true,
         };
 
         let mut generator = SyntheticDataGenerator::new(&config, tokenizer, 42);
-        let workload = generator.generate_workload(0);
+        let workload = generator.generate_workload(0, Some(50));
 
         match workload {
             Workload::SingleTurn(prompt) => {
@@ -391,16 +380,13 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            output_tokens: 20,
-            output_tokens_stdev: None,
-            output_tokens_min: None,
-            output_tokens_max: None,
+            add_prefix: true,
         };
 
         // Generate twice with same seed
-        let workloads1 = generate_synthetic_workloads(&config, tokenizer.clone(), 10, 42)
+        let workloads1 = generate_synthetic_workloads(&config, tokenizer.clone(), 10, 42, Some(20))
             .expect("Failed to generate workloads");
-        let workloads2 = generate_synthetic_workloads(&config, tokenizer.clone(), 10, 42)
+        let workloads2 = generate_synthetic_workloads(&config, tokenizer.clone(), 10, 42, Some(20))
             .expect("Failed to generate workloads");
 
         // Should be identical
@@ -417,5 +403,35 @@ mod tests {
                 _ => panic!("Expected SingleTurn workloads"),
             }
         }
+    }
+
+    #[test]
+    fn test_generate_prompt_no_prefix() {
+        let tokenizer =
+            Arc::new(Tokenizer::new("gpt-3.5-turbo").expect("Failed to create tokenizer"));
+        let config = SyntheticConfig {
+            prompt_tokens: 50,
+            prompt_tokens_stdev: None,
+            prompt_tokens_min: None,
+            prompt_tokens_max: None,
+            add_prefix: false,
+        };
+
+        let generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
+        let text = generator.generate_prompt(50, 0);
+
+        // Verify it does NOT have the prefix
+        assert!(
+            !text.starts_with("[synthetic-"),
+            "Prompt should not have prefix when add_prefix=false"
+        );
+
+        // Verify token count is still close to target
+        let token_count = tokenizer.count_tokens(&text);
+        assert!(
+            (48..=52).contains(&token_count),
+            "Token count {} should be close to target 50",
+            token_count
+        );
     }
 }
