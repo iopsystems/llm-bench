@@ -181,10 +181,7 @@ impl BenchmarkRunner {
         // Load or generate workloads
         let workloads: Vec<Workload> = if config.input.is_synthetic() {
             // Synthetic mode - generate random prompts
-            if config.input.synthetic.is_none() {
-                anyhow::bail!("Synthetic mode requires [input.synthetic] configuration");
-            }
-
+            // Config validation ensures synthetic.is_some() when is_synthetic() is true
             let synthetic_config = config.input.synthetic.as_ref().unwrap();
             let sample_size = config.input.sample_size.unwrap_or(10000);
             let seed = config.input.seed.unwrap_or(42);

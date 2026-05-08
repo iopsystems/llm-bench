@@ -438,10 +438,6 @@ fn run_generate_prompts(
         );
     }
 
-    if config.input.synthetic.is_none() {
-        anyhow::bail!("generate-prompts command requires [input.synthetic] configuration");
-    }
-
     // Set up non-blocking logging
     let _guard = setup_logging(&config)?;
 
@@ -449,7 +445,7 @@ fn run_generate_prompts(
     println!("Output: {}", output_path.display());
     println!();
 
-    // Get synthetic config
+    // Get synthetic config (guaranteed to be Some by config validation)
     let synthetic_config = config.input.synthetic.as_ref().unwrap();
     let sample_size = config.input.sample_size.unwrap_or(10000);
     let seed = config.input.seed.unwrap_or(42);
