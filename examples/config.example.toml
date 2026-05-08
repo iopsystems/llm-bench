@@ -107,7 +107,7 @@ total_requests = 100
 # Input Configuration
 # =============================================================================
 [input]
-# Path to JSONL file, a known dataset name for auto-download from HuggingFace, or "synthetic" to enable synthetic prompt generation.
+# Path to JSONL file, a known dataset name for auto-download from HuggingFace, or "synthetic" to generate synthetic prompts
 #
 # Known dataset names (downloaded and cached on first use):
 #   "openorca"  — Open-Orca/OpenOrca GPT-4 subset (~1 GB download, 1M single-turn prompts)
@@ -129,11 +129,20 @@ total_requests = 100
 #
 # Synthetic prompt generation:
 #   - file = "synthetic" to generate synthetic prompts
-#   - max_tokens in [endpoint] is required for synthetic mode (used to calculate prompt lengths)
+#   - max_tokens in [endpoint] is required for synthetic mode to control maximum output length
 #   - prompt_tokens controls the prompt length
 #   - prompt_tokens_stdev, prompt_tokens_min, prompt_tokens_max (optional)control variability and limits of prompt lengths
 #   - add_prefix (default: true) adds a unique prefix "[synthetic-{index}] " to each prompt
 #   - sample_size controls how many synthetic prompts to generate (default: 10000)
+#   example that generates 10k synthetic prompts with 512 input tokens and maximum 512 output tokens:
+#   [endpoint]
+#   max_tokens = 512
+#   [input]
+#   file = "synthetic"
+#   sample_size = 10000
+#   [input.synthetic]
+#   prompt_tokens = 512
+
 file = "examples/prompts/openorca-10000.jsonl"
 
 # Seed for deterministic shuffling (recommended for realistic but reproducible testing)
