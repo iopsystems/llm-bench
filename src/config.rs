@@ -456,15 +456,22 @@ impl Config {
                 .map_err(|e| anyhow::anyhow!("saturation.sample_window: {}", e))?;
         }
 
-        // Validate synthetic mode requirements
-        if self.input.is_synthetic() && self.endpoint.max_tokens.is_none() {
-            anyhow::bail!(
-                "Synthetic mode (file = \"synthetic\") requires endpoint.max_tokens to be set"
-            );
-        }
+        // Validate synthetic mode configuration
+        if self.input.is_synthetic() {
+            // Require endpoint.max_tokens to be set
+            if self.endpoint.max_tokens.is_none() {
+                anyhow::bail!(
+                    "Synthetic mode (file = \"synthetic\") requires endpoint.max_tokens to be set"
+                );
+            }
 
-        // Validate synthetic configuration if present
-        if let Some(ref synthetic) = self.input.synthetic {
+            // Require [input.synthetic] section and validate its fields
+            let synthetic = self.input.synthetic.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Synthetic mode (file = \"synthetic\") requires [input.synthetic] configuration"
+                )
+            })?;
+
             if synthetic.prompt_tokens == 0 {
                 anyhow::bail!("input.synthetic.prompt_tokens must be greater than 0");
             }
@@ -495,13 +502,6 @@ impl Config {
                     "input.synthetic.prompt_tokens_stdev must be greater than 0 if specified"
                 );
             }
-        }
-
-        // Ensure synthetic config is provided when file = "synthetic"
-        if self.input.is_synthetic() && self.input.synthetic.is_none() {
-            anyhow::bail!(
-                "Synthetic mode (file = \"synthetic\") requires [input.synthetic] configuration"
-            );
         }
 
         Ok(())
