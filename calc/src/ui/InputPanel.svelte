@@ -88,8 +88,12 @@
 </section>
 
 <style>
-  .input-panel { display: flex; flex-direction: column; gap: 0.75rem; }
+  .input-panel {
+    display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.75rem;
+    align-items: stretch;
+  }
   .island {
+    flex: 1 1 220px; min-width: 0;
     border: 1px solid #d4d4d4; border-radius: 0.4rem;
     padding: 0.4rem 0.9rem 0.7rem; margin: 0; background: #fff;
   }
@@ -97,7 +101,9 @@
     padding: 0 0.4rem; font-size: 0.85rem; font-weight: 600;
     color: #555; text-transform: uppercase; letter-spacing: 0.04em;
   }
-  .row { display: flex; gap: 1rem; flex-wrap: wrap; }
-  label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
-  select, input { font-size: 1rem; padding: 0.25rem; }
+  /* Inside each island, fields stack vertically so islands stay narrow
+     enough to sit three-across on a typical viewport. */
+  .row { display: flex; flex-direction: column; gap: 0.5rem; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; }
+  select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
 </style>
