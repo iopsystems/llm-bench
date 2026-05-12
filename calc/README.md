@@ -184,6 +184,57 @@ npm test             # vitest
 npm run cli -- ...   # run CLI via tsx
 ```
 
+## Deployment
+
+Static site, deployed to **`calc.inference.systems`** via
+**Cloudflare Workers + Static Assets** (not Pages — Workers is CF's
+forward path that unifies static asset serving with optional dynamic
+handlers).
+
+### Config
+
+- [`wrangler.toml`](wrangler.toml) declares the worker. No handler code —
+  just an `[assets]` binding pointing at `./dist`, plus SPA fallback so
+  unknown routes serve `index.html`.
+- [`package.json`](package.json) has `deploy` (`vite build && wrangler
+  deploy`) and `deploy:dry` (build + plan, no upload) scripts.
+
+### First deploy
+
+```bash
+cd calc
+npx wrangler login                # one-time browser auth to your CF account
+npm run deploy:dry                # sanity check the build + upload plan
+npm run deploy                    # actual upload
+```
+
+After the first deploy, the worker is reachable at
+`llm-calc.<account>.workers.dev`. Verify the calculator loads there.
+
+### Custom domain
+
+DNS for `inference.systems` is already on Cloudflare, so:
+
+- Cloudflare dashboard → Workers & Pages → `llm-calc` → Settings → Domains
+  & Routes → **Add Custom Domain** → `calc.inference.systems`.
+- Cloudflare auto-creates the CNAME record (DNS proxied through CF) and
+  provisions the cert.
+
+Alternatively, uncomment the `routes` block in `wrangler.toml` and run
+`wrangler deploy` again to set the custom domain via config.
+
+### Auto-deploy
+
+Either:
+- Tie deploys to GitHub via Cloudflare's Workers GitHub integration
+  (dashboard → Connect to Git), or
+- Add a GitHub Actions workflow that runs `npm run deploy` on push to
+  `main` with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+
+Node version is pinned via `.nvmrc` (22) and `package.json` `engines`
+(`>=20`) so the build environment stays consistent across local, CI, and
+the Cloudflare runner.
+
 ## Status
 
 v1. Engine math complete and tested (33 vitest cases). UI functional but

@@ -10,10 +10,15 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "deploy": "vite build && wrangler deploy",
+    "deploy:dry": "vite build && wrangler deploy --dry-run"
   },
   "bin": {
     "llm-calc": "./bin/llm-calc.mjs"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
@@ -25,7 +30,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.6.0",
     "vite": "^5.4.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "wrangler": "^3.90.0"
   },
   "dependencies": {
     "@observablehq/plot": "^0.6.17"

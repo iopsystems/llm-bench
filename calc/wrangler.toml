@@ -1,0 +1,18 @@
+# Cloudflare Workers + Static Assets deployment for the LLM calculator.
+# Pure static site — no Worker handler code, just the assets binding pointing
+# at the Vite build output.
+
+name = "llm-calc"
+compatibility_date = "2025-04-01"
+
+[assets]
+directory = "./dist"
+# SPA fallback: any unknown route serves index.html so client-side state in
+# the URL hash / params works on refresh.
+not_found_handling = "single-page-application"
+
+# Custom domain — DNS already on Cloudflare, so wrangler can wire this up.
+# After `wrangler deploy`, run `wrangler hostname` or set via dashboard.
+# routes = [
+#   { pattern = "calc.inference.systems", custom_domain = true }
+# ]
