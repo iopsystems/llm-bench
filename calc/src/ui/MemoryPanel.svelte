@@ -60,6 +60,7 @@
   const chart = $derived.by(() => {
     if (!$result) return null
     const m = $result.memory
+    const capBytes = m.hbmCapacityGB * GB
     const parts = [
       { component: 'Weights',     bytes: m.weights },
       { component: 'KV cache',    bytes: m.kvCacheTotal },
@@ -70,11 +71,12 @@
       width: containerWidth, height: 28,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0,
       style: PLOT_STYLE,
-      // Domain spans the total used memory, so the three bars always render
-      // at the same relative proportions regardless of whether the workload
-      // fits — only the border color (red) signals OOM. Capacity isn't a
-      // visual reference inside the bar; it lives in the surrounding table.
-      x: { domain: [0, m.total], axis: null },
+      // Domain represents capacity. When the workload fits, the stacked bars
+      // end short of the right edge and the unused remainder shows as the
+      // gray background. When OOM, the stack extends past the right edge and
+      // gets truncated by clip:true on the bar mark — the overflow
+      // components (or their tail) simply don't render.
+      x: { domain: [0, capBytes], axis: null },
       y: { axis: null, padding: 0 },
       color: {
         domain: Object.keys(PATTERN_IDS),
