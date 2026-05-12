@@ -213,6 +213,7 @@
      popup (which appears above the bar) to escape the 28px tall canvas. */
   .bar-chart {
     width: 100%; box-sizing: border-box;
+    align-self: stretch; flex-shrink: 0;
     border: 2px solid #888; background: #f0f0f0;
   }
   /* OOM only changes color — width/thickness stays put so the box doesn't
