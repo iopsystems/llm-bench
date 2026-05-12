@@ -61,11 +61,20 @@
     if (!$result) return null
     const m = $result.memory
     const capBytes = m.hbmCapacityGB * GB
-    const parts = [
+    // Build explicit x1/x2 ranges (cumulative left-edge) so the bars don't
+    // rely on Plot's implicit stack transform, which was producing a small
+    // left-edge shift in some OOM cases.
+    const rawParts = [
       { component: 'Weights',     bytes: m.weights },
       { component: 'KV cache',    bytes: m.kvCacheTotal },
       { component: 'Activations', bytes: m.activationsPeak }
     ]
+    let cum = 0
+    const parts = rawParts.map(p => {
+      const x1 = cum
+      cum += p.bytes
+      return { ...p, x1, x2: cum }
+    })
 
     return Plot.plot({
       width: containerWidth, height: 28,
@@ -85,12 +94,15 @@
       },
       marks: [
         Plot.barX(parts, {
-          x: 'bytes', y: () => '',
+          // Explicit x1/x2 avoids Plot's implicit stack transform — the
+          // first bar's left edge sits at exactly x=0 in both fits and OOM
+          // states (the stack transform was nudging the start by a pixel
+          // when OOM widened the cumulative sum).
+          x1: 'x1', x2: 'x2', y: () => '',
           fill: 'component', clip: true,
           insetLeft: 0, insetRight: 0, insetTop: 0, insetBottom: 0,
           tip: {
-            // Hide all default channels; we render a single composed line.
-            format: { x: false, y: false, fill: false }
+            format: { x1: false, x2: false, y: false, fill: false }
           },
           channels: {
             // Single channel renders as "Weights: 141.10 GB" — component
@@ -204,9 +216,11 @@
     font-variant-numeric: tabular-nums; border-collapse: collapse;
     align-self: center;
   }
-  td:first-child { padding-right: 1rem; }
-  /* Memory size column: right-aligned so digits stack to a common edge. */
-  td:last-child { text-align: right; }
+  td:first-child { padding-right: 2.5rem; }
+  /* Memory size column: right-aligned so digits stack to a common edge.
+     Extra horizontal padding so the table doesn't look cramped at its
+     content-determined width. */
+  td:last-child { text-align: right; padding-left: 1rem; }
   /* Headroom row: the GB number stays inside the column (right-aligned with
      all other numbers); the status badge is positioned just outside the
      table's right edge, so it doesn't widen the table. */
