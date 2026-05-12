@@ -89,4 +89,20 @@ describe('computeDecode', () => {
     const d = computeDecode(input, opPoint, moeMemory)
     expect(d.flopsPerStep).toBe(1400)
   })
+
+  it('attention term uses attentionDim for MLA (kv_lora + rope, not hidden)', () => {
+    // testModel: layers=2, hiddenDim=4, paramCount=1000, concurrency=2.
+    // numHeads=2, headDim=2 → 2×2=4 matches hiddenDim (non-MLA path unaffected).
+    // avgSeqlen = 10 + 5/2 = 12.5.
+    // MLA with kvLoraRank=10, rope=2 → attentionDim = 12.
+    // flopsPerStep = (2×1000 + 2×2×12.5×12) × 2 = (2000 + 600) × 2 = 5200
+    const mlaModel = {
+      ...testInput.model,
+      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2 }
+    }
+    const input = { ...testInput, model: mlaModel }
+    const mlaMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, mlaMemory)
+    expect(d.flopsPerStep).toBe(5200)
+  })
 })
