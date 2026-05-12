@@ -23,6 +23,10 @@
 </main>
 
 <style>
+  /* Force the vertical scrollbar to always be present so the viewport width
+     doesn't fluctuate when content tips past/under the viewport height —
+     that fluctuation was shrinking the memory bar by 16px on OOM. */
+  :global(html) { overflow-y: scroll; }
   :global(body) {
     margin: 0; font-family: system-ui, -apple-system, sans-serif;
     background: #fafafa; color: #222;
