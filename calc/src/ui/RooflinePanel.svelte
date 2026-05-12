@@ -4,17 +4,17 @@
 
   let container: HTMLDivElement | undefined = $state(undefined)
 
-  // Each operating tier (Theoretical = peak, Attainable = non-peak) gets its
+  // Each operating tier (Theoretical = peak, Achievable = non-peak) gets its
   // own roofline AND markers, sharing one color via the tier scale. Markers
   // sit on their tier's roof by construction — the math computes time as
   // max(F/C, B/M), so achieved rate is min(C, AI×M), i.e. exactly the roof.
   type RoofRow = {
-    tier: 'Theoretical' | 'Attainable'
+    tier: 'Theoretical' | 'Achievable'
     ai: number
     perf: number
   }
   type PointRow = {
-    tier: 'Theoretical' | 'Attainable'
+    tier: 'Theoretical' | 'Achievable'
     phase: 'prefill' | 'decode'
     ai: number
     perf: number
@@ -52,7 +52,7 @@
       const t = op.tflops[$input.quant.activations]
       const p = $result.perf[op.id]
       if (t === undefined || !p) continue
-      const tier: RoofRow['tier'] = op.id === 'peak' ? 'Theoretical' : 'Attainable'
+      const tier: RoofRow['tier'] = op.id === 'peak' ? 'Theoretical' : 'Achievable'
       const opFlops = t * 1e12
       const opBw = op.hbmBandwidthGBs * 1e9
       const opRidge = opFlops / opBw
@@ -70,7 +70,7 @@
       points.push({ tier, phase: 'prefill', ai: prefAi, perf: prefPerf, regime: p.prefill.regime })
       points.push({ tier, phase: 'decode',  ai: decAi,  perf: decPerf,  regime: p.decode.regime })
 
-      // Connector from attainable marker up to peak ceiling at the same AI.
+      // Connector from achievable marker up to peak ceiling at the same AI.
       // The vertical span is the hardware-efficiency gap for this phase.
       if (op.id !== 'peak') {
         const prefCeil = Math.min(peakFlops, prefAi * peakBw)
@@ -99,7 +99,7 @@
     return `${v.toExponential(1)} F`
   }
 
-  const hasAttainable = $derived(data.points.some(p => p.tier === 'Attainable'))
+  const hasAchievable = $derived(data.points.some(p => p.tier === 'Achievable'))
 
   const chart = $derived.by(() => {
     if (data.roofs.length === 0) return null
@@ -121,9 +121,9 @@
       },
       color: {
         // We render our own legend below the chart so the swatch can match
-        // the actual stroke style (solid for Theoretical, dashed for Attainable).
+        // the actual stroke style (solid for Theoretical, dashed for Achievable).
         legend: false,
-        domain: ['Theoretical', 'Attainable'],
+        domain: ['Theoretical', 'Achievable'],
         range: ['#888', '#e07a1f']
       },
       symbol: {
@@ -139,11 +139,11 @@
         Plot.line(data.roofs.filter(r => r.tier === 'Theoretical'), {
           x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2, clip: true
         }),
-        // Attainable roofline (dashed) — separate mark so we can dash it.
-        Plot.line(data.roofs.filter(r => r.tier === 'Attainable'), {
+        // Achievable roofline (dashed) — separate mark so we can dash it.
+        Plot.line(data.roofs.filter(r => r.tier === 'Achievable'), {
           x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2, strokeDasharray: '6 4', clip: true
         }),
-        // Gap connectors from attainable points up to the peak ceiling at their AI.
+        // Gap connectors from achievable points up to the peak ceiling at their AI.
         Plot.line(data.gaps, {
           x: 'ai', y: 'perf', stroke: '#bbb', strokeWidth: 1,
           strokeDasharray: '2 3', z: 'phase', clip: true
@@ -186,11 +186,11 @@
     <p class="caption">
       Roof = theoretical ceiling at peak {$input?.quant.activations} (sloped = memory-bound,
       flat = compute-bound). Markers are the workload's prefill and decode; the gap between
-      the attainable marker and the roof above it is the hardware-efficiency loss.
+      the achievable marker and the roof above it is the hardware-efficiency loss.
     </p>
     <div bind:this={container} class="plot"></div>
     <div class="legend">
-      {#if hasAttainable}
+      {#if hasAchievable}
         <span class="entry">
           <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
             <line x1="1" y1="5" x2="21" y2="5" stroke="#888" stroke-width="2"/>
@@ -201,7 +201,7 @@
           <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
             <line x1="1" y1="5" x2="21" y2="5" stroke="#e07a1f" stroke-width="2" stroke-dasharray="6 4"/>
           </svg>
-          <span>Attainable</span>
+          <span>Achievable</span>
         </span>
       {/if}
       <span class="entry">
