@@ -233,7 +233,8 @@
   .plot :global(svg) { max-width: 100%; height: auto; display: inline-block; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
-    margin-top: 0.4rem; font-size: 0.85rem; color: #333;
+    margin-top: 0.4rem; padding-left: 70px;
+    font-size: 0.85rem; color: #333;
   }
   .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
   .line-swatch { width: 22px; height: 10px; }
