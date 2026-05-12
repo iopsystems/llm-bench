@@ -79,6 +79,9 @@
     return Plot.plot({
       width: containerWidth, height: 28,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0,
+      // Plot.plot has a top-level inset option that defaults to a small
+      // value to keep marks from kissing the frame edge. Force 0.
+      inset: 0, insetLeft: 0, insetRight: 0, insetTop: 0, insetBottom: 0,
       style: PLOT_STYLE,
       // Domain represents capacity. When the workload fits, the stacked bars
       // end short of the right edge and the unused remainder shows as the
