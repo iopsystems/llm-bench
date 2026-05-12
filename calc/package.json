@@ -1,5 +1,5 @@
 {
-  "name": "llm-perf-calc",
+  "name": "llm-calc",
   "private": true,
   "version": "0.0.1",
   "type": "module",
