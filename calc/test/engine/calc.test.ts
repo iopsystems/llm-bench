@@ -74,3 +74,23 @@ describe('calculate — real data integration', () => {
     expect(r.perf['peak'].decode.regime).toBe('memory')
   })
 })
+
+describe('calculate — sliding window integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const mistral = MODELS.find(m => m.id === 'mistral-7b-v0.1')!
+
+  it('Mistral 7B at 32k prompt: KV cache bounded by 4k window, not 32k', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: mistral,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // kv per token = 2 × 32 × 8 × 128 × 2 = 131072 bytes
+    // bounded at window 4096 → 131072 × 4096 = 536870912 bytes
+    expect(r.memory.kvCachePerRequest).toBe(131072 * 4096)
+    // Sanity: if it were full attention this would be 131072 × 32768 (8× more)
+  })
+})

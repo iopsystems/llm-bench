@@ -71,6 +71,13 @@ export const MODELS: ModelArch[] = [
   },
   // === Mistral ===
   {
+    id: 'mistral-7b-v0.1', name: 'Mistral 7B v0.1', family: 'mistral',
+    layers: 32, hiddenDim: 4096, intermediateDim: 14336,
+    numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
+    paramCount: 7_241_732_096,
+    attention: { type: 'sliding', window: 4096 }
+  },
+  {
     id: 'mistral-small-3.1-24b', name: 'Mistral Small 3.1 24B', family: 'mistral',
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
