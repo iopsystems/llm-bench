@@ -1,4 +1,4 @@
-import type { AttentionConfig, CalcInput, GpuVariant, MemoryResult } from './types'
+import type { AttentionConfig, CalcInput, GpuVariant, MemoryResult, ModelArch } from './types'
 import { bytesOf } from './dtypes'
 
 const BYTES_PER_GB = 1024 ** 3
@@ -6,6 +6,12 @@ const BYTES_PER_GB = 1024 ** 3
 export function effectiveAttentionLength(rawSeqlen: number, attention: AttentionConfig): number {
   if (attention.type === 'sliding') return Math.min(rawSeqlen, attention.window)
   return rawSeqlen
+}
+
+export function activeParams(model: ModelArch): number {
+  return model.architecture.type === 'moe'
+    ? model.architecture.activeParamCount
+    : model.paramCount
 }
 
 function findVariant(input: CalcInput): GpuVariant {
