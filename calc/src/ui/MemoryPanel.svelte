@@ -153,11 +153,8 @@
         <tr class="total"><td>Total</td><td>{gb(m.total)} GB</td></tr>
         <tr>
           <td>Headroom</td>
-          <td>{gb(m.headroom)} GB</td>
-        </tr>
-        <tr>
-          <td>Status</td>
-          <td>
+          <td class="headroom-value">
+            {gb(m.headroom)} GB
             <span class="status-badge" class:fits={m.fits} class:oom={!m.fits}>
               {m.fits ? '✓ fits' : '✗ OOM'}
             </span>
@@ -188,7 +185,15 @@
   }
   td:first-child { padding-right: 2.5rem; }
   td:last-child { text-align: right; padding-left: 1rem; }
-  .status-badge { white-space: nowrap; display: inline-block; }
+  /* Headroom row: number stays in column, status badge dangles outside the
+     table's right edge via absolute positioning so it doesn't widen the table. */
+  td.headroom-value { position: relative; }
+  .status-badge {
+    position: absolute;
+    left: calc(100% + 0.5rem); top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
   tr.total td { border-top: 1px solid #ccc; padding-top: 0.3rem; }
   tr.total { font-weight: bold; }
   /* Scope badge styling to .status-badge so the rules don't leak onto the
