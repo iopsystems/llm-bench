@@ -1,6 +1,7 @@
 import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
 import { effectiveAttentionLength, activeParams } from './memory'
+import { bytesOf } from './dtypes'
 
 export function computeDecode(
   input: CalcInput,
@@ -14,7 +15,9 @@ export function computeDecode(
   const flopsPerStep =
     (2 * activeParams(model) + 2 * model.layers * effAvg * model.hiddenDim) *
     workload.concurrency
-  const bytesPerStep = memory.weights + memory.kvCachePerRequest * workload.concurrency
+  const bytesPerStep =
+    activeParams(model) * bytesOf(quant.weights) +
+    memory.kvCachePerRequest * workload.concurrency
 
   const tflops = opPoint.tflops[quant.activations]
   if (tflops === undefined) {

@@ -49,6 +49,27 @@ describe('computeDecode', () => {
     expect(d.flopsPerStep).toBe(4256)
   })
 
+  it('bytesPerStep weight term uses activeParams for MoE', () => {
+    // testModel: paramCount=1000, fp16 weights → 2 bytes/param.
+    // For MoE with activeParamCount=250:
+    //   weight bytes per step = 250 × 2 = 500
+    //   kv per request = 240 (existing fixture), × concurrency 2 = 480
+    //   total bytesPerStep = 500 + 480 = 980
+    const moeModel = {
+      ...testInput.model,
+      architecture: {
+        type: 'moe' as const,
+        numExperts: 4,
+        numExpertsActive: 1,
+        activeParamCount: 250
+      }
+    }
+    const input = { ...testInput, model: moeModel }
+    const moeMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, moeMemory)
+    expect(d.bytesPerStep).toBe(980)
+  })
+
   it('flopsPerStep MLP term uses activeParams for MoE', () => {
     // testModel: paramCount=1000, hiddenDim=4, layers=2, concurrency=2.
     // avgSeqlen = 10 + 5/2 = 12.5.
