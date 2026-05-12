@@ -31,13 +31,11 @@
     const xMax = Math.max(capBytes, m.total) * 1.02
 
     return Plot.plot({
-      width: 640, height: 70,
-      marginLeft: 8, marginRight: 16, marginTop: 8, marginBottom: 26,
+      width: 640, height: 28,
+      marginLeft: 0, marginRight: 0, marginTop: 2, marginBottom: 2,
       x: {
         domain: [0, xMax],
-        tickFormat: (d: number) => `${gb(d)} GB`,
-        label: null,
-        grid: false
+        axis: null
       },
       y: { axis: null },
       color: {
@@ -116,7 +114,10 @@
 
 <style>
   .memory-panel { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
-  .bar-chart { max-width: 100%; overflow-x: auto; }
+  .bar-chart {
+    max-width: 100%; overflow-x: auto;
+    border: 1px solid #888; background: #f0f0f0;
+  }
   .bar-chart :global(svg) { max-width: 100%; height: auto; display: block; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
