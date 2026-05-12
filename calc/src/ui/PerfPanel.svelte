@@ -137,9 +137,10 @@
     white-space: normal; vertical-align: bottom;
     line-height: 1.2;
   }
-  /* Numeric value columns: right-align so digits line up. */
-  td:nth-child(2), td:nth-child(4), td:nth-child(6), td:nth-child(7) {
-    text-align: right; font-variant-numeric: tabular-nums;
+  /* Output columns (everything except the operating-assumption label):
+     right-align so numbers and labels stack to a common edge. */
+  th:not(:first-child), td:not(:first-child) {
+    text-align: right;
   }
   .regime { padding: 0.1rem 0.4rem; border-radius: 0.2rem; font-size: 0.85rem; }
   .regime.compute { background: #fde6c8; color: #8a4400; }
