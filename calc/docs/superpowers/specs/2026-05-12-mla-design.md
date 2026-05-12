@@ -11,7 +11,7 @@ DeepSeek-V2 introduced Multi-head Latent Attention (May 2024): instead of cachin
 The roofline-relevant effects:
 
 - **KV cache shrinks dramatically.** DeepSeek-V2 with 128 heads × 192 dim would be ~5 MB / token under GQA; MLA brings this to ~70 KB / token (~70× reduction).
-- **Per-step attention compute also shrinks**, because the absorbed-Q-dot-latent operation works in the small latent dimension (`kv_lora_rank + rope`) rather than the full `hidden_size`. For DeepSeek-V2: 576 vs 5120 (~9× reduction).
+- **Per-step attention compute also shrinks**, because the absorbed-Q-dot-latent operation works in the small latent dimension (`kv_lora_rank + rope`) rather than the full `numHeads × headDim`. For DeepSeek-V2 (where the equivalent full-attention dim would be `128 × 192 = 24576`): 576 vs 24576 (~43× reduction).
 - **Compute / memory trade-off direction inverts**: MLA gives up some compute (extra projections) for much less memory bandwidth. At the roofline level this trade is captured by replacing the attention-term dimension factor.
 
 This is the **third** architectural evolution feature in the planned sequence:
@@ -59,7 +59,7 @@ function kvBytesPerToken(model: ModelArch, kvDtype: Dtype): number {
 function attentionDim(model: ModelArch): number {
   const att = model.attention
   if (att.type === 'mla') return att.kvLoraRank + att.qkRopeHeadDim
-  return model.hiddenDim
+  return model.numHeads * model.headDim
 }
 ```
 
@@ -81,7 +81,7 @@ prefill.flops = 2 × activeParams(model) × prompt                      (MLP)
               + 2 × layers × prompt × effP × attentionDim(model)      (attention)
 ```
 
-For MLA models `attentionDim(model)` is `kvLoraRank + qkRopeHeadDim`; for dense / sliding-window / GQA models it's `hiddenDim` — i.e., unchanged.
+For MLA models `attentionDim(model)` is `kvLoraRank + qkRopeHeadDim`; for dense / sliding-window / GQA models it's `numHeads × headDim` (per PR #91, which correctly handles models where `numHeads × headDim ≠ hiddenDim` such as Mistral Small 3.1) — i.e., unchanged from current behavior.
 
 **3. Decode attention term (`decode.ts`)**
 

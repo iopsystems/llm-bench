@@ -147,16 +147,18 @@ describe('attentionDim', () => {
     architecture: { type: 'dense' }
   }
 
-  it('returns hiddenDim for full attention', () => {
-    expect(attentionDim(base)).toBe(16)
+  it('returns numHeads × headDim for full attention', () => {
+    // 8 × 8 = 64 (intentionally different from hiddenDim 16, so the test
+    // would fail if the helper accidentally returned hiddenDim — c.f. PR #91)
+    expect(attentionDim(base)).toBe(64)
   })
 
-  it('returns hiddenDim for sliding window', () => {
+  it('returns numHeads × headDim for sliding window', () => {
     const sliding: ModelArch = {
       ...base,
       attention: { type: 'sliding', window: 50 }
     }
-    expect(attentionDim(sliding)).toBe(16)
+    expect(attentionDim(sliding)).toBe(64)
   })
 
   it('returns kvLoraRank + qkRopeHeadDim for MLA', () => {
@@ -200,7 +202,7 @@ export function kvBytesPerToken(model: ModelArch, kvDtype: Dtype): number {
 export function attentionDim(model: ModelArch): number {
   const att = model.attention
   if (att.type === 'mla') return att.kvLoraRank + att.qkRopeHeadDim
-  return model.hiddenDim
+  return model.numHeads * model.headDim
 }
 ```
 
@@ -343,16 +345,16 @@ Extend the existing import from `./memory` to include `attentionDim`:
 
 `import { effectiveAttentionLength, activeParams, attentionDim } from './memory'`
 
-Find the existing flops calculation:
+Find the existing flops calculation (note: post-#91 the attention term uses `numHeads × headDim`, not `hiddenDim`):
 
 ```ts
 const effP = effectiveAttentionLength(p, model.attention)
 const flops =
   2 * activeParams(model) * p +
-  2 * model.layers * p * effP * model.hiddenDim
+  2 * model.layers * p * effP * model.numHeads * model.headDim
 ```
 
-Replace `model.hiddenDim` (only in the attention term, the second line) with `attentionDim(model)`:
+Replace `model.numHeads * model.headDim` (only in the attention term, the second line) with `attentionDim(model)`:
 
 ```ts
 const effP = effectiveAttentionLength(p, model.attention)
@@ -422,16 +424,16 @@ Extend the import from `./memory`:
 
 `import { effectiveAttentionLength, activeParams, attentionDim } from './memory'`
 
-Find the existing flopsPerStep calculation:
+Find the existing flopsPerStep calculation (post-#91 it uses `numHeads × headDim`, not `hiddenDim`):
 
 ```ts
 const effAvg = effectiveAttentionLength(avgSeqlen, model.attention)
 const flopsPerStep =
-  (2 * activeParams(model) + 2 * model.layers * effAvg * model.hiddenDim) *
+  (2 * activeParams(model) + 2 * model.layers * effAvg * model.numHeads * model.headDim) *
   workload.concurrency
 ```
 
-Replace `model.hiddenDim` with `attentionDim(model)`:
+Replace `model.numHeads * model.headDim` with `attentionDim(model)`:
 
 ```ts
 const effAvg = effectiveAttentionLength(avgSeqlen, model.attention)
@@ -441,6 +443,8 @@ const flopsPerStep =
 ```
 
 (`bytesPerStep` already uses `activeParams × bytesOf(quant.weights)` from the MoE feature — no changes needed there.)
+
+Note: the synthetic test fixture's `testModel` has `numHeads × headDim = 2 × 2 = 4 = hiddenDim`, so existing decode regression tests are unaffected by PR #91's change.
 
 - [ ] **Step 4: Verify pass**
 
