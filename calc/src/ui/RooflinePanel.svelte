@@ -124,7 +124,10 @@
         // the actual stroke style (solid for Theoretical, dashed for Achievable).
         legend: false,
         domain: ['Theoretical', 'Achievable'],
-        range: ['#888', '#e07a1f']
+        // Green avoids collision with the compute-regime badge (orange) and
+        // the memory-regime badge (blue), so the Achievable color doesn't
+        // accidentally suggest a particular bottleneck.
+        range: ['#888', '#21a87a']
       },
       symbol: {
         legend: false,
@@ -199,7 +202,7 @@
         </span>
         <span class="entry">
           <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
-            <line x1="1" y1="5" x2="21" y2="5" stroke="#e07a1f" stroke-width="2" stroke-dasharray="6 4"/>
+            <line x1="1" y1="5" x2="21" y2="5" stroke="#21a87a" stroke-width="2" stroke-dasharray="6 4"/>
           </svg>
           <span>Achievable</span>
         </span>
