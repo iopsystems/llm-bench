@@ -1,6 +1,6 @@
 import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
-import { effectiveAttentionLength } from './memory'
+import { effectiveAttentionLength, activeParams } from './memory'
 
 export function computePrefill(
   input: CalcInput,
@@ -12,7 +12,7 @@ export function computePrefill(
 
   const effP = effectiveAttentionLength(p, model.attention)
   const flops =
-    2 * model.paramCount * p +
+    2 * activeParams(model) * p +
     2 * model.layers * p * effP * model.hiddenDim
   const bytes = memory.weights + memory.activationsPeak
 

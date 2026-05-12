@@ -47,4 +47,25 @@ describe('computePrefill', () => {
     const p = computePrefill(input, opPoint, slidingMemory)
     expect(p.flops).toBe(20800)
   })
+
+  it('FLOPs MLP term uses activeParams for MoE', () => {
+    // testModel: paramCount=1000, hiddenDim=4, layers=2, prompt=10.
+    // For MoE with activeParamCount=250:
+    //   MLP: 2 × 250 × 10 = 5000
+    //   Attention: 2 × 2 × 10 × 10 × 4 = 1600 (full attention, unchanged)
+    //   Total = 6600
+    const moeModel = {
+      ...testInput.model,
+      architecture: {
+        type: 'moe' as const,
+        numExperts: 4,
+        numExpertsActive: 1,
+        activeParamCount: 250
+      }
+    }
+    const input = { ...testInput, model: moeModel }
+    const moeMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, moeMemory)
+    expect(p.flops).toBe(6600)
+  })
 })
