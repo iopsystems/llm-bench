@@ -1,7 +1,12 @@
-import type { CalcInput, GpuVariant, MemoryResult } from './types'
+import type { AttentionConfig, CalcInput, GpuVariant, MemoryResult } from './types'
 import { bytesOf } from './dtypes'
 
 const BYTES_PER_GB = 1024 ** 3
+
+export function effectiveAttentionLength(rawSeqlen: number, attention: AttentionConfig): number {
+  if (attention.type === 'sliding') return Math.min(rawSeqlen, attention.window)
+  return rawSeqlen
+}
 
 function findVariant(input: CalcInput): GpuVariant {
   const v = input.gpu.variants.find(v => v.id === input.gpuVariantId)
