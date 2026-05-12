@@ -125,3 +125,29 @@ describe('calculate — MoE integration', () => {
     expect(r.perf['peak'].decode.regime).toBe('memory')
   })
 })
+
+describe('calculate — MLA integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const dsv2 = MODELS.find(m => m.id === 'deepseek-v2')!
+
+  it('DeepSeek-V2 at 32k prompt: KV cache uses MLA latent formula', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: dsv2,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // MLA KV per token = layers × (kv_lora + rope) × bytes(fp16)
+    //                  = 60 × (512 + 64) × 2 = 69_120 bytes per token
+    // × 32768 tokens = 2_264_924_160 bytes per request
+    expect(r.memory.kvCachePerRequest).toBe(60 * (512 + 64) * 2 * 32768)
+
+    // Sanity vs the GQA equivalent that would apply if attention.type were
+    // 'full': 2 × 60 × 128 × 192 × 2 × 32768 ≈ 43× larger.
+    // (headDim=192 = qk_nope_head_dim(128) + qk_rope_head_dim(64))
+    const gqaEquivalent = 2 * 60 * 128 * 192 * 2 * 32768
+    expect(gqaEquivalent / r.memory.kvCachePerRequest).toBeGreaterThan(40)
+  })
+})

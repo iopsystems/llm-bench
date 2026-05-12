@@ -116,6 +116,25 @@ export const MODELS: ModelArch[] = [
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
+  // === DeepSeek ===
+  // DeepSeek-V2 has 2 shared experts always active in addition to 6 routed
+  // experts per token. The current schema doesn't have a numSharedExperts
+  // field (deferred to a later feature) — the activeParamCount value below
+  // is from the model card and already includes the shared-expert
+  // contribution, so compute math comes out correctly.
+  {
+    id: 'deepseek-v2', name: 'DeepSeek-V2', family: 'deepseek',
+    layers: 60, hiddenDim: 5120, intermediateDim: 12288,
+    numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 102400,
+    paramCount: 236_000_000_000,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64 },
+    architecture: {
+      type: 'moe',
+      numExperts: 160,
+      numExpertsActive: 6,
+      activeParamCount: 21_000_000_000
+    }
+  },
   // === Phi ===
   {
     id: 'phi-4', name: 'Phi-4 14B', family: 'phi',
