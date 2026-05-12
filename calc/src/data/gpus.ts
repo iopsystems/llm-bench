@@ -8,14 +8,23 @@ export const GPUS: GpuSpec[] = [
     variants: [
       {
         id: 'sxm-80', label: 'SXM 80GB', hbmCapacityGB: 80,
-        operatingPoints: [{
-          id: 'peak', label: 'Peak',
-          tflops: { fp16: 989, bf16: 989, fp8: 1979, int8: 1979 },
-          hbmBandwidthGBs: 3350
-        }]
-        // No achievable tier yet — published microbenchmark papers we surveyed
-        // (arxiv-2402-13499, arxiv-2501-12084) all tested H800 PCIe, not H100
-        // SXM5. We don't have a defensible H100 SXM5 measurement source yet.
+        operatingPoints: [
+          {
+            id: 'peak', label: 'Peak',
+            tflops: { fp16: 989, bf16: 989, fp8: 1979, int8: 1979 },
+            hbmBandwidthGBs: 3350
+          },
+          {
+            id: 'achievable', label: 'Achievable',
+            // mamf-finder MAMF table, BF16: 794.5 TFLOPS, FP8: 1402.6 TFLOPS.
+            // PyTorch torch.mm brute-force shape search; BF16 @ 2048×2048×13312,
+            // FP8 @ 1024×9216×14336; torch 2.7.0+cu126 / 2.7.1+cu128.
+            tflops: { fp16: 795, bf16: 795, fp8: 1403 },
+            hbmBandwidthGBs: 3350,
+            tflopsSources: ['mamf-finder'],
+            notes: 'mamf-finder PyTorch torch.mm sweep; HBM not separately measured (using peak)'
+          }
+        ]
       },
       {
         id: 'pcie-80', label: 'PCIe 80GB', hbmCapacityGB: 80,
@@ -62,11 +71,24 @@ export const GPUS: GpuSpec[] = [
     id: 'h200', name: 'NVIDIA H200', vendor: 'NVIDIA', family: 'Hopper',
     variants: [{
       id: 'sxm-141', label: 'SXM 141GB', hbmCapacityGB: 141,
-      operatingPoints: [{
-        id: 'peak', label: 'Peak',
-        tflops: { fp16: 989, bf16: 989, fp8: 1979, int8: 1979 },
-        hbmBandwidthGBs: 4800
-      }]
+      operatingPoints: [
+        {
+          id: 'peak', label: 'Peak',
+          tflops: { fp16: 989, bf16: 989, fp8: 1979, int8: 1979 },
+          hbmBandwidthGBs: 4800
+        },
+        {
+          id: 'achievable', label: 'Achievable',
+          // mamf-finder MAMF table. FP8 directly measured @ 1280×4096×12032,
+          // torch 2.7.1+cu128: 1453.4 TFLOPS. BF16 inferred from author note
+          // "H200 is the same" on the H100 SXM row (794.5 TFLOPS) — not a
+          // separately measured H200 BF16 run.
+          tflops: { fp16: 795, bf16: 795, fp8: 1453 },
+          hbmBandwidthGBs: 4800,
+          tflopsSources: ['mamf-finder'],
+          notes: 'FP8 directly measured; BF16 inferred from mamf-finder author note "H200 is the same" as H100 SXM, not a separate H200 BF16 measurement'
+        }
+      ]
     }]
   },
   {
@@ -82,11 +104,23 @@ export const GPUS: GpuSpec[] = [
       },
       {
         id: 'sxm-80', label: 'SXM 80GB', hbmCapacityGB: 80,
-        operatingPoints: [{
-          id: 'peak', label: 'Peak',
-          tflops: { fp16: 312, bf16: 312, int8: 624 },
-          hbmBandwidthGBs: 2039
-        }]
+        operatingPoints: [
+          {
+            id: 'peak', label: 'Peak',
+            tflops: { fp16: 312, bf16: 312, int8: 624 },
+            hbmBandwidthGBs: 2039
+          },
+          {
+            id: 'achievable', label: 'Achievable',
+            // mamf-finder MAMF BF16: 271.2 TFLOPS @ 1024×10240×5120,
+            // torch 2.6.0+cu126. 80GB variant per memory spec table in same
+            // document.
+            tflops: { fp16: 271, bf16: 271 },
+            hbmBandwidthGBs: 2039,
+            tflopsSources: ['mamf-finder'],
+            notes: 'mamf-finder PyTorch torch.mm sweep, 80GB variant (SXM4/SXM5 not distinguished in the source); HBM not separately measured'
+          }
+        ]
       },
       {
         id: 'pcie-40', label: 'PCIe 40GB', hbmCapacityGB: 40,
@@ -98,11 +132,22 @@ export const GPUS: GpuSpec[] = [
       },
       {
         id: 'pcie-80', label: 'PCIe 80GB', hbmCapacityGB: 80,
-        operatingPoints: [{
-          id: 'peak', label: 'Peak',
-          tflops: { fp16: 312, bf16: 312, int8: 624 },
-          hbmBandwidthGBs: 1935
-        }]
+        operatingPoints: [
+          {
+            id: 'peak', label: 'Peak',
+            tflops: { fp16: 312, bf16: 312, int8: 624 },
+            hbmBandwidthGBs: 1935
+          },
+          {
+            id: 'achievable', label: 'Achievable',
+            // mamf-finder MAMF BF16: 252.9 TFLOPS @ 2048×5120×6144,
+            // torch 2.5.1+cu124. 80GB variant per memory spec table.
+            tflops: { fp16: 253, bf16: 253 },
+            hbmBandwidthGBs: 1935,
+            tflopsSources: ['mamf-finder'],
+            notes: 'mamf-finder PyTorch torch.mm sweep, 80GB variant; HBM not separately measured'
+          }
+        ]
       }
     ]
   },
