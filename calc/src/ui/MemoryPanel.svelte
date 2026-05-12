@@ -113,9 +113,9 @@
         <tr class="total"><td>Total</td><td>{gb(m.total)} GB</td></tr>
         <tr>
           <td>Headroom</td>
-          <td>
-            {gb(m.headroom)} GB &nbsp;
-            <span class:fits={m.fits} class:oom={!m.fits}>
+          <td class="headroom-value">
+            {gb(m.headroom)} GB
+            <span class="status-badge" class:fits={m.fits} class:oom={!m.fits}>
               {m.fits ? '✓ fits' : '✗ OOM'}
             </span>
           </td>
@@ -156,6 +156,16 @@
   td:first-child { padding-right: 1rem; }
   /* Memory size column: right-aligned so digits stack to a common edge. */
   td:last-child { text-align: right; }
+  /* Headroom row: the GB number stays inside the column (right-aligned with
+     all other numbers); the status badge is positioned just outside the
+     table's right edge, so it doesn't widen the table. */
+  td.headroom-value { position: relative; }
+  .status-badge {
+    position: absolute;
+    left: calc(100% + 0.5rem); top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
   /* Divider above Total separates the breakdown from the summed totals. */
   tr.total td { border-top: 1px solid #ccc; padding-top: 0.3rem; }
   tr.total { font-weight: bold; }
