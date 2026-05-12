@@ -34,4 +34,18 @@ describe('computeDecode', () => {
     const d = computeDecode(testInput, opPoint, memory)
     expect(d.aggregateTokensPerS).toBeCloseTo(2 / d.timePerTokenS, 6)
   })
+
+  it('attention term caps at window for sliding attention', () => {
+    // testModel: layers=2, hiddenDim=4, concurrency=2.
+    // avgSeqlen = 10 + 5/2 = 12.5. With window=8, effSeqlen = 8.
+    // flopsPerStep = (2 × 1000 + 2 × 2 × 8 × 4) × 2 = (2000 + 128) × 2 = 4256
+    const slidingModel = {
+      ...testInput.model,
+      attention: { type: 'sliding' as const, window: 8 }
+    }
+    const input = { ...testInput, model: slidingModel }
+    const slidingMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, slidingMemory)
+    expect(d.flopsPerStep).toBe(4256)
+  })
 })

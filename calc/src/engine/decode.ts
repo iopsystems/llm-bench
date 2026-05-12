@@ -1,5 +1,6 @@
 import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
+import { effectiveAttentionLength } from './memory'
 
 export function computeDecode(
   input: CalcInput,
@@ -9,8 +10,9 @@ export function computeDecode(
   const { model, quant, workload } = input
   const avgSeqlen = workload.promptTokens + workload.outputTokens / 2
 
+  const effAvg = effectiveAttentionLength(avgSeqlen, model.attention)
   const flopsPerStep =
-    (2 * model.paramCount + 2 * model.layers * avgSeqlen * model.hiddenDim) *
+    (2 * model.paramCount + 2 * model.layers * effAvg * model.hiddenDim) *
     workload.concurrency
   const bytesPerStep = memory.weights + memory.kvCachePerRequest * workload.concurrency
 
