@@ -3,6 +3,7 @@
   import MemoryPanel from './MemoryPanel.svelte'
   import PerfPanel from './PerfPanel.svelte'
   import DerivationDrawer from './DerivationDrawer.svelte'
+  import { error } from './stores'
 </script>
 
 <main>
@@ -11,6 +12,9 @@
     <p>Roofline estimates for dense decoder-only transformers.</p>
   </header>
   <InputPanel />
+  {#if $error}
+    <div class="error">⚠ {$error}</div>
+  {/if}
   <MemoryPanel />
   <PerfPanel />
   <DerivationDrawer />
@@ -25,4 +29,10 @@
   header { margin-bottom: 1.5rem; }
   h1 { margin: 0 0 0.25rem; }
   header p { margin: 0; color: #666; }
+  .error {
+    margin-top: 1rem; padding: 0.5rem 0.75rem;
+    background: #fde6e6; color: #8a1f1f;
+    border: 1px solid #f0b0b0; border-radius: 0.25rem;
+    font-size: 0.9rem;
+  }
 </style>

@@ -119,7 +119,12 @@ function formatTable(input: CalcInput, result: ReturnType<typeof calculate>): st
 
 function runCalc(values: Record<string, string | boolean | undefined>): void {
   const input = buildInput(values)
-  const result = calculate(input)
+  let result
+  try {
+    result = calculate(input)
+  } catch (err) {
+    fail((err as Error).message, 1)
+  }
   const format = (values['format'] as string | undefined) ?? 'json'
   if (format === 'json') {
     process.stdout.write(JSON.stringify(result) + '\n')

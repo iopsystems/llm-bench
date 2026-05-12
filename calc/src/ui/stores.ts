@@ -28,7 +28,16 @@ export const input: Readable<CalcInput | null> = derived(
   }
 )
 
-export const result: Readable<CalcResult | null> = derived(input, $input => {
-  if (!$input) return null
-  try { return calculate($input) } catch { return null }
+interface Computed {
+  result: CalcResult | null
+  error: string | null
+}
+
+const computed: Readable<Computed> = derived(input, $input => {
+  if (!$input) return { result: null, error: null }
+  try { return { result: calculate($input), error: null } }
+  catch (err) { return { result: null, error: (err as Error).message } }
 })
+
+export const result: Readable<CalcResult | null> = derived(computed, $c => $c.result)
+export const error: Readable<string | null> = derived(computed, $c => $c.error)
