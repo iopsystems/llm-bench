@@ -132,18 +132,21 @@
         range: ['square', 'circle']
       },
       marks: [
-        // Theoretical-peak roofline (solid). z: 'tier' groups so the segments
-        // join correctly even when the Attainable filter strips them.
+        // Theoretical-peak roofline (solid). The roof anchors extend well
+        // beyond the visible domain (so the rising/flat segments span the
+        // whole plot regardless of where the data falls); clip: true trims
+        // the rendered stroke to the plot frame.
         Plot.line(data.roofs.filter(r => r.tier === 'Theoretical'), {
-          x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2
+          x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2, clip: true
         }),
         // Attainable roofline (dashed) — separate mark so we can dash it.
         Plot.line(data.roofs.filter(r => r.tier === 'Attainable'), {
-          x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2, strokeDasharray: '6 4'
+          x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2, strokeDasharray: '6 4', clip: true
         }),
         // Gap connectors from attainable points up to the peak ceiling at their AI.
         Plot.line(data.gaps, {
-          x: 'ai', y: 'perf', stroke: '#bbb', strokeWidth: 1, strokeDasharray: '2 3', z: 'phase'
+          x: 'ai', y: 'perf', stroke: '#bbb', strokeWidth: 1,
+          strokeDasharray: '2 3', z: 'phase', clip: true
         }),
         Plot.dot(data.points, {
           x: 'ai', y: 'perf',
