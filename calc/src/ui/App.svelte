@@ -2,6 +2,7 @@
   import InputPanel from './InputPanel.svelte'
   import MemoryPanel from './MemoryPanel.svelte'
   import PerfPanel from './PerfPanel.svelte'
+  import RooflinePanel from './RooflinePanel.svelte'
   import DerivationDrawer from './DerivationDrawer.svelte'
   import { error } from './stores'
 </script>
@@ -17,6 +18,7 @@
   {/if}
   <MemoryPanel />
   <PerfPanel />
+  <RooflinePanel />
   <DerivationDrawer />
 </main>
 
