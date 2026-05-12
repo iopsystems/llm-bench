@@ -155,23 +155,38 @@
   <section class="memory-panel">
     <h3>Memory budget — {gb(cap)} GB</h3>
     <div bind:this={container} class="bar-chart" class:oom={!m.fits}></div>
-    <div class="legend">
-      {#each Object.keys(PATTERN_IDS) as name (name)}
-        {@const id = PATTERN_IDS[name as Component]}
-        <span class="entry">
-          <svg class="swatch" viewBox="0 0 14 10" aria-hidden="true">
-            <defs>{@html patternDefsSvg()}</defs>
-            <rect width="14" height="10" fill="url(#{id})"/>
-          </svg>
-          <span>{name}</span>
-        </span>
-      {/each}
-    </div>
     <table>
       <tbody>
-        <tr><td>Weights</td>          <td>{gb(m.weights)} GB</td></tr>
-        <tr><td>KV cache (total)</td> <td>{gb(m.kvCacheTotal)} GB</td></tr>
-        <tr><td>Activations (~)</td>  <td>{gb(m.activationsPeak)} GB</td></tr>
+        <tr>
+          <td>
+            <svg class="row-swatch" viewBox="0 0 14 10" aria-hidden="true">
+              <defs>{@html patternDefsSvg()}</defs>
+              <rect width="14" height="10" fill="url(#{PATTERN_IDS['Weights']})"/>
+            </svg>
+            Weights
+          </td>
+          <td>{gb(m.weights)} GB</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="row-swatch" viewBox="0 0 14 10" aria-hidden="true">
+              <defs>{@html patternDefsSvg()}</defs>
+              <rect width="14" height="10" fill="url(#{PATTERN_IDS['KV cache']})"/>
+            </svg>
+            KV cache (total)
+          </td>
+          <td>{gb(m.kvCacheTotal)} GB</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="row-swatch" viewBox="0 0 14 10" aria-hidden="true">
+              <defs>{@html patternDefsSvg()}</defs>
+              <rect width="14" height="10" fill="url(#{PATTERN_IDS['Activations']})"/>
+            </svg>
+            Activations (~)
+          </td>
+          <td>{gb(m.activationsPeak)} GB</td>
+        </tr>
         <tr class="total"><td>Total</td><td>{gb(m.total)} GB</td></tr>
         <tr>
           <td>Headroom</td>
@@ -201,14 +216,9 @@
      visibly grow. */
   .bar-chart.oom { border-color: #c33; }
   .bar-chart :global(svg) { display: block; overflow: visible; }
-  .legend {
-    display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
-    font-size: 0.85rem; color: #333;
-  }
-  .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
-  .swatch {
-    width: 14px; height: 10px;
-    display: inline-block;
+  .row-swatch {
+    width: 14px; height: 10px; display: inline-block;
+    margin-right: 0.5rem; vertical-align: middle;
   }
   /* align-self overrides the parent flex's default align-items:stretch so
      the table sizes to content instead of filling the panel width, then
