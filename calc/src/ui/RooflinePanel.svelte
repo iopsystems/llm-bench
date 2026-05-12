@@ -99,10 +99,10 @@
     return `${v.toExponential(1)} F`
   }
 
+  const hasAttainable = $derived(data.points.some(p => p.tier === 'Attainable'))
+
   const chart = $derived.by(() => {
     if (data.roofs.length === 0) return null
-    // Only show the tier legend when there's actually a comparison to make.
-    const hasAttainable = data.points.some(p => p.tier === 'Attainable')
     return Plot.plot({
       width: 640, height: 380,
       marginLeft: 70, marginBottom: 50, marginRight: 24, marginTop: 24,
@@ -120,14 +120,14 @@
         grid: true
       },
       color: {
-        legend: hasAttainable,
-        label: 'Tier',
+        // We render our own legend below the chart so the swatch can match
+        // the actual stroke style (solid for Theoretical, dashed for Attainable).
+        legend: false,
         domain: ['Theoretical', 'Attainable'],
         range: ['#888', '#e07a1f']
       },
       symbol: {
-        legend: true,
-        label: 'Phase',
+        legend: false,
         domain: ['prefill', 'decode'],
         range: ['square', 'circle']
       },
@@ -186,6 +186,34 @@
       the attainable marker and the roof above it is the hardware-efficiency loss.
     </p>
     <div bind:this={container} class="plot"></div>
+    <div class="legend">
+      {#if hasAttainable}
+        <span class="entry">
+          <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
+            <line x1="1" y1="5" x2="21" y2="5" stroke="#888" stroke-width="2"/>
+          </svg>
+          <span>Theoretical</span>
+        </span>
+        <span class="entry">
+          <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
+            <line x1="1" y1="5" x2="21" y2="5" stroke="#e07a1f" stroke-width="2" stroke-dasharray="6 4"/>
+          </svg>
+          <span>Attainable</span>
+        </span>
+      {/if}
+      <span class="entry">
+        <svg class="shape-swatch" viewBox="0 0 12 12" aria-hidden="true">
+          <rect x="1" y="1" width="10" height="10" fill="#888" stroke="#fff" stroke-width="1"/>
+        </svg>
+        <span>prefill</span>
+      </span>
+      <span class="entry">
+        <svg class="shape-swatch" viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="5" fill="#888" stroke="#fff" stroke-width="1"/>
+        </svg>
+        <span>decode</span>
+      </span>
+    </div>
   </section>
 {/if}
 
@@ -197,4 +225,11 @@
   }
   .plot { max-width: 100%; overflow-x: auto; }
   .plot :global(svg) { max-width: 100%; height: auto; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
+    margin-top: 0.4rem; font-size: 0.85rem; color: #333;
+  }
+  .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .line-swatch { width: 22px; height: 10px; }
+  .shape-swatch { width: 12px; height: 12px; }
 </style>
