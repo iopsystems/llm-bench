@@ -11,6 +11,19 @@ export function calculate(input: CalcInput): CalcResult {
     throw new Error(`Variant ${input.gpuVariantId} not in GPU ${input.gpu.id}`)
   }
 
+  // Validate activations dtype against each operating point up front, so the
+  // error message names the actual GPU and the supported alternatives instead
+  // of leaking engine vocabulary.
+  for (const op of variant.operatingPoints) {
+    if (op.tflops[input.quant.activations] === undefined) {
+      const supported = Object.keys(op.tflops).join(', ')
+      throw new Error(
+        `${input.gpu.name} ${variant.label} has no ${input.quant.activations} ` +
+        `compute throughput. Try: ${supported}.`
+      )
+    }
+  }
+
   const memory = computeMemory(input)
   const d = new DerivationBuilder()
 
