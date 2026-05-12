@@ -35,6 +35,9 @@
     return Plot.plot({
       width: containerWidth, height: 28,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0,
+      // Bump the SVG's base font-size so the hover tip reads at a comfortable
+      // size; the chart itself has no axis text to be affected.
+      style: 'font-size: 13px',
       // Container width represents capacity exactly. Overflow on OOM is
       // clipped here and signaled by the container's red border instead.
       x: { domain: [0, capBytes], axis: null },
