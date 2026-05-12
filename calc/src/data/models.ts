@@ -88,6 +88,19 @@ export const MODELS: ModelArch[] = [
     architecture: { type: 'dense' }
   },
   {
+    id: 'mixtral-8x7b', name: 'Mixtral 8x7B v0.1', family: 'mistral',
+    layers: 32, hiddenDim: 4096, intermediateDim: 14336,
+    numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
+    paramCount: 46_702_792_704,
+    attention: { type: 'full' },
+    architecture: {
+      type: 'moe',
+      numExperts: 8,
+      numExpertsActive: 2,
+      activeParamCount: 12_879_204_352
+    }
+  },
+  {
     id: 'mistral-small-3.1-24b', name: 'Mistral Small 3.1 24B', family: 'mistral',
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,

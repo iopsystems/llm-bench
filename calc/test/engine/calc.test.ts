@@ -94,3 +94,34 @@ describe('calculate — sliding window integration', () => {
     // Sanity: if it were full attention this would be 131072 × 32768 (8× more)
   })
 })
+
+describe('calculate — MoE integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const mixtral = MODELS.find(m => m.id === 'mixtral-8x7b')!
+
+  it('Mixtral 8x7B on H100 SXM-80: weights use total params, decode bytes use active', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: mixtral,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+
+    // memory.weights = paramCount (46.7B) × 2 bytes (fp16) ≈ 93.4 GB.
+    // 93.4 GB > 80 GB capacity → memory.fits === false.
+    expect(r.memory.weights / 1e9).toBeCloseTo(93.4, 0)
+    expect(r.memory.fits).toBe(false)
+
+    // decode.bytesPerStep = activeParamCount × 2 bytes + kvCachePerRequest × 1.
+    // activeParamCount = 12.879B → 25.76 GB; KV is small at batch=1.
+    // Expect decode.bytesPerStep ≈ 25.76 GB, well below paramCount-based 93.4 GB.
+    const expectedActiveBytes = 12_879_204_352 * 2  // fp16
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(expectedActiveBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(expectedActiveBytes + 2e9)
+
+    // Decode is memory-bound at batch=1 (active weight reads dominate).
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
