@@ -13,14 +13,49 @@
   const GB = 1024 ** 3
   function gb(bytes: number): string { return (bytes / GB).toFixed(2) }
 
-  // Steel blue / light violet / teal — distinct hue family from the roofline
-  // (green Achievable) and regime badges (orange/blue) so the memory panel
-  // reads as its own visual category.
-  const COLORS = {
-    Weights: '#4682b4',      // steel blue
-    'KV cache': '#a78bfa',   // light violet
-    Activations: '#26a69a'   // teal
-  } as const
+  // Each region uses a textured fill — a base color plus a pattern (stripes at
+  // distinct angles, or dots). Patterns are robust against printing, color-
+  // blindness, and overlap with other plots' palettes.
+  type Component = 'Weights' | 'KV cache' | 'Activations'
+  const PATTERN_IDS: Record<Component, string> = {
+    Weights: 'mem-pat-weights',
+    'KV cache': 'mem-pat-kv',
+    Activations: 'mem-pat-acts'
+  }
+  // Base colors are kept light so the darker pattern strokes stand out.
+  const PATTERN_BASE: Record<Component, string> = {
+    Weights: '#cfdcec',
+    'KV cache': '#dcd0f5',
+    Activations: '#c6e6e1'
+  }
+  const PATTERN_STROKE: Record<Component, string> = {
+    Weights: '#4682b4',
+    'KV cache': '#7c5fc7',
+    Activations: '#1d8a7e'
+  }
+
+  function patternDefsSvg(): string {
+    // Inline pattern definitions appended to Plot's SVG before render.
+    return `
+      <pattern id="${PATTERN_IDS['Weights']}" patternUnits="userSpaceOnUse"
+               width="6" height="6" patternTransform="rotate(45)">
+        <rect width="6" height="6" fill="${PATTERN_BASE['Weights']}"/>
+        <line x1="0" y1="0" x2="0" y2="6"
+              stroke="${PATTERN_STROKE['Weights']}" stroke-width="2"/>
+      </pattern>
+      <pattern id="${PATTERN_IDS['KV cache']}" patternUnits="userSpaceOnUse"
+               width="6" height="6">
+        <rect width="6" height="6" fill="${PATTERN_BASE['KV cache']}"/>
+        <circle cx="3" cy="3" r="1.2" fill="${PATTERN_STROKE['KV cache']}"/>
+      </pattern>
+      <pattern id="${PATTERN_IDS['Activations']}" patternUnits="userSpaceOnUse"
+               width="6" height="6" patternTransform="rotate(-45)">
+        <rect width="6" height="6" fill="${PATTERN_BASE['Activations']}"/>
+        <line x1="0" y1="0" x2="0" y2="6"
+              stroke="${PATTERN_STROKE['Activations']}" stroke-width="2"/>
+      </pattern>
+    `
+  }
 
   const chart = $derived.by(() => {
     if (!$result) return null
@@ -42,8 +77,8 @@
       x: { domain: [0, m.total], axis: null },
       y: { axis: null, padding: 0 },
       color: {
-        domain: Object.keys(COLORS),
-        range: Object.values(COLORS),
+        domain: Object.keys(PATTERN_IDS),
+        range: Object.values(PATTERN_IDS).map(id => `url(#${id})`),
         legend: false
       },
       marks: [
@@ -87,7 +122,15 @@
   $effect(() => {
     if (!container) return
     container.replaceChildren()
-    if (chart) container.appendChild(chart)
+    if (chart) {
+      // Inject pattern <defs> into Plot's SVG so the fill: url(#...) on each
+      // bar can resolve. Plot doesn't have a native pattern API; we splice
+      // the defs in before the marks render.
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
+      defs.innerHTML = patternDefsSvg()
+      chart.insertBefore(defs, chart.firstChild)
+      container.appendChild(chart)
+    }
   })
 </script>
 
@@ -98,9 +141,13 @@
     <h3>Memory budget — {gb(cap)} GB</h3>
     <div bind:this={container} class="bar-chart" class:oom={!m.fits}></div>
     <div class="legend">
-      {#each Object.entries(COLORS) as [name, color]}
+      {#each Object.keys(PATTERN_IDS) as name (name)}
+        {@const id = PATTERN_IDS[name as Component]}
         <span class="entry">
-          <span class="swatch" style="background: {color}"></span>
+          <svg class="swatch" viewBox="0 0 14 10" aria-hidden="true">
+            <defs>{@html patternDefsSvg()}</defs>
+            <rect width="14" height="10" fill="url(#{id})"/>
+          </svg>
           <span>{name}</span>
         </span>
       {/each}
@@ -143,7 +190,7 @@
   }
   .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
   .swatch {
-    width: 14px; height: 10px; border-radius: 2px;
+    width: 14px; height: 10px;
     display: inline-block;
   }
   /* align-self overrides the parent flex's default align-items:stretch so
