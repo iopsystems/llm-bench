@@ -31,6 +31,7 @@ export interface GpuSpec {
 export type AttentionConfig =
   | { type: 'full' }
   | { type: 'sliding'; window: number }
+  | { type: 'mla'; kvLoraRank: number; qkRopeHeadDim: number }
 
 export type ArchitectureConfig =
   | { type: 'dense' }
