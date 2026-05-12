@@ -86,7 +86,12 @@
 {/if}
 
 <style>
-  .memory-panel { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+  /* Plain block layout. A flex column made the cross-axis size dependent on
+     intrinsic content (the table widening under OOM), which propagated a
+     small width drop to the bar-chart at width:100%. Block layout pins the
+     panel to its parent's content width. */
+  .memory-panel { display: block; margin-top: 1rem; }
+  .memory-panel > * + * { margin-top: 0.5rem; }
   /* HTML flex container — bars are sized by % width and stay anchored to the
      left edge. No SVG, no Plot, no measurements involved. Overflow on OOM
      gets clipped by overflow:hidden. */
