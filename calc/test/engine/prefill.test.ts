@@ -32,4 +32,19 @@ describe('computePrefill', () => {
     const p = computePrefill(testInput, opPoint, memory)
     expect(p.timeS).toBeGreaterThan(0)
   })
+
+  it('attention term caps at window for sliding attention', () => {
+    // testModel: layers=2, hiddenDim=4. Prompt=10. With window=5:
+    // attention term = 2 × 2 × 10 × min(10, 5) × 4 = 800 (vs full's 1600)
+    // MLP term = 2 × 1000 × 10 = 20000 (unchanged)
+    // total = 20800
+    const slidingModel = {
+      ...testInput.model,
+      attention: { type: 'sliding' as const, window: 5 }
+    }
+    const input = { ...testInput, model: slidingModel }
+    const slidingMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, slidingMemory)
+    expect(p.flops).toBe(20800)
+  })
 })
