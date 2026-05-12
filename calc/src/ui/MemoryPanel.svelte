@@ -1,11 +1,81 @@
 <script lang="ts">
+  import * as Plot from '@observablehq/plot'
   import { result } from './stores'
+
+  let container: HTMLDivElement | undefined = $state(undefined)
 
   const GB = 1024 ** 3
   function gb(bytes: number): string { return (bytes / GB).toFixed(2) }
-  function pct(part: number, whole: number): number {
-    return Math.max(0, Math.min(100, (part / whole) * 100))
-  }
+
+  // Palette deliberately avoids green and orange — those are reserved for the
+  // roofline (green = Achievable tier) and the regime badges (orange = compute-
+  // bound). Stays in blue/purple/slate so memory composition reads as its own
+  // category visually.
+  const COLORS = {
+    Weights: '#4a90e2',
+    'KV cache': '#8e44ad',
+    Activations: '#6b7a8c'
+  } as const
+
+  const chart = $derived.by(() => {
+    if (!$result) return null
+    const m = $result.memory
+    const capBytes = m.hbmCapacityGB * GB
+    const parts = [
+      { component: 'Weights',     bytes: m.weights },
+      { component: 'KV cache',    bytes: m.kvCacheTotal },
+      { component: 'Activations', bytes: m.activationsPeak }
+    ]
+    // Domain extends to whichever is larger so the OOM case visibly overshoots
+    // the capacity line.
+    const xMax = Math.max(capBytes, m.total) * 1.02
+
+    return Plot.plot({
+      width: 640, height: 70,
+      marginLeft: 8, marginRight: 16, marginTop: 8, marginBottom: 26,
+      x: {
+        domain: [0, xMax],
+        tickFormat: (d: number) => `${gb(d)} GB`,
+        label: null,
+        grid: false
+      },
+      y: { axis: null },
+      color: {
+        domain: Object.keys(COLORS),
+        range: Object.values(COLORS),
+        legend: false
+      },
+      marks: [
+        Plot.barX(parts, {
+          x: 'bytes', y: () => '',
+          fill: 'component',
+          tip: {
+            format: {
+              x: false, y: false, fill: false
+            }
+          },
+          channels: {
+            Component: { value: 'component', label: 'Component' },
+            Size: { value: 'bytes', label: 'Size' }
+          }
+        }),
+        // Format the tooltip's Size channel as human-readable GB.
+        // (Plot's channels above use the raw byte value; the format
+        // option below renders it with units.)
+        Plot.ruleX([m.hbmCapacityGB * GB], {
+          stroke: m.fits ? '#666' : '#c33',
+          strokeWidth: 1.5,
+          strokeDasharray: '4 3'
+        })
+      ]
+    })
+  })
+
+  $effect(() => {
+    if (!container) return
+    container.replaceChildren()
+    if (chart) container.appendChild(chart)
+  })
 </script>
 
 {#if $result}
@@ -13,10 +83,18 @@
   {@const cap = m.hbmCapacityGB * GB}
   <section class="memory-panel">
     <h3>Memory budget — {gb(cap)} GB</h3>
-    <div class="bar" class:oom={!m.fits}>
-      <div class="seg weights" style="width: {pct(m.weights, cap)}%"></div>
-      <div class="seg kv" style="width: {pct(m.kvCacheTotal, cap)}%"></div>
-      <div class="seg act" style="width: {pct(m.activationsPeak, cap)}%"></div>
+    <div bind:this={container} class="bar-chart"></div>
+    <div class="legend">
+      {#each Object.entries(COLORS) as [name, color]}
+        <span class="entry">
+          <span class="swatch" style="background: {color}"></span>
+          <span>{name}</span>
+        </span>
+      {/each}
+      <span class="entry">
+        <span class="capacity-line"></span>
+        <span>Capacity</span>
+      </span>
     </div>
     <table>
       <tbody>
@@ -38,11 +116,21 @@
 
 <style>
   .memory-panel { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
-  .bar { display: flex; height: 1.5rem; border: 1px solid #888; background: #f0f0f0; }
-  .bar.oom { border-color: #c33; }
-  .seg.weights { background: #4a90e2; }
-  .seg.kv      { background: #7ac74a; }
-  .seg.act     { background: #e2a04a; }
+  .bar-chart { max-width: 100%; overflow-x: auto; }
+  .bar-chart :global(svg) { max-width: 100%; height: auto; display: block; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
+    font-size: 0.85rem; color: #333;
+  }
+  .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .swatch {
+    width: 14px; height: 10px; border-radius: 2px;
+    display: inline-block;
+  }
+  .capacity-line {
+    width: 18px; height: 0; border-top: 1.5px dashed #666;
+    display: inline-block;
+  }
   table { font-variant-numeric: tabular-nums; }
   td:first-child { padding-right: 1rem; }
   tr.total { font-weight: bold; }
