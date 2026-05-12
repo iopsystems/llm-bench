@@ -191,11 +191,14 @@
   .status-badge { white-space: nowrap; display: inline-block; }
   tr.total td { border-top: 1px solid #ccc; padding-top: 0.3rem; }
   tr.total { font-weight: bold; }
-  .fits {
+  /* Scope badge styling to .status-badge so the rules don't leak onto the
+     .bar-chart.oom element (which shares the .oom class). That leakage was
+     adding 0.15rem/0.5rem padding to the bar-chart and shrinking it. */
+  .status-badge.fits {
     color: #1d6b45; background: #e6f5ec;
     padding: 0.15rem 0.5rem; border-radius: 0.2rem; font-weight: 600;
   }
-  .oom {
+  .status-badge.oom {
     color: #c33; background: #fde8e8;
     padding: 0.15rem 0.5rem; border-radius: 0.2rem; font-weight: 600;
   }
