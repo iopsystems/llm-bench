@@ -28,6 +28,10 @@ export interface GpuSpec {
   variants: GpuVariant[]
 }
 
+export type AttentionConfig =
+  | { type: 'full' }
+  | { type: 'sliding'; window: number }
+
 export interface ModelArch {
   id: string
   name: string
@@ -40,6 +44,7 @@ export interface ModelArch {
   headDim: number
   vocabSize: number
   paramCount: number
+  attention: AttentionConfig
 }
 
 export interface Quantization {

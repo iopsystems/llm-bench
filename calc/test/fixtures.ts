@@ -33,7 +33,8 @@ export const testModel: ModelArch = {
   numKvHeads: 1,
   headDim: 2,
   vocabSize: 100,
-  paramCount: 1000
+  paramCount: 1000,
+  attention: { type: 'full' }
 }
 
 export const fp16Quant: Quantization = {
