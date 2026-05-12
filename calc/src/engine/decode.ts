@@ -13,7 +13,7 @@ export function computeDecode(
 
   const effAvg = effectiveAttentionLength(avgSeqlen, model.attention)
   const flopsPerStep =
-    (2 * activeParams(model) + 2 * model.layers * effAvg * model.hiddenDim) *
+    (2 * activeParams(model) + 2 * model.layers * effAvg * model.numHeads * model.headDim) *
     workload.concurrency
   const bytesPerStep =
     activeParams(model) * bytesOf(quant.weights) +

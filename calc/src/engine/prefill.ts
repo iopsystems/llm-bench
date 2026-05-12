@@ -13,7 +13,7 @@ export function computePrefill(
   const effP = effectiveAttentionLength(p, model.attention)
   const flops =
     2 * activeParams(model) * p +
-    2 * model.layers * p * effP * model.hiddenDim
+    2 * model.layers * p * effP * model.numHeads * model.headDim
   const bytes = memory.weights + memory.activationsPeak
 
   const tflops = opPoint.tflops[quant.activations]
