@@ -69,8 +69,11 @@
         <tr class="total"><td>Total</td><td>{gb(m.total)} GB</td></tr>
         <tr>
           <td>Headroom</td>
-          <td class="headroom-value">
-            {gb(m.headroom)} GB
+          <td>{gb(m.headroom)} GB</td>
+        </tr>
+        <tr>
+          <td>Status</td>
+          <td>
             <span class="status-badge" class:fits={m.fits} class:oom={!m.fits}>
               {m.fits ? '✓ fits' : '✗ OOM'}
             </span>
@@ -107,13 +110,7 @@
   }
   td:first-child { padding-right: 2.5rem; }
   td:last-child { text-align: right; padding-left: 1rem; }
-  td.headroom-value { position: relative; }
-  .status-badge {
-    position: absolute;
-    left: calc(100% + 0.5rem); top: 50%;
-    transform: translateY(-50%);
-    white-space: nowrap;
-  }
+  .status-badge { white-space: nowrap; display: inline-block; }
   tr.total td { border-top: 1px solid #ccc; padding-top: 0.3rem; }
   tr.total { font-weight: bold; }
   .fits {
