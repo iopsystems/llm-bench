@@ -20,7 +20,8 @@ export const GPUS: GpuSpec[] = [
             // microbenchmark papers; ~77% of FP16 peak, ~90% of HBM peak.
             tflops: { fp16: 756, bf16: 756, fp8: 1513, int8: 1513 },
             hbmBandwidthGBs: 3000,
-            sources: ['arxiv-2402-13499', 'arxiv-2501-12084'],
+            tflopsSources: ['arxiv-2402-13499', 'arxiv-2501-12084'],
+            bandwidthSources: ['arxiv-2402-13499', 'arxiv-2501-12084'],
             asOf: '2025-01',
             notes: 'cuBLAS 12.x GEMM sweep over LLM-shaped matrices'
           }

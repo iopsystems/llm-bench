@@ -1,23 +1,39 @@
 <script lang="ts">
   import { result } from './stores'
-  import { SOURCES } from '../data/sources'
+  import { SOURCES, type Source } from '../data/sources'
   import type { PerfTier } from '../engine/types'
 
   function ms(s: number): string { return (s * 1000).toFixed(2) + ' ms' }
   function rate(tps: number): string { return tps.toFixed(1) + ' tok/s' }
+  function sameSet(a: string[] | undefined, b: string[] | undefined): boolean {
+    if (!a || !b) return false
+    if (a.length !== b.length) return false
+    const s = new Set(a)
+    return b.every(k => s.has(k))
+  }
 
-  // Citations are scoped to the operating point that declares them. Numbering
-  // is local per op point — `[1][2]` next to "achievable" refers to that row's
-  // own references block, not anything global.
-  function citationsFor(p: PerfTier): { key: string; n: number; title: string; url: string }[] {
-    const out: { key: string; n: number; title: string; url: string }[] = []
-    const keys = p.sources ?? []
-    for (let i = 0; i < keys.length; i++) {
-      const src = SOURCES[keys[i] as keyof typeof SOURCES]
-      if (!src) continue
-      out.push({ key: keys[i], n: i + 1, title: src.title, url: src.url })
-    }
-    return out
+  // Citations are scoped to the operating point that declares them. We compute
+  // a per-op-point numbered list (de-duped across the two axes) and produce
+  // labeled "TFLOPS" / "Bandwidth" groups — or a single merged "Sources" group
+  // when both axes share the same set of citations (the common case).
+  function citationsFor(p: PerfTier) {
+    const order: string[] = []
+    const push = (key: string) => { if (!order.includes(key)) order.push(key) }
+    for (const k of p.tflopsSources ?? []) push(k)
+    for (const k of p.bandwidthSources ?? []) push(k)
+    const refs = order
+      .map(key => ({ key, src: SOURCES[key as keyof typeof SOURCES] as Source | undefined }))
+      .filter((x): x is { key: string; src: Source } => !!x.src)
+      .map((x, i) => ({ key: x.key, n: i + 1, title: x.src.title, url: x.src.url }))
+    const numOf = (k: string) => refs.find(r => r.key === k)?.n
+    const merged = sameSet(p.tflopsSources, p.bandwidthSources)
+    const groups = merged
+      ? [{ label: 'Sources', keys: p.tflopsSources ?? [] }]
+      : [
+          { label: 'TFLOPS', keys: p.tflopsSources ?? [] },
+          { label: 'Bandwidth', keys: p.bandwidthSources ?? [] }
+        ].filter(g => g.keys.length > 0)
+    return { refs, numOf, groups, allMarks: refs.map(r => r.n) }
   }
 </script>
 
@@ -38,11 +54,11 @@
       </thead>
       <tbody>
         {#each Object.entries($result.perf) as [id, p]}
-          {@const cites = citationsFor(p)}
+          {@const c = citationsFor(p)}
           <tr>
             <td>
               {id}
-              {#each cites as c}<sup class="cite"><a href="#ref-{id}-{c.key}">[{c.n}]</a></sup>{/each}
+              {#each c.allMarks as n}<sup class="cite"><a href="#ref-{id}-{n}">[{n}]</a></sup>{/each}
             </td>
             <td>{ms(p.ttftS)}</td>
             <td><span class="regime {p.prefill.regime}">{p.prefill.regime}</span></td>
@@ -56,8 +72,8 @@
     </table>
 
     {#each Object.entries($result.perf) as [id, p]}
-      {@const cites = citationsFor(p)}
-      {#if cites.length > 0}
+      {@const c = citationsFor(p)}
+      {#if c.refs.length > 0}
         <div class="refs">
           <span class="refs-label">References — {id}</span>
           {#if p.asOf || p.notes}
@@ -67,10 +83,21 @@
               {#if p.notes}<span>{p.notes}</span>{/if}
             </div>
           {/if}
+          <div class="groups">
+            {#each c.groups as g}
+              <span class="group">
+                <span class="group-label">{g.label}:</span>
+                {#each g.keys as k}
+                  {@const n = c.numOf(k)}
+                  {#if n !== undefined}<span class="mark">[{n}]</span>{/if}
+                {/each}
+              </span>
+            {/each}
+          </div>
           <ol>
-            {#each cites as c}
-              <li id="ref-{id}-{c.key}" value={c.n}>
-                <a href={c.url} target="_blank" rel="noopener noreferrer">{c.title}</a>
+            {#each c.refs as r}
+              <li id="ref-{id}-{r.n}" value={r.n}>
+                <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
               </li>
             {/each}
           </ol>
@@ -96,4 +123,8 @@
   .refs a { color: #003a8c; }
   .meta { font-style: italic; color: #666; margin-top: 0.1rem; }
   .meta .sep { margin: 0 0.3rem; }
+  .groups { margin-top: 0.25rem; }
+  .group { margin-right: 1rem; }
+  .group-label { font-weight: 600; color: #222; }
+  .mark { margin-left: 0.15rem; color: #003a8c; }
 </style>

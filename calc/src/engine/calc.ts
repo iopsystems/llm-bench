@@ -52,7 +52,8 @@ export function calculate(input: CalcInput): CalcResult {
       ttftS: prefill.timeS,
       inputTokenRate: input.workload.promptTokens / prefill.timeS,
       outputTokenRate: decode.aggregateTokensPerS,
-      ...(op.sources && { sources: op.sources }),
+      ...(op.tflopsSources && { tflopsSources: op.tflopsSources }),
+      ...(op.bandwidthSources && { bandwidthSources: op.bandwidthSources }),
       ...(op.asOf && { asOf: op.asOf }),
       ...(op.notes && { notes: op.notes })
     }

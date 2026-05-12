@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import { GPUS } from './data/gpus'
 import { MODELS } from './data/models'
-import { SOURCES } from './data/sources'
+import { SOURCES, type Source } from './data/sources'
 import { calculate } from './engine/calc'
 import type { CalcInput, Dtype, Quantization, Workload } from './engine/types'
 
@@ -109,19 +109,44 @@ function formatTable(input: CalcInput, result: ReturnType<typeof calculate>): st
   out += `Workload: prompt=${input.workload.promptTokens} output=${input.workload.outputTokens} concurrency=${input.workload.concurrency}\n`
   out += `\n`
   out += `Memory: weights ${GB(m.weights)} | KV ${GB(m.kvCacheTotal)} | act ${GB(m.activationsPeak)} | total ${GB(m.total)} | ${fits}\n`
+  const sameSet = (a?: string[], b?: string[]): boolean => {
+    if (!a || !b) return false
+    if (a.length !== b.length) return false
+    const s = new Set(a)
+    return b.every(k => s.has(k))
+  }
   for (const [opId, perf] of Object.entries(result.perf)) {
-    const cites = (perf.sources ?? [])
-      .map((k, i) => ({ n: i + 1, src: SOURCES[k as keyof typeof SOURCES] }))
-      .filter(c => c.src !== undefined) as { n: number; src: { title: string; url: string } }[]
-    const marks = cites.map(c => `[${c.n}]`).join('')
-    out += `[${opId}]${marks ? ' ' + marks : ''}\n`
+    // De-dupe across the two axes for numbering.
+    const order: string[] = []
+    for (const k of perf.tflopsSources ?? []) if (!order.includes(k)) order.push(k)
+    for (const k of perf.bandwidthSources ?? []) if (!order.includes(k)) order.push(k)
+    const refs = order
+      .map(k => ({ key: k, src: SOURCES[k as keyof typeof SOURCES] as Source | undefined }))
+      .filter((x): x is { key: string; src: Source } => !!x.src)
+      .map((x, i) => ({ key: x.key, n: i + 1, title: x.src.title, url: x.src.url }))
+    const numOf = (k: string) => refs.find(r => r.key === k)?.n
+    const allMarks = refs.map(r => `[${r.n}]`).join('')
+    out += `[${opId}]${allMarks ? ' ' + allMarks : ''}\n`
     out += `  Prefill: TTFT ${ms(perf.ttftS)}  (${perf.prefill.regime}-bound)\n`
     out += `  Decode:  ${ms(perf.decode.timePerTokenS)}/tok  (${perf.decode.regime}-bound)\n`
     out += `  Rates:   in ${rate(perf.inputTokenRate)}, out ${rate(perf.outputTokenRate)}\n`
-    if (cites.length > 0) {
+    if (refs.length > 0) {
       const meta = [perf.asOf && `as of ${perf.asOf}`, perf.notes].filter(Boolean).join(' · ')
       if (meta) out += `  ${meta}\n`
-      for (const c of cites) out += `  [${c.n}] ${c.src.title} — ${c.src.url}\n`
+      const merged = sameSet(perf.tflopsSources, perf.bandwidthSources)
+      const fmtGroup = (label: string, keys: string[]) => {
+        const marks = keys.map(k => numOf(k)).filter(n => n !== undefined).map(n => `[${n}]`).join('')
+        return marks ? `${label}: ${marks}` : ''
+      }
+      const groups = merged
+        ? [fmtGroup('Sources', perf.tflopsSources ?? [])]
+        : [
+            fmtGroup('TFLOPS', perf.tflopsSources ?? []),
+            fmtGroup('Bandwidth', perf.bandwidthSources ?? [])
+          ]
+      const line = groups.filter(Boolean).join('  ')
+      if (line) out += `  ${line}\n`
+      for (const r of refs) out += `  [${r.n}] ${r.title} — ${r.url}\n`
     }
   }
   return out
