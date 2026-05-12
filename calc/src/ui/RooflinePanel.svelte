@@ -150,7 +150,7 @@
         }),
         Plot.dot(data.points, {
           x: 'ai', y: 'perf',
-          stroke: 'tier', fill: 'tier', symbol: 'phase',
+          stroke: 'tier', fill: 'tier', fillOpacity: 0.7, symbol: 'phase',
           r: 7, strokeWidth: 1.5,
           // Custom channels give the tooltip its own labels — independent of
           // the axis titles — and a controlled display order (Performance,
