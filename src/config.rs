@@ -85,6 +85,14 @@ fn default_add_prefix() -> bool {
     true
 }
 
+fn default_common_prefix_sample_ratio() -> f64 {
+    0.0
+}
+
+fn default_common_prefix_tokens() -> usize {
+    0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticConfig {
     /// Average number of tokens in generated prompts
@@ -102,6 +110,16 @@ pub struct SyntheticConfig {
     /// Default: true
     #[serde(default = "default_add_prefix")]
     pub add_prefix: bool,
+    /// Ratio of samples that share a common prefix (0.0 to 1.0)
+    /// Used to test prefix caching effectiveness. 0.0 = all unique, 1.0 = all share common prefix
+    /// Default: 0.0
+    #[serde(default = "default_common_prefix_sample_ratio")]
+    pub common_prefix_sample_ratio: f64,
+    /// Token length of the common prefix shared by common_prefix_sample_ratio of samples
+    /// If equals prompt_tokens, the whole prompt is the common prefix
+    /// Default: 0
+    #[serde(default = "default_common_prefix_tokens")]
+    pub common_prefix_tokens: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -500,6 +518,28 @@ impl Config {
             {
                 anyhow::bail!(
                     "input.synthetic.prompt_tokens_stdev must be greater than 0 if specified"
+                );
+            }
+
+            // Validate common prefix fields
+            if !(0.0..=1.0).contains(&synthetic.common_prefix_sample_ratio) {
+                anyhow::bail!(
+                    "input.synthetic.common_prefix_sample_ratio must be between 0.0 and 1.0"
+                );
+            }
+
+            if synthetic.common_prefix_tokens > synthetic.prompt_tokens {
+                anyhow::bail!(
+                    "input.synthetic.common_prefix_tokens ({}) cannot exceed prompt_tokens ({})",
+                    synthetic.common_prefix_tokens,
+                    synthetic.prompt_tokens
+                );
+            }
+
+            // If common prefix is enabled but has 0 tokens, warn the user
+            if synthetic.common_prefix_sample_ratio > 0.0 && synthetic.common_prefix_tokens == 0 {
+                anyhow::bail!(
+                    "input.synthetic.common_prefix_tokens must be > 0 when common_prefix_sample_ratio > 0"
                 );
             }
         }

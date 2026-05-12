@@ -100,11 +100,24 @@ pub struct SyntheticDataGenerator {
     tokenizer: Arc<Tokenizer>,
     seed: u64,
     add_prefix: bool,
+    common_prefix_ratio: f64,
+    common_prefix_text: Option<String>,
 }
 
 impl SyntheticDataGenerator {
     /// Create a new synthetic data generator.
     pub fn new(config: &SyntheticConfig, tokenizer: Arc<Tokenizer>, seed: u64) -> Self {
+        // Generate common prefix text if needed
+        let common_prefix_text = if config.common_prefix_tokens > 0 {
+            Some(Self::generate_prefix_text(
+                config.common_prefix_tokens,
+                tokenizer.clone(),
+                seed,
+            ))
+        } else {
+            None
+        };
+
         Self {
             prompt_dist: TokenDistribution::new(
                 config.prompt_tokens,
@@ -116,6 +129,8 @@ impl SyntheticDataGenerator {
             tokenizer,
             seed,
             add_prefix: config.add_prefix,
+            common_prefix_ratio: config.common_prefix_sample_ratio,
+            common_prefix_text,
         }
     }
 
@@ -123,7 +138,16 @@ impl SyntheticDataGenerator {
     pub fn generate_workload(&mut self, index: usize, max_tokens: Option<u32>) -> Workload {
         let prompt_tokens = self.prompt_dist.sample();
 
-        let prompt_text = self.generate_prompt(prompt_tokens, index);
+        // Determine if this sample should use common prefix based on ratio
+        let use_common_prefix = if self.common_prefix_ratio > 0.0 {
+            // Use deterministic decision based on index
+            let ratio_index = (index as f64) / (1.0 / self.common_prefix_ratio);
+            ratio_index.fract() < self.common_prefix_ratio
+        } else {
+            false
+        };
+
+        let prompt_text = self.generate_prompt(prompt_tokens, index, use_common_prefix);
 
         Workload::SingleTurn(Prompt {
             prompt: prompt_text,
@@ -139,12 +163,25 @@ impl SyntheticDataGenerator {
     /// 3. Tokenize and check count
     /// 4. If not enough tokens, retry with more chars
     /// 5. Truncate to exact token count
-    fn generate_prompt(&self, token_count: usize, index: usize) -> String {
-        // Add unique prefix for cache busting (if enabled)
-        let prefix = if self.add_prefix {
+    fn generate_prompt(&self, token_count: usize, index: usize, use_common_prefix: bool) -> String {
+        // Determine prefix based on common prefix setting
+        let prefix = if use_common_prefix && self.common_prefix_text.is_some() {
+            // Use the shared common prefix
+            self.common_prefix_text.as_ref().unwrap().clone()
+        } else if self.add_prefix {
+            // Add unique prefix for cache busting
             format!("[synthetic-{}] ", index)
         } else {
             String::new()
+        };
+
+        // Calculate how many tokens we need to generate after the prefix
+        let prefix_tokens = self.tokenizer.count_tokens(&prefix);
+        let remaining_tokens = if prefix_tokens >= token_count {
+            // Prefix already meets or exceeds target, just return it (truncated if needed)
+            return prefix[..self.truncate_to_tokens(&prefix, token_count)].to_string();
+        } else {
+            token_count - prefix_tokens
         };
 
         const AVG_CHARS_PER_TOKEN: usize = 5;
@@ -156,8 +193,8 @@ impl SyntheticDataGenerator {
         loop {
             attempts += 1;
 
-            // Estimate characters needed
-            let num_chars = ((token_count * AVG_CHARS_PER_TOKEN) as f64
+            // Estimate characters needed for remaining tokens
+            let num_chars = ((remaining_tokens * AVG_CHARS_PER_TOKEN) as f64
                 * MARGIN_OF_SAFETY
                 * attempts as f64) as usize;
 
@@ -215,6 +252,71 @@ impl SyntheticDataGenerator {
         }
 
         low
+    }
+
+    /// Generate a common prefix text with exact token count.
+    /// This prefix will be shared across multiple samples to test prefix caching.
+    fn generate_prefix_text(token_count: usize, tokenizer: Arc<Tokenizer>, seed: u64) -> String {
+        const AVG_CHARS_PER_TOKEN: usize = 5;
+        const MARGIN_OF_SAFETY: f64 = 1.5;
+        const MAX_ATTEMPTS: usize = 3;
+
+        let mut attempts = 0;
+
+        loop {
+            attempts += 1;
+
+            // Estimate characters needed
+            let num_chars = ((token_count * AVG_CHARS_PER_TOKEN) as f64
+                * MARGIN_OF_SAFETY
+                * attempts as f64) as usize;
+
+            // Generate random text using fake-rs
+            // Use a fixed seed for the common prefix
+            let mut rng = StdRng::seed_from_u64(seed);
+
+            // Generate text by concatenating sentences until we have enough characters
+            let mut text = String::new();
+            while text.len() < num_chars {
+                let sentence: String = Sentence(5..20).fake_with_rng(&mut rng);
+                text.push_str(&sentence);
+                text.push(' ');
+            }
+
+            // Truncate to requested length
+            let text = text[..num_chars.min(text.len())].to_string();
+
+            // Tokenize
+            let token_count_actual = tokenizer.count_tokens(&text);
+
+            if token_count_actual >= token_count {
+                // Success - we have enough tokens
+                // Now truncate to exact count
+                let mut low = 0;
+                let mut high = text.len();
+
+                while low < high {
+                    let mid = (low + high).div_ceil(2);
+                    let tokens = tokenizer.count_tokens(&text[..mid]);
+
+                    if tokens <= token_count {
+                        low = mid;
+                    } else {
+                        high = mid - 1;
+                    }
+                }
+
+                return text[..low].to_string();
+            }
+
+            if attempts >= MAX_ATTEMPTS {
+                warn!(
+                    "Failed to generate common prefix with {} tokens after {} attempts (got {}), using what we have",
+                    token_count, MAX_ATTEMPTS, token_count_actual
+                );
+                return text;
+            }
+        }
     }
 }
 
@@ -320,10 +422,12 @@ mod tests {
             prompt_tokens_min: None,
             prompt_tokens_max: None,
             add_prefix: true,
+            common_prefix_sample_ratio: 0.0,
+            common_prefix_tokens: 0,
         };
 
         let generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
-        let text = generator.generate_prompt(50, 0);
+        let text = generator.generate_prompt(50, 0, false);
 
         // Verify it has the prefix
         assert!(
@@ -350,6 +454,8 @@ mod tests {
             prompt_tokens_min: None,
             prompt_tokens_max: None,
             add_prefix: true,
+            common_prefix_sample_ratio: 0.0,
+            common_prefix_tokens: 0,
         };
 
         let mut generator = SyntheticDataGenerator::new(&config, tokenizer, 42);
@@ -381,6 +487,8 @@ mod tests {
             prompt_tokens_min: None,
             prompt_tokens_max: None,
             add_prefix: true,
+            common_prefix_sample_ratio: 0.0,
+            common_prefix_tokens: 0,
         };
 
         // Generate twice with same seed
@@ -415,10 +523,12 @@ mod tests {
             prompt_tokens_min: None,
             prompt_tokens_max: None,
             add_prefix: false,
+            common_prefix_sample_ratio: 0.0,
+            common_prefix_tokens: 0,
         };
 
         let generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
-        let text = generator.generate_prompt(50, 0);
+        let text = generator.generate_prompt(50, 0, false);
 
         // Verify it does NOT have the prefix
         assert!(
@@ -433,5 +543,60 @@ mod tests {
             "Token count {} should be close to target 50",
             token_count
         );
+    }
+
+    #[test]
+    fn test_common_prefix_generation() {
+        let tokenizer =
+            Arc::new(Tokenizer::new("gpt-3.5-turbo").expect("Failed to create tokenizer"));
+        let config = SyntheticConfig {
+            prompt_tokens: 100,
+            prompt_tokens_stdev: None,
+            prompt_tokens_min: None,
+            prompt_tokens_max: None,
+            add_prefix: false,
+            common_prefix_sample_ratio: 0.5, // 50% should share common prefix
+            common_prefix_tokens: 50,
+        };
+
+        let mut generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
+
+        // Generate multiple workloads
+        let workloads: Vec<_> = (0..10)
+            .map(|i| generator.generate_workload(i, Some(50)))
+            .collect();
+
+        // Extract prompts
+        let prompts: Vec<String> = workloads
+            .iter()
+            .map(|w| match w {
+                Workload::SingleTurn(p) => p.prompt.clone(),
+                _ => panic!("Expected SingleTurn workload"),
+            })
+            .collect();
+
+        // Check that some prompts share a common prefix
+        // With 50% ratio, approximately half should start with the same text
+        let common_prefix_text = generator.common_prefix_text.as_ref().unwrap();
+        let with_common_prefix: Vec<_> = prompts
+            .iter()
+            .filter(|p| p.starts_with(common_prefix_text.as_str()))
+            .collect();
+
+        // Should have some prompts with common prefix
+        assert!(
+            !with_common_prefix.is_empty(),
+            "Some prompts should have common prefix"
+        );
+
+        // Verify token count is correct for all prompts
+        for prompt in &prompts {
+            let token_count = tokenizer.count_tokens(prompt);
+            assert!(
+                (98..=102).contains(&token_count),
+                "Token count {} should be close to target 100",
+                token_count
+            );
+        }
     }
 }
