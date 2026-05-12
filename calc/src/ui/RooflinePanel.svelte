@@ -4,15 +4,15 @@
 
   let container: HTMLDivElement | undefined = $state(undefined)
 
-  // The roofline is piecewise: rising line (perf = AI × peak_BW) up to the
-  // ridge, then flat at peak compute. We emit three anchor points per op so
-  // Plot.line draws the bent ceiling. X anchors track the plot domain so the
-  // segments span the full x extent independent of how points fall.
-  // One roofline (the theoretical peak — the absolute ceiling). All operating
-  // points contribute markers showing where the workload's prefill and decode
-  // actually land for that tier. Gap between a marker and the roof above it
-  // is the hardware-efficiency loss for this workload/quant combo.
-  type RoofRow  = { ai: number; perf: number }
+  // Each operating tier (Theoretical = peak, Attainable = non-peak) gets its
+  // own roofline AND markers, sharing one color via the tier scale. Markers
+  // sit on their tier's roof by construction — the math computes time as
+  // max(F/C, B/M), so achieved rate is min(C, AI×M), i.e. exactly the roof.
+  type RoofRow = {
+    tier: 'Theoretical' | 'Attainable'
+    ai: number
+    perf: number
+  }
   type PointRow = {
     tier: 'Theoretical' | 'Attainable'
     phase: 'prefill' | 'decode'
@@ -39,27 +39,28 @@
     if (!peakOp) return empty
     const peakT = peakOp.tflops[$input.quant.activations]
     if (peakT === undefined) return empty
-
     const peakFlops = peakT * 1e12
     const peakBw = peakOp.hbmBandwidthGBs * 1e9
-    const ridge = peakFlops / peakBw
 
-    const roofs: RoofRow[] = [
-      { ai: 1e-3, perf: 1e-3 * peakBw },
-      { ai: ridge, perf: peakFlops },
-      { ai: 1e6,   perf: peakFlops }
-    ]
-
+    const roofs: RoofRow[] = []
     const points: PointRow[] = []
     const gaps: GapRow[] = []
-    const ais: number[] = [ridge]
-    const perfs: number[] = [peakFlops]
+    const ais: number[] = []
+    const perfs: number[] = []
 
     for (const op of variant.operatingPoints) {
       const t = op.tflops[$input.quant.activations]
       const p = $result.perf[op.id]
       if (t === undefined || !p) continue
-      const tier: PointRow['tier'] = op.id === 'peak' ? 'Theoretical' : 'Attainable'
+      const tier: RoofRow['tier'] = op.id === 'peak' ? 'Theoretical' : 'Attainable'
+      const opFlops = t * 1e12
+      const opBw = op.hbmBandwidthGBs * 1e9
+      const opRidge = opFlops / opBw
+
+      // Three anchors per tier: low-x rising segment, ridge, high-x flat.
+      roofs.push({ tier, ai: 1e-3, perf: 1e-3 * opBw })
+      roofs.push({ tier, ai: opRidge, perf: opFlops })
+      roofs.push({ tier, ai: 1e6,    perf: opFlops })
 
       const prefAi = p.prefill.flops / p.prefill.bytes
       const prefPerf = p.prefill.flops / p.prefill.timeS
@@ -69,8 +70,8 @@
       points.push({ tier, phase: 'prefill', ai: prefAi, perf: prefPerf, regime: p.prefill.regime })
       points.push({ tier, phase: 'decode',  ai: decAi,  perf: decPerf,  regime: p.decode.regime })
 
-      // For non-peak tiers, emit a connector segment from this point up to
-      // where the same AI hits the peak roofline. Visualizes the gap directly.
+      // Connector from attainable marker up to peak ceiling at the same AI.
+      // The vertical span is the hardware-efficiency gap for this phase.
       if (op.id !== 'peak') {
         const prefCeil = Math.min(peakFlops, prefAi * peakBw)
         const decCeil  = Math.min(peakFlops, decAi  * peakBw)
@@ -80,8 +81,8 @@
         gaps.push({ phase: 'decode',  ai: decAi,  perf: decCeil })
       }
 
-      ais.push(prefAi, decAi)
-      perfs.push(prefPerf, decPerf)
+      ais.push(opRidge, prefAi, decAi)
+      perfs.push(opFlops, prefPerf, decPerf)
     }
 
     const xMin = Math.max(0.05, Math.min(...ais) / 3)
@@ -131,9 +132,16 @@
         range: ['square', 'circle']
       },
       marks: [
-        // Theoretical-peak roofline — the absolute ceiling for the chosen dtype.
-        Plot.line(data.roofs, { x: 'ai', y: 'perf', stroke: '#888', strokeWidth: 2 }),
-        // Gap connectors from attainable points up to the roof at their AI.
+        // Theoretical-peak roofline (solid). z: 'tier' groups so the segments
+        // join correctly even when the Attainable filter strips them.
+        Plot.line(data.roofs.filter(r => r.tier === 'Theoretical'), {
+          x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2
+        }),
+        // Attainable roofline (dashed) — separate mark so we can dash it.
+        Plot.line(data.roofs.filter(r => r.tier === 'Attainable'), {
+          x: 'ai', y: 'perf', stroke: 'tier', strokeWidth: 2, strokeDasharray: '6 4'
+        }),
+        // Gap connectors from attainable points up to the peak ceiling at their AI.
         Plot.line(data.gaps, {
           x: 'ai', y: 'perf', stroke: '#bbb', strokeWidth: 1, strokeDasharray: '2 3', z: 'phase'
         }),

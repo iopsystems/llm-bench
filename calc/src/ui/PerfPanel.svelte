@@ -123,9 +123,21 @@
 {/if}
 
 <style>
-  .perf-panel { margin-top: 1rem; }
-  table { font-variant-numeric: tabular-nums; border-collapse: collapse; }
-  th, td { padding: 0.25rem 0.75rem; text-align: left; border-bottom: 1px solid #eee; }
+  .perf-panel { margin-top: 1rem; overflow-x: auto; }
+  table {
+    font-variant-numeric: tabular-nums; border-collapse: collapse;
+    /* Auto layout sizes each column to its content; nowrap below prevents
+       awkward wraps inside headers and values. */
+  }
+  th, td {
+    padding: 0.25rem 0.75rem; text-align: left;
+    border-bottom: 1px solid #eee; white-space: nowrap;
+  }
+  th { font-weight: 600; color: #333; }
+  /* Numeric value columns: right-align so digits line up. */
+  td:nth-child(2), td:nth-child(4), td:nth-child(6), td:nth-child(7) {
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
   .regime { padding: 0.1rem 0.4rem; border-radius: 0.2rem; font-size: 0.85rem; }
   .regime.compute { background: #fde6c8; color: #8a4400; }
   .regime.memory  { background: #c8dcfd; color: #003a8c; }
