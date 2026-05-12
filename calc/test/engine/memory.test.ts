@@ -52,4 +52,19 @@ describe('computeMemory', () => {
     expect(m.fits).toBe(false)
     expect(m.headroom).toBeLessThan(0)
   })
+
+  it('kvCachePerRequest caps at window for sliding attention', () => {
+    // testModel uses full attention; build a sliding variant with window=8
+    // (prompt+output=15, so should cap at 8 tokens instead of 15)
+    const slidingModel = {
+      ...testInput.model,
+      attention: { type: 'sliding' as const, window: 8 }
+    }
+    const input = { ...testInput, model: slidingModel }
+    const m = computeMemory(input)
+    // 16 bytes per token × 8 (window) = 128 bytes per request
+    expect(m.kvCachePerRequest).toBe(128)
+    // × concurrency 2 = 256 bytes
+    expect(m.kvCacheTotal).toBe(256)
+  })
 })
