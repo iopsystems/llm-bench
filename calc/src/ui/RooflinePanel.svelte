@@ -141,8 +141,21 @@
           x: 'ai', y: 'perf',
           stroke: 'tier', fill: 'tier', symbol: 'phase',
           r: 7, strokeWidth: 1.5,
+          // Custom channels give the tooltip its own labels — independent of
+          // the axis titles — and a controlled display order (Performance,
+          // then a blank spacer, then the rest).
+          channels: {
+            Performance: { value: 'perf', label: 'Performance' },
+            ' ': { value: () => '', label: ' ' },
+            'Arithmetic Intensity': { value: 'ai', label: 'Arithmetic Intensity' }
+          },
           tip: {
-            format: { x: '.3~f', y: (d: number) => fmtPerf(d) + '/s' }
+            format: {
+              x: false, y: false,
+              stroke: false, fill: false,
+              Performance: (d: number) => fmtPerf(d) + '/s',
+              'Arithmetic Intensity': '.3~f'
+            }
           }
         })
       ]

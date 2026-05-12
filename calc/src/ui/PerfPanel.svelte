@@ -3,8 +3,23 @@
   import { SOURCES, type Source } from '../data/sources'
   import type { PerfTier } from '../engine/types'
 
-  function ms(s: number): string { return (s * 1000).toFixed(2) + ' ms' }
-  function rate(tps: number): string { return tps.toFixed(1) + ' tok/s' }
+  // 3 significant figures, no exponential notation.
+  function sig3(n: number): string {
+    if (n === 0) return '0'
+    return parseFloat(n.toPrecision(3)).toString()
+  }
+  function ms(s: number): string {
+    if (s >= 1)     return `${sig3(s)} s`
+    if (s >= 1e-3)  return `${sig3(s * 1e3)} ms`
+    if (s >= 1e-6)  return `${sig3(s * 1e6)} µs`
+    return `${sig3(s * 1e9)} ns`
+  }
+  function rate(tps: number): string {
+    if (tps >= 1e9) return `${sig3(tps / 1e9)} G tok/s`
+    if (tps >= 1e6) return `${sig3(tps / 1e6)} M tok/s`
+    if (tps >= 1e3) return `${sig3(tps / 1e3)} k tok/s`
+    return `${sig3(tps)} tok/s`
+  }
   function sameSet(a: string[] | undefined, b: string[] | undefined): boolean {
     if (!a || !b) return false
     if (a.length !== b.length) return false
@@ -43,7 +58,7 @@
     <table>
       <thead>
         <tr>
-          <th>Operating point</th>
+          <th>Operating assumption</th>
           <th>TTFT</th>
           <th>Prefill regime</th>
           <th>Decode time / tok</th>
