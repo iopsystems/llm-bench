@@ -100,6 +100,8 @@
 
   const chart = $derived.by(() => {
     if (data.roofs.length === 0) return null
+    // Only show the tier legend when there's actually a comparison to make.
+    const hasAttainable = data.points.some(p => p.tier === 'Attainable')
     return Plot.plot({
       width: 640, height: 380,
       marginLeft: 70, marginBottom: 50, marginRight: 24, marginTop: 24,
@@ -117,7 +119,7 @@
         grid: true
       },
       color: {
-        legend: true,
+        legend: hasAttainable,
         label: 'Tier',
         domain: ['Theoretical', 'Attainable'],
         range: ['#888', '#e07a1f']
