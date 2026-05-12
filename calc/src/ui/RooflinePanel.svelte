@@ -8,24 +8,22 @@
   // ridge, then flat at peak compute. We emit three anchor points per op so
   // Plot.line draws the bent ceiling. X anchors track the plot domain so the
   // segments span the full x extent independent of how points fall.
-  type Row = {
-    op: string
-    kind: 'roof' | 'prefill' | 'decode'
-    ai: number
-    perf: number
-    regime?: 'compute' | 'memory'
-    dash?: boolean
-  }
+  // Keep the two mark inputs as distinct types so Plot doesn't infer a
+  // combined symbol/color scale across roofs and points (which produced a
+  // duplicated phase legend).
+  type RoofRow  = { op: string; ai: number; perf: number; dash: boolean }
+  type PointRow = { op: string; phase: 'prefill' | 'decode'
+                    ai: number; perf: number; regime: 'compute' | 'memory' }
 
   const data = $derived.by(() => {
-    const empty = { roofs: [] as Row[], points: [] as Row[],
+    const empty = { roofs: [] as RoofRow[], points: [] as PointRow[],
                     xMin: 0.1, xMax: 1000, yMin: 1e10, yMax: 1e15 }
     if (!$input || !$result) return empty
     const variant = $input.gpu.variants.find(v => v.id === $input.gpuVariantId)
     if (!variant) return empty
 
-    const roofs: Row[] = []
-    const points: Row[] = []
+    const roofs: RoofRow[] = []
+    const points: PointRow[] = []
     const ais: number[] = []
     const perfs: number[] = []
 
@@ -38,19 +36,17 @@
       const ridge = peakFlops / peakBw
       const isPeak = op.id === 'peak'
 
-      // Three anchors: low-x, ridge, high-x. We pad domain ends generously
-      // because the actual x bounds are set globally after this loop.
-      roofs.push({ op: op.label, kind: 'roof', ai: 1e-3, perf: 1e-3 * peakBw, dash: !isPeak })
-      roofs.push({ op: op.label, kind: 'roof', ai: ridge,  perf: peakFlops,     dash: !isPeak })
-      roofs.push({ op: op.label, kind: 'roof', ai: 1e6,    perf: peakFlops,     dash: !isPeak })
+      roofs.push({ op: op.label, ai: 1e-3, perf: 1e-3 * peakBw, dash: !isPeak })
+      roofs.push({ op: op.label, ai: ridge, perf: peakFlops,    dash: !isPeak })
+      roofs.push({ op: op.label, ai: 1e6,   perf: peakFlops,    dash: !isPeak })
 
       const prefAi = p.prefill.flops / p.prefill.bytes
       const prefPerf = p.prefill.flops / p.prefill.timeS
       const decAi = p.decode.flopsPerStep / p.decode.bytesPerStep
       const decPerf = p.decode.flopsPerStep / p.decode.timePerTokenS
 
-      points.push({ op: op.label, kind: 'prefill', ai: prefAi, perf: prefPerf, regime: p.prefill.regime })
-      points.push({ op: op.label, kind: 'decode',  ai: decAi,  perf: decPerf,  regime: p.decode.regime })
+      points.push({ op: op.label, phase: 'prefill', ai: prefAi, perf: prefPerf, regime: p.prefill.regime })
+      points.push({ op: op.label, phase: 'decode',  ai: decAi,  perf: decPerf,  regime: p.decode.regime })
 
       ais.push(ridge, prefAi, decAi)
       perfs.push(peakFlops, prefPerf, decPerf)
@@ -105,7 +101,7 @@
           x: 'ai', y: 'perf', stroke: 'op', strokeWidth: 2, strokeDasharray: '6 4'
         }),
         Plot.dot(data.points, {
-          x: 'ai', y: 'perf', stroke: 'op', fill: 'op', symbol: 'kind',
+          x: 'ai', y: 'perf', stroke: 'op', fill: 'op', symbol: 'phase',
           r: 7, strokeWidth: 1.5,
           tip: {
             format: { x: '.3~f', y: (d: number) => fmtPerf(d) + '/s' }
