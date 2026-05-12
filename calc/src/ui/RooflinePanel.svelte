@@ -226,8 +226,8 @@
   .caption {
     font-size: 0.85rem; color: #555; margin: 0 0 0.5rem; font-style: italic;
   }
-  .plot { max-width: 100%; overflow-x: auto; }
-  .plot :global(svg) { max-width: 100%; height: auto; }
+  .plot { max-width: 100%; overflow-x: auto; text-align: center; }
+  .plot :global(svg) { max-width: 100%; height: auto; display: inline-block; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
     margin-top: 0.4rem; font-size: 0.85rem; color: #333;

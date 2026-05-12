@@ -58,13 +58,16 @@
     <table>
       <thead>
         <tr>
-          <th>Operating assumption</th>
-          <th>TTFT</th>
-          <th>Prefill regime</th>
-          <th>Decode time / tok</th>
-          <th>Decode regime</th>
-          <th>Input tok/s</th>
-          <th>Output tok/s (aggregate)</th>
+          <th rowspan="2">Operating assumption</th>
+          <th rowspan="2">TTFT</th>
+          <th colspan="2" class="group-header">Bottleneck</th>
+          <th rowspan="2">Decode time / tok</th>
+          <th rowspan="2">Input tok/s</th>
+          <th rowspan="2">Output tok/s (aggregate)</th>
+        </tr>
+        <tr>
+          <th class="sub-header">Prefill</th>
+          <th class="sub-header">Decode</th>
         </tr>
       </thead>
       <tbody>
@@ -77,8 +80,8 @@
             </td>
             <td>{ms(p.ttftS)}</td>
             <td><span class="regime {p.prefill.regime}">{p.prefill.regime}</span></td>
-            <td>{ms(p.decode.timePerTokenS)}</td>
             <td><span class="regime {p.decode.regime}">{p.decode.regime}</span></td>
+            <td>{ms(p.decode.timePerTokenS)}</td>
             <td>{rate(p.inputTokenRate)}</td>
             <td>{rate(p.outputTokenRate)}</td>
           </tr>
@@ -136,6 +139,17 @@
     font-weight: 600; color: #333;
     white-space: normal; vertical-align: bottom;
     line-height: 1.2;
+  }
+  /* Group header "Bottleneck" sits centered over its two sub-columns. */
+  th.group-header {
+    text-align: center; border-bottom: 1px solid #ccc;
+    padding-bottom: 0.15rem;
+  }
+  /* Sub-headers (Prefill / Decode) are smaller and less heavy than the
+     primary header row. */
+  th.sub-header {
+    font-weight: 500; font-size: 0.85em; color: #666;
+    padding-top: 0.15rem;
   }
   /* Output columns (everything except the operating-assumption label):
      right-align so numbers and labels stack to a common edge. */
