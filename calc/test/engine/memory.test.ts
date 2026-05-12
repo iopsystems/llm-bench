@@ -21,4 +21,35 @@ describe('computeMemory', () => {
     const m = computeMemory(testInput)
     expect(m.kvCacheTotal).toBe(480)
   })
+
+  it('activationsPeak = concurrency × prompt × (hidden + intermediate) × bytes(act_dtype) × 2', () => {
+    // 2 × 10 × (4 + 8) × 2 (fp16) × 2 = 960 bytes
+    const m = computeMemory(testInput)
+    expect(m.activationsPeak).toBe(960)
+  })
+
+  it('total = weights + kvCacheTotal + activationsPeak', () => {
+    // 2000 + 480 + 960 = 3440
+    const m = computeMemory(testInput)
+    expect(m.total).toBe(3440)
+  })
+
+  it('hbmCapacityGB echoed from chosen variant', () => {
+    const m = computeMemory(testInput)
+    expect(m.hbmCapacityGB).toBe(1)
+  })
+
+  it('headroom = hbmCapacity_bytes − total, fits when ≥ 0', () => {
+    // 1 GB = 1_073_741_824 bytes; headroom = 1_073_741_824 − 3440
+    const m = computeMemory(testInput)
+    expect(m.headroom).toBe(1_073_741_824 - 3440)
+    expect(m.fits).toBe(true)
+  })
+
+  it('fits=false and negative headroom on OOM', () => {
+    const bigModel = { ...testInput.model, paramCount: 10_000_000_000 }  // 10B params × 2B = 20GB
+    const m = computeMemory({ ...testInput, model: bigModel })
+    expect(m.fits).toBe(false)
+    expect(m.headroom).toBeLessThan(0)
+  })
 })

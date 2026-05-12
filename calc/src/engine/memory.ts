@@ -1,8 +1,17 @@
-import type { CalcInput, MemoryResult } from './types'
+import type { CalcInput, GpuVariant, MemoryResult } from './types'
 import { bytesOf } from './dtypes'
+
+const BYTES_PER_GB = 1024 ** 3
+
+function findVariant(input: CalcInput): GpuVariant {
+  const v = input.gpu.variants.find(v => v.id === input.gpuVariantId)
+  if (!v) throw new Error(`Variant ${input.gpuVariantId} not in ${input.gpu.id}`)
+  return v
+}
 
 export function computeMemory(input: CalcInput): MemoryResult {
   const { model, quant, workload } = input
+  const variant = findVariant(input)
   const seqlen = workload.promptTokens + workload.outputTokens
 
   const weights = model.paramCount * bytesOf(quant.weights)
@@ -11,14 +20,25 @@ export function computeMemory(input: CalcInput): MemoryResult {
   const kvCachePerRequest = kvPerTokenPerRequest * seqlen
   const kvCacheTotal = kvCachePerRequest * workload.concurrency
 
+  // Coarse: one layer's attention + FFN buffer × small constant.
+  // Assumes FlashAttention-style kernels (no materialized S×S matrix).
+  const activationsPeak =
+    workload.concurrency * workload.promptTokens *
+    (model.hiddenDim + model.intermediateDim) * bytesOf(quant.activations) * 2
+
+  const total = weights + kvCacheTotal + activationsPeak
+  const hbmCapacityBytes = variant.hbmCapacityGB * BYTES_PER_GB
+  const headroom = hbmCapacityBytes - total
+  const fits = headroom >= 0
+
   return {
     weights,
     kvCachePerRequest,
     kvCacheTotal,
-    activationsPeak: 0,
-    total: 0,
-    hbmCapacityGB: 0,
-    headroom: 0,
-    fits: false
+    activationsPeak,
+    total,
+    hbmCapacityGB: variant.hbmCapacityGB,
+    headroom,
+    fits
   }
 }
