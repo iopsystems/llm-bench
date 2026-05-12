@@ -111,8 +111,11 @@
         <tr class="total"><td>Total</td><td>{gb(m.total)} GB</td></tr>
         <tr>
           <td>Headroom</td>
-          <td class:fits={m.fits} class:oom={!m.fits}>
-            {gb(m.headroom)} GB &nbsp; {m.fits ? '✓ fits' : '✗ OOM'}
+          <td>
+            {gb(m.headroom)} GB &nbsp;
+            <span class:fits={m.fits} class:oom={!m.fits}>
+              {m.fits ? '✓ fits' : '✗ OOM'}
+            </span>
           </td>
         </tr>
       </tbody>
@@ -123,14 +126,15 @@
 
 <style>
   .memory-panel { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+  /* No overflow: hidden on container — the Plot.barX clip: true option
+     already trims OOM bars at the plot frame, and we want the tooltip
+     popup (which appears above the bar) to escape the 28px tall canvas. */
   .bar-chart {
-    width: 100%; overflow: hidden;
+    width: 100%;
     border: 1px solid #888; background: #f0f0f0;
   }
   .bar-chart.oom { border-color: #c33; }
-  /* SVG is sized natively to containerWidth via ResizeObserver, so no
-     stretch needed — just display:block to avoid baseline gap. */
-  .bar-chart :global(svg) { display: block; }
+  .bar-chart :global(svg) { display: block; overflow: visible; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
     font-size: 0.85rem; color: #333;
