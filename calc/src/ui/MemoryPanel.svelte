@@ -86,23 +86,24 @@
       // gets truncated by clip:true on the bar mark — the overflow
       // components (or their tail) simply don't render.
       x: { domain: [0, capBytes], axis: null },
-      y: { axis: null, padding: 0 },
+      // Numeric y domain so we can pin rects to y1=0, y2=1 explicitly.
+      y: { domain: [0, 1], axis: null },
       color: {
         domain: Object.keys(PATTERN_IDS),
         range: Object.values(PATTERN_IDS).map(id => `url(#${id})`),
         legend: false
       },
       marks: [
-        Plot.barX(parts, {
-          // Explicit x1/x2 avoids Plot's implicit stack transform — the
-          // first bar's left edge sits at exactly x=0 in both fits and OOM
-          // states (the stack transform was nudging the start by a pixel
-          // when OOM widened the cumulative sum).
-          x1: 'x1', x2: 'x2', y: () => '',
+        Plot.rect(parts, {
+          // Explicit x1/x2/y1/y2 — pure rectangles with no implicit transform
+          // or band-scale insetting. First rect's x1=0 maps to pixel 0 of
+          // the plot area (marginLeft is 0), so the bar's left edge is flush
+          // with the container's inner left in both fits and OOM states.
+          x1: 'x1', x2: 'x2', y1: 0, y2: 1,
           fill: 'component', clip: true,
           insetLeft: 0, insetRight: 0, insetTop: 0, insetBottom: 0,
           tip: {
-            format: { x1: false, x2: false, y: false, fill: false }
+            format: { x1: false, x2: false, y1: false, y2: false, fill: false }
           },
           channels: {
             // Single channel renders as "Weights: 141.10 GB" — component
