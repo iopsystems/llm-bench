@@ -68,4 +68,21 @@ describe('computePrefill', () => {
     const p = computePrefill(input, opPoint, moeMemory)
     expect(p.flops).toBe(6600)
   })
+
+  it('attention term uses attentionDim for MLA (kv_lora + rope, not hidden)', () => {
+    // testModel: layers=2, hiddenDim=4, prompt=10, paramCount=1000.
+    // numHeads=2, headDim=2 → 2×2=4 matches hiddenDim, so non-MLA path unaffected.
+    // MLA with kvLoraRank=10, rope=2 → attentionDim = 12.
+    // MLP: 2 × 1000 × 10 = 20000
+    // Attention: 2 × 2 × 10 × 10 × 12 = 4800 (full attention, no sliding bound)
+    // Total = 24800
+    const mlaModel = {
+      ...testInput.model,
+      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2 }
+    }
+    const input = { ...testInput, model: mlaModel }
+    const mlaMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, mlaMemory)
+    expect(p.flops).toBe(24800)
+  })
 })
