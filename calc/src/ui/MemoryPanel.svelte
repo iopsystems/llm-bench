@@ -60,7 +60,13 @@
   $effect(() => {
     if (!container) return
     container.replaceChildren()
-    if (chart) container.appendChild(chart)
+    if (chart) {
+      // Force the SVG to stretch to the container instead of letterboxing.
+      // Default 'xMidYMid meet' preserves the 640×28 aspect ratio and centers
+      // the bar within the wider container, leaving visible gaps on both sides.
+      chart.setAttribute('preserveAspectRatio', 'none')
+      container.appendChild(chart)
+    }
   })
 </script>
 
