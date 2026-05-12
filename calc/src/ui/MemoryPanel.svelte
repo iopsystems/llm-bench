@@ -95,11 +95,13 @@
 <style>
   .memory-panel { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
   .bar-chart {
-    max-width: 100%; overflow: hidden;
+    width: 100%; overflow: hidden;
     border: 1px solid #888; background: #f0f0f0;
   }
   .bar-chart.oom { border-color: #c33; }
-  .bar-chart :global(svg) { max-width: 100%; height: auto; display: block; }
+  /* Force SVG to fill the container width regardless of its intrinsic 640px;
+     fixed height since the bar visual has no axis to stretch. */
+  .bar-chart :global(svg) { width: 100%; height: 28px; display: block; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
     font-size: 0.85rem; color: #333;
