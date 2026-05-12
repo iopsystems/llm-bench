@@ -109,7 +109,9 @@
     if (data.roofs.length === 0) return null
     return Plot.plot({
       width: 640, height: 380,
-      marginLeft: 70, marginBottom: 50, marginRight: 24, marginTop: 24,
+      // marginLeft bumped from 70 → 100 so longer y-tick labels like
+      // "1.0 PFLOPS/s" fit without clipping.
+      marginLeft: 100, marginBottom: 50, marginRight: 24, marginTop: 24,
       style: PLOT_STYLE,
       x: {
         type: 'log',
@@ -250,7 +252,7 @@
   .plot :global(svg) { max-width: 100%; height: auto; display: inline-block; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
-    margin-top: 0.4rem; padding-left: 70px;
+    margin-top: 0.4rem; padding-left: 100px;
     font-size: 0.85rem; color: #333;
   }
   .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
