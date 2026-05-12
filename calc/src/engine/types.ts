@@ -32,6 +32,10 @@ export type AttentionConfig =
   | { type: 'full' }
   | { type: 'sliding'; window: number }
 
+export type ArchitectureConfig =
+  | { type: 'dense' }
+  | { type: 'moe'; numExperts: number; numExpertsActive: number; activeParamCount: number }
+
 export interface ModelArch {
   id: string
   name: string
@@ -45,6 +49,7 @@ export interface ModelArch {
   vocabSize: number
   paramCount: number
   attention: AttentionConfig
+  architecture: ArchitectureConfig
 }
 
 export interface Quantization {

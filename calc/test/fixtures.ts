@@ -34,7 +34,8 @@ export const testModel: ModelArch = {
   headDim: 2,
   vocabSize: 100,
   paramCount: 1000,
-  attention: { type: 'full' }
+  attention: { type: 'full' },
+  architecture: { type: 'dense' }
 }
 
 export const fp16Quant: Quantization = {
