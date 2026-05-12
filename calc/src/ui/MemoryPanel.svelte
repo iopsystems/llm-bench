@@ -13,20 +13,18 @@
   const GB = 1024 ** 3
   function gb(bytes: number): string { return (bytes / GB).toFixed(2) }
 
-  // Palette deliberately avoids green and orange — those are reserved for the
-  // roofline (green = Achievable tier) and the regime badges (orange = compute-
-  // bound). Stays in blue/purple/slate so memory composition reads as its own
-  // category visually.
+  // Steel blue / light violet / teal — distinct hue family from the roofline
+  // (green Achievable) and regime badges (orange/blue) so the memory panel
+  // reads as its own visual category.
   const COLORS = {
-    Weights: '#4a90e2',
-    'KV cache': '#8e44ad',
-    Activations: '#6b7a8c'
+    Weights: '#4682b4',      // steel blue
+    'KV cache': '#a78bfa',   // light violet
+    Activations: '#26a69a'   // teal
   } as const
 
   const chart = $derived.by(() => {
     if (!$result) return null
     const m = $result.memory
-    const capBytes = m.hbmCapacityGB * GB
     const parts = [
       { component: 'Weights',     bytes: m.weights },
       { component: 'KV cache',    bytes: m.kvCacheTotal },
@@ -37,9 +35,11 @@
       width: containerWidth, height: 28,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0,
       style: PLOT_STYLE,
-      // Container width represents capacity exactly. Overflow on OOM is
-      // clipped here and signaled by the container's red border instead.
-      x: { domain: [0, capBytes], axis: null },
+      // Domain spans the total used memory, so the three bars always render
+      // at the same relative proportions regardless of whether the workload
+      // fits — only the border color (red) signals OOM. Capacity isn't a
+      // visual reference inside the bar; it lives in the surrounding table.
+      x: { domain: [0, m.total], axis: null },
       y: { axis: null, padding: 0 },
       color: {
         domain: Object.keys(COLORS),
