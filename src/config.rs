@@ -541,13 +541,6 @@ impl Config {
                     synthetic.prompt_tokens
                 );
             }
-
-            // If common prefix is enabled but has 0 tokens, warn the user
-            if synthetic.common_prefix_sample_ratio > 0.0 && synthetic.common_prefix_tokens == 0 {
-                anyhow::bail!(
-                    "input.synthetic.common_prefix_tokens must be > 0 when common_prefix_sample_ratio > 0"
-                );
-            }
         }
 
         Ok(())

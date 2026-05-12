@@ -166,14 +166,24 @@ impl SyntheticDataGenerator {
     fn generate_prompt(&self, token_count: usize, index: usize, use_common_prefix: bool) -> String {
         // Determine prefix based on common prefix setting
         let prefix = if use_common_prefix {
+            // Try to use common prefix if it exists and is non-empty
             if let Some(ref common_prefix) = self.common_prefix_text {
-                // Use the shared common prefix
-                common_prefix.clone()
+                if !common_prefix.is_empty() {
+                    common_prefix.clone()
+                } else if self.add_prefix {
+                    // Common prefix is empty, use unique prefix
+                    format!("[synthetic-{}] ", index)
+                } else {
+                    String::new()
+                }
+            } else if self.add_prefix {
+                // No common prefix, use unique prefix
+                format!("[synthetic-{}] ", index)
             } else {
                 String::new()
             }
         } else if self.add_prefix {
-            // Add unique prefix for cache busting
+            // Not using common prefix, add unique prefix for cache busting
             format!("[synthetic-{}] ", index)
         } else {
             String::new()
