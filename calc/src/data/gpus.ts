@@ -203,7 +203,7 @@ export const GPUS: GpuSpec[] = [
           tflops: { fp16: 654, bf16: 708, fp8: 1273 },
           hbmBandwidthGBs: 5300,
           tflopsSources: ['amd-rocm-mafs'],
-          asOf: '2024',
+          asOf: '2025-02',
           notes: 'hipBLASLt GEMM at sustained clocks, 750W; HBM not separately measured (using peak)'
         }
       ]
