@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util'
 import { GPUS } from './data/gpus'
 import { MODELS } from './data/models'
+import { SOURCES } from './data/sources'
 import { calculate } from './engine/calc'
 import type { CalcInput, Dtype, Quantization, Workload } from './engine/types'
 
@@ -109,10 +110,19 @@ function formatTable(input: CalcInput, result: ReturnType<typeof calculate>): st
   out += `\n`
   out += `Memory: weights ${GB(m.weights)} | KV ${GB(m.kvCacheTotal)} | act ${GB(m.activationsPeak)} | total ${GB(m.total)} | ${fits}\n`
   for (const [opId, perf] of Object.entries(result.perf)) {
-    out += `[${opId}]\n`
+    const cites = (perf.sources ?? [])
+      .map((k, i) => ({ n: i + 1, src: SOURCES[k as keyof typeof SOURCES] }))
+      .filter(c => c.src !== undefined) as { n: number; src: { title: string; url: string } }[]
+    const marks = cites.map(c => `[${c.n}]`).join('')
+    out += `[${opId}]${marks ? ' ' + marks : ''}\n`
     out += `  Prefill: TTFT ${ms(perf.ttftS)}  (${perf.prefill.regime}-bound)\n`
     out += `  Decode:  ${ms(perf.decode.timePerTokenS)}/tok  (${perf.decode.regime}-bound)\n`
     out += `  Rates:   in ${rate(perf.inputTokenRate)}, out ${rate(perf.outputTokenRate)}\n`
+    if (cites.length > 0) {
+      const meta = [perf.asOf && `as of ${perf.asOf}`, perf.notes].filter(Boolean).join(' · ')
+      if (meta) out += `  ${meta}\n`
+      for (const c of cites) out += `  [${c.n}] ${c.src.title} — ${c.src.url}\n`
+    }
   }
   return out
 }

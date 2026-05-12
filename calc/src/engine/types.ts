@@ -5,6 +5,10 @@ export interface GpuOperatingPoint {
   label: string
   tflops: Partial<Record<Dtype, number>>
   hbmBandwidthGBs: number
+  // Provenance — primarily for non-peak tiers. Keys reference src/data/sources.ts.
+  sources?: string[]
+  asOf?: string
+  notes?: string
 }
 
 export interface GpuVariant {
@@ -74,6 +78,10 @@ export interface PerfTier {
   ttftS: number
   inputTokenRate: number
   outputTokenRate: number
+  // Echoed from the source operating point so consumers can show provenance.
+  sources?: string[]
+  asOf?: string
+  notes?: string
 }
 
 export interface DerivationStep {

@@ -51,7 +51,10 @@ export function calculate(input: CalcInput): CalcResult {
       prefill, decode,
       ttftS: prefill.timeS,
       inputTokenRate: input.workload.promptTokens / prefill.timeS,
-      outputTokenRate: decode.aggregateTokensPerS
+      outputTokenRate: decode.aggregateTokensPerS,
+      ...(op.sources && { sources: op.sources }),
+      ...(op.asOf && { asOf: op.asOf }),
+      ...(op.notes && { notes: op.notes })
     }
     d.add(
       `prefill time @ ${op.id}`,
