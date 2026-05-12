@@ -8,32 +8,37 @@ export const GPUS: GpuSpec[] = [
     variants: [
       {
         id: 'sxm-80', label: 'SXM 80GB', hbmCapacityGB: 80,
-        operatingPoints: [
-          {
-            id: 'peak', label: 'Peak',
-            tflops: { fp16: 989, bf16: 989, fp8: 1979, int8: 1979 },
-            hbmBandwidthGBs: 3350
-          },
-          {
-            id: 'achievable', label: 'Achievable',
-            // Measured cuBLAS GEMM throughput and HBM bandwidth from
-            // microbenchmark papers; ~77% of FP16 peak, ~90% of HBM peak.
-            tflops: { fp16: 756, bf16: 756, fp8: 1513, int8: 1513 },
-            hbmBandwidthGBs: 3000,
-            tflopsSources: ['arxiv-2402-13499', 'arxiv-2501-12084'],
-            bandwidthSources: ['arxiv-2402-13499', 'arxiv-2501-12084'],
-            asOf: '2025-01',
-            notes: 'cuBLAS 12.x GEMM sweep over LLM-shaped matrices'
-          }
-        ]
+        operatingPoints: [{
+          id: 'peak', label: 'Peak',
+          tflops: { fp16: 989, bf16: 989, fp8: 1979, int8: 1979 },
+          hbmBandwidthGBs: 3350
+        }]
+        // No achievable tier yet — published microbenchmark papers we surveyed
+        // (arxiv-2402-13499, arxiv-2501-12084) all tested H800 PCIe, not H100
+        // SXM5. We don't have a defensible H100 SXM5 measurement source yet.
       },
       {
         id: 'pcie-80', label: 'PCIe 80GB', hbmCapacityGB: 80,
-        operatingPoints: [{
-          id: 'peak', label: 'Peak',
-          tflops: { fp16: 756, bf16: 756, fp8: 1513, int8: 1513 },
-          hbmBandwidthGBs: 2000
-        }]
+        operatingPoints: [
+          {
+            id: 'peak', label: 'Peak',
+            tflops: { fp16: 756, bf16: 756, fp8: 1513, int8: 1513 },
+            hbmBandwidthGBs: 2000
+          },
+          {
+            id: 'achievable', label: 'Achievable',
+            // Microbenchmark measured on H800 PCIe (H100 PCIe export variant).
+            // wgmma dense FP16 ~703-729 TFLOPS, FP8/INT8 ~1440 TFLOPS.
+            // Global memory test ~1861 GB/s on H800's 2039 GB/s HBM2e;
+            // proportionally ~91% of H100 PCIe's 2000 GB/s peak.
+            tflops: { fp16: 729, bf16: 729, fp8: 1448, int8: 1448 },
+            hbmBandwidthGBs: 1820,
+            tflopsSources: ['arxiv-2501-12084'],
+            bandwidthSources: ['arxiv-2501-12084'],
+            asOf: '2025-01',
+            notes: 'Measured on H800 PCIe (same silicon as H100 PCIe, export-restricted NVLink); wgmma + global memory tests'
+          }
+        ]
       },
       {
         id: 'pcie-94', label: 'PCIe 94GB', hbmCapacityGB: 94,
@@ -183,11 +188,25 @@ export const GPUS: GpuSpec[] = [
     id: 'mi300x', name: 'AMD Instinct MI300X', vendor: 'AMD', family: 'CDNA3',
     variants: [{
       id: 'oam-192', label: 'OAM 192GB', hbmCapacityGB: 192,
-      operatingPoints: [{
-        id: 'peak', label: 'Peak',
-        tflops: { fp16: 1307, bf16: 1307, fp8: 2615, int8: 2615 },
-        hbmBandwidthGBs: 5300
-      }]
+      operatingPoints: [
+        {
+          id: 'peak', label: 'Peak',
+          tflops: { fp16: 1307, bf16: 1307, fp8: 2615, int8: 2615 },
+          hbmBandwidthGBs: 5300
+        },
+        {
+          id: 'achievable', label: 'Achievable',
+          // AMD's own max-achievable FLOPs measurement (750W variant, ROCm 6.3.0,
+          // hipBLASLt GEMM at 4096×4864×32896). Sustained clocks (1115-1230 MHz),
+          // not boost — closer to what serving workloads actually deliver.
+          // HBM not separately measured in this source; left at peak.
+          tflops: { fp16: 654, bf16: 708, fp8: 1273 },
+          hbmBandwidthGBs: 5300,
+          tflopsSources: ['amd-rocm-mafs'],
+          asOf: '2024',
+          notes: 'hipBLASLt GEMM at sustained clocks, 750W; HBM not separately measured (using peak)'
+        }
+      ]
     }]
   },
 
