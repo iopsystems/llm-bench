@@ -48,4 +48,24 @@ describe('computeDecode', () => {
     const d = computeDecode(input, opPoint, slidingMemory)
     expect(d.flopsPerStep).toBe(4256)
   })
+
+  it('flopsPerStep MLP term uses activeParams for MoE', () => {
+    // testModel: paramCount=1000, hiddenDim=4, layers=2, concurrency=2.
+    // avgSeqlen = 10 + 5/2 = 12.5.
+    // For MoE with activeParamCount=250:
+    //   (2 × 250 + 2 × 2 × 12.5 × 4) × 2 = (500 + 200) × 2 = 1400
+    const moeModel = {
+      ...testInput.model,
+      architecture: {
+        type: 'moe' as const,
+        numExperts: 4,
+        numExpertsActive: 1,
+        activeParamCount: 250
+      }
+    }
+    const input = { ...testInput, model: moeModel }
+    const moeMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, moeMemory)
+    expect(d.flopsPerStep).toBe(1400)
+  })
 })
