@@ -132,9 +132,11 @@ total_requests = 100
 #   - max_tokens in [endpoint] is required for synthetic mode to control maximum output length
 #   - prompt_tokens controls the prompt length
 #   - prompt_tokens_stdev, prompt_tokens_min, prompt_tokens_max (optional) control variability and limits of prompt lengths
-#   - add_prefix (default: true) adds a unique prefix "[synthetic-{index}] " to each prompt
-#   - common_prefix_sample_ratio (default: 0.0) controls the ratio of samples that share a common prefix (0.0-1.0)
-#     Used to test prefix caching effectiveness. 0.0 = all unique prefixes, 1.0 = all share common prefix
+#   - add_prefix (default: true) adds a unique prefix "[synthetic-{index}] " to each generated prompt. Please notice that llm-perf
+#     also adds a unique cache-busting prefix "[req-{index}] " to every prompt after loading the input prompts by default, so
+#     set input.disable_cache_busting = true to disable the cache-busting prefix added by llm-perf.
+#   - common_prefix_sample_ratio (default: 0.0) controls the ratio of generated prompts that have a common prefix. When testing the prefix cache effectiveness,
+#     it's essential to set [input.disable_cache_busting] = true to avoid adding unique cache-busting prefixes to each prompt.
 #   - common_prefix_tokens (default: 0) controls the token length of the shared common prefix
 #     If equals prompt_tokens, the whole prompt is the common prefix
 #   - sample_size controls how many synthetic prompts to generate (default: 10000)
@@ -148,12 +150,22 @@ total_requests = 100
 #   prompt_tokens = 512
 #
 #   example that generates prompts with 50% sharing a 256-token common prefix to test prefix caching:
+#   [input]
+#   file = "synthetic"
+#   disable_cache_busting = true
 #   [input.synthetic]
 #   prompt_tokens = 512
 #   common_prefix_sample_ratio = 0.5
 #   common_prefix_tokens = 256
 
 file = "examples/prompts/openorca-10000.jsonl"
+
+# Disable Cache-Busting Prefix (Optional)
+# By default, llm-perf adds a unique [req-{index}] prefix to each prompt to ensure independent benchmarking.
+# Set this to true to disable the cache-busting prefix, allowing server-side prefix caching to work.
+# This is essential when testing prefix caching effectiveness (e.g., with vLLM's automatic prefix caching).
+# Default: false
+# disable_cache_busting = false
 
 # Seed for deterministic shuffling (recommended for realistic but reproducible testing)
 # Same seed always produces the same prompt ordering across runs.

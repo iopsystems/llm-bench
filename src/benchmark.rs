@@ -503,6 +503,7 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
+                let disable_cache_busting = self.config.input.disable_cache_busting;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -518,6 +519,7 @@ impl BenchmarkRunner {
                         idx,
                         true,
                         default_max_tokens,
+                        disable_cache_busting,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -551,6 +553,7 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
+                let disable_cache_busting = self.config.input.disable_cache_busting;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -566,6 +569,7 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
+                        disable_cache_busting,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -594,6 +598,7 @@ impl BenchmarkRunner {
                     // Capture system_prompt for this closure
                     let system_prompt = Arc::clone(&self.system_prompt);
                     let default_max_tokens = self.config.endpoint.max_tokens;
+                    let disable_cache_busting = self.config.input.disable_cache_busting;
 
                     let handle = tokio::spawn(async move {
                         while Instant::now() < warmup_deadline {
@@ -613,6 +618,7 @@ impl BenchmarkRunner {
                                 idx,
                                 true,
                                 default_max_tokens,
+                                disable_cache_busting,
                             )
                             .await;
                             warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -653,6 +659,7 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
+                let disable_cache_busting = self.config.input.disable_cache_busting;
 
                 let handle = tokio::spawn(async move {
                     while !should_stop.load(Ordering::Relaxed) {
@@ -691,6 +698,7 @@ impl BenchmarkRunner {
                             idx,
                             false,
                             default_max_tokens,
+                            disable_cache_busting,
                         );
                         match tokio::time::timeout(remaining, request_future).await {
                             Ok(_) => {
@@ -784,6 +792,7 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
+                let disable_cache_busting = self.config.input.disable_cache_busting;
 
                 let handle = tokio::spawn(async move {
                     while Instant::now() < warmup_deadline {
@@ -801,6 +810,7 @@ impl BenchmarkRunner {
                             idx,
                             true,
                             default_max_tokens,
+                            disable_cache_busting,
                         )
                         .await;
                     }
@@ -841,6 +851,7 @@ impl BenchmarkRunner {
             // Capture system_prompt for this closure
             let system_prompt = Arc::clone(&self.system_prompt);
             let default_max_tokens = self.config.endpoint.max_tokens;
+            let disable_cache_busting = self.config.input.disable_cache_busting;
 
             handles.push(tokio::spawn(async move {
                 loop {
@@ -868,6 +879,7 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
+                        disable_cache_busting,
                     )
                     .await;
                 }
@@ -979,6 +991,7 @@ impl BenchmarkRunner {
                 let warmup_completed = Arc::clone(&warmup_completed);
                 let system_prompt_clone = Arc::clone(&system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
+                let disable_cache_busting = self.config.input.disable_cache_busting;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -994,6 +1007,7 @@ impl BenchmarkRunner {
                         idx,
                         true,
                         default_max_tokens,
+                        disable_cache_busting,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1028,6 +1042,7 @@ impl BenchmarkRunner {
                 let warmup_completed = Arc::clone(&warmup_completed);
                 let system_prompt_closure = Arc::clone(&system_prompt_clone);
                 let default_max_tokens = self.config.endpoint.max_tokens;
+                let disable_cache_busting = self.config.input.disable_cache_busting;
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -1043,6 +1058,7 @@ impl BenchmarkRunner {
                         idx,
                         true,
                         default_max_tokens,
+                        disable_cache_busting,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1106,6 +1122,7 @@ impl BenchmarkRunner {
             let request_timeout = remaining;
             let system_prompt_for_closure = Arc::clone(&system_prompt);
             let default_max_tokens = self.config.endpoint.max_tokens;
+            let disable_cache_busting = self.config.input.disable_cache_busting;
 
             let handle = tokio::spawn(async move {
                 let workload = &workloads[workload_idx];
@@ -1123,6 +1140,7 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
+                        disable_cache_busting,
                     );
                     match timeout(timeout_duration, request_future).await {
                         Ok(result) => {
@@ -1147,6 +1165,7 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
+                        disable_cache_busting,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -1213,6 +1232,7 @@ impl BenchmarkRunner {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn execute_workload(
         system_prompt: &Option<String>,
         client: Arc<OpenAIClient>,
@@ -1221,6 +1241,7 @@ impl BenchmarkRunner {
         index: usize,
         is_warmup: bool,
         default_max_tokens: Option<u32>,
+        disable_cache_busting: bool,
     ) -> Result<()> {
         match workload {
             Workload::SingleTurn(prompt) => {
@@ -1231,6 +1252,7 @@ impl BenchmarkRunner {
                     index,
                     is_warmup,
                     default_max_tokens,
+                    disable_cache_busting,
                 )
                 .await
             }
@@ -1246,6 +1268,7 @@ impl BenchmarkRunner {
                     index,
                     is_warmup,
                     default_max_tokens,
+                    disable_cache_busting,
                 )
                 .await
             }
@@ -1259,6 +1282,7 @@ impl BenchmarkRunner {
         index: usize,
         is_warmup: bool,
         default_max_tokens: Option<u32>,
+        disable_cache_busting: bool,
     ) -> Result<()> {
         debug!(
             "Executing conversation {} ({} turns, warmup: {})",
@@ -1288,7 +1312,8 @@ impl BenchmarkRunner {
         for (turn_idx, user_turn) in conversation.user_turns.iter().enumerate() {
             // Cache bust only the first user message to prevent cross-conversation
             // cache hits, but allow prefix caching within the conversation
-            let content = if turn_idx == 0 {
+            // (unless cache-busting is disabled)
+            let content = if !disable_cache_busting && turn_idx == 0 {
                 format!("[req-{}] {}", index, user_turn)
             } else {
                 user_turn.clone()
@@ -1455,6 +1480,7 @@ impl BenchmarkRunner {
         index: usize,
         is_warmup: bool,
         default_max_tokens: Option<u32>,
+        disable_cache_busting: bool,
     ) -> Result<()> {
         debug!("Executing request {} (warmup: {})", index, is_warmup);
 
@@ -1463,9 +1489,14 @@ impl BenchmarkRunner {
         let guard = InflightGuard::new(!is_warmup);
 
         // Add per-request cache-busting to ensure every request is unique
-        let cache_bust_prompt = format!("[req-{}] {}", index, prompt.prompt);
+        // (unless disabled for prefix caching tests)
+        let final_prompt = if disable_cache_busting {
+            prompt.prompt.clone()
+        } else {
+            format!("[req-{}] {}", index, prompt.prompt)
+        };
         let max_tokens = resolve_max_tokens(default_max_tokens, prompt.max_tokens);
-        let request = client.create_request(&cache_bust_prompt, max_tokens, None, None);
+        let request = client.create_request(&final_prompt, max_tokens, None, None);
 
         match client.chat_completion_stream(request).await {
             Ok(mut stream) => {

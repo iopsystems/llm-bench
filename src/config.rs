@@ -146,6 +146,12 @@ pub struct InputConfig {
     /// random prompts with controlled token distributions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub synthetic: Option<SyntheticConfig>,
+    /// Disable the automatic [req-{index}] cache-busting prefix added to each prompt.
+    /// When true, prompts are sent as-is, allowing prefix caching to work.
+    /// When false (default), each prompt gets a unique prefix for independent benchmarking.
+    /// Default: false
+    #[serde(default)]
+    pub disable_cache_busting: bool,
 }
 
 impl InputConfig {
