@@ -146,7 +146,13 @@
     width: 14px; height: 10px; border-radius: 2px;
     display: inline-block;
   }
-  table { font-variant-numeric: tabular-nums; border-collapse: collapse; }
+  /* align-self overrides the parent flex's default align-items:stretch so
+     the table sizes to content instead of filling the panel width, then
+     centers horizontally within the panel. */
+  table {
+    font-variant-numeric: tabular-nums; border-collapse: collapse;
+    align-self: center;
+  }
   td:first-child { padding-right: 1rem; }
   /* Memory size column: right-aligned so digits stack to a common edge. */
   td:last-child { text-align: right; }
