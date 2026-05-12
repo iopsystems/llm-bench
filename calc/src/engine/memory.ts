@@ -40,8 +40,7 @@ export function computeMemory(input: CalcInput): MemoryResult {
   const seqlen = workload.promptTokens + workload.outputTokens
 
   const weights = model.paramCount * bytesOf(quant.weights)
-  const kvPerTokenPerRequest =
-    2 * model.layers * model.numKvHeads * model.headDim * bytesOf(quant.kv)
+  const kvPerTokenPerRequest = kvBytesPerToken(model, quant.kv)
   const effSeqlen = effectiveAttentionLength(seqlen, model.attention)
   const kvCachePerRequest = kvPerTokenPerRequest * effSeqlen
   const kvCacheTotal = kvCachePerRequest * workload.concurrency

@@ -67,4 +67,19 @@ describe('computeMemory', () => {
     // × concurrency 2 = 256 bytes
     expect(m.kvCacheTotal).toBe(256)
   })
+
+  it('kvCachePerRequest uses MLA formula for MLA models', () => {
+    // testModel: layers=2, prompt+output=15.
+    // MLA with kvLoraRank=10, rope=2: layers × (10+2) × 2 (fp16) = 48 bytes/token.
+    // × 15 tokens = 720 bytes per request.
+    // × concurrency 2 = 1440 bytes total.
+    const mlaModel = {
+      ...testInput.model,
+      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2 }
+    }
+    const input = { ...testInput, model: mlaModel }
+    const m = computeMemory(input)
+    expect(m.kvCachePerRequest).toBe(720)
+    expect(m.kvCacheTotal).toBe(1440)
+  })
 })
