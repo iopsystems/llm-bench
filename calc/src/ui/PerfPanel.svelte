@@ -146,10 +146,11 @@
     padding-bottom: 0.15rem;
   }
   /* Sub-headers (Prefill / Decode) are smaller and less heavy than the
-     primary header row. */
+     primary header row. Force right-align — :not(:first-child) above
+     wouldn't apply to "Prefill" since it's the first cell in its own row. */
   th.sub-header {
     font-weight: 500; font-size: 0.85em; color: #666;
-    padding-top: 0.15rem;
+    padding-top: 0.15rem; text-align: right;
   }
   /* Output columns (everything except the operating-assumption label):
      right-align so numbers and labels stack to a common edge. */
