@@ -32,12 +32,14 @@
 
     return Plot.plot({
       width: 640, height: 28,
-      marginLeft: 0, marginRight: 0, marginTop: 2, marginBottom: 2,
+      marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0,
       x: {
         domain: [0, xMax],
         axis: null
       },
-      y: { axis: null },
+      // padding: 0 removes the default band-scale gap around the bar so the
+      // rendered rect fills the full container height edge-to-edge.
+      y: { axis: null, padding: 0 },
       color: {
         domain: Object.keys(COLORS),
         range: Object.values(COLORS),
