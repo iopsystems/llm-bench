@@ -208,4 +208,16 @@
     padding: 0.15rem 0.5rem; border-radius: 0.2rem; font-weight: 600;
   }
   .caveat { font-size: 0.8rem; color: #666; font-style: italic; }
+
+  @media (max-width: 640px) {
+    /* Tighter spacing and smaller font on narrow screens. The dangling
+       status badge can wrap below the headroom number rather than
+       overflow the table to the right. */
+    td:first-child { padding-right: 1rem; }
+    td:last-child { padding-left: 0.5rem; }
+    .status-badge {
+      position: static; transform: none;
+      display: inline-block; margin-left: 0.4rem;
+    }
+  }
 </style>

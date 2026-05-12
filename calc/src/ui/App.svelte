@@ -32,6 +32,10 @@
     background: #fafafa; color: #222;
   }
   main { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
+  @media (max-width: 640px) {
+    main { padding: 0.75rem; }
+    h1 { font-size: 1.4rem; }
+  }
   header { margin-bottom: 1.5rem; }
   h1 { margin: 0 0 0.25rem; }
   header p { margin: 0; color: #666; }
