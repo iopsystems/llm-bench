@@ -132,7 +132,7 @@
   .perf-panel { margin-top: 1rem; }
   table { font-variant-numeric: tabular-nums; border-collapse: collapse; }
   th, td {
-    padding: 0.25rem 0.75rem; text-align: left;
+    padding: 0.2rem 0.5rem; text-align: left;
     border-bottom: 1px solid #eee;
   }
   /* Values stay single-line so numbers don't break mid-unit. */

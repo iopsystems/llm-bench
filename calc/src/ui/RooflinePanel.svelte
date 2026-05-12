@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Plot from '@observablehq/plot'
   import { input, result } from './stores'
+  import { PLOT_STYLE } from './plotDefaults'
 
   let container: HTMLDivElement | undefined = $state(undefined)
 
@@ -109,6 +110,7 @@
     return Plot.plot({
       width: 640, height: 380,
       marginLeft: 70, marginBottom: 50, marginRight: 24, marginTop: 24,
+      style: PLOT_STYLE,
       x: {
         type: 'log',
         domain: [data.xMin, data.xMax],
