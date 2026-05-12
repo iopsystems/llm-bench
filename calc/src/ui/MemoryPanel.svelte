@@ -179,9 +179,11 @@
      already trims OOM bars at the plot frame, and we want the tooltip
      popup (which appears above the bar) to escape the 28px tall canvas. */
   .bar-chart {
-    width: 100%;
-    border: 1px solid #888; background: #f0f0f0;
+    width: 100%; box-sizing: border-box;
+    border: 2px solid #888; background: #f0f0f0;
   }
+  /* OOM only changes color — width/thickness stays put so the box doesn't
+     visibly grow. */
   .bar-chart.oom { border-color: #c33; }
   .bar-chart :global(svg) { display: block; overflow: visible; }
   .legend {
