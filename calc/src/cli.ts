@@ -129,7 +129,8 @@ function formatTable(input: CalcInput, result: ReturnType<typeof calculate>): st
     out += `[${opId}]${allMarks ? ' ' + allMarks : ''}\n`
     out += `  Prefill: TTFT ${ms(perf.ttftS)}  (${perf.prefill.regime}-bound)\n`
     out += `  Decode:  ${ms(perf.decode.timePerTokenS)}/tok  (${perf.decode.regime}-bound)\n`
-    out += `  Rates:   in ${rate(perf.inputTokenRate)}, out ${rate(perf.outputTokenRate)}\n`
+    const perStream = 1 / perf.decode.timePerTokenS
+    out += `  Rates:   in ${rate(perf.inputTokenRate)}, out ${rate(perStream)}/stream · ${rate(perf.outputTokenRate)} total\n`
     if (refs.length > 0) {
       const meta = [perf.asOf && `as of ${perf.asOf}`, perf.notes].filter(Boolean).join(' · ')
       if (meta) out += `  ${meta}\n`

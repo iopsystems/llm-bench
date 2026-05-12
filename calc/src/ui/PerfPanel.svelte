@@ -63,11 +63,13 @@
           <th colspan="2" class="group-header">Bottleneck</th>
           <th rowspan="2">Decode time / tok</th>
           <th rowspan="2">Input tok/s</th>
-          <th rowspan="2">Output tok/s (aggregate)</th>
+          <th colspan="2" class="group-header">Output tok/s</th>
         </tr>
         <tr>
           <th class="sub-header">Prefill</th>
           <th class="sub-header">Decode</th>
+          <th class="sub-header">per stream</th>
+          <th class="sub-header">total</th>
         </tr>
       </thead>
       <tbody>
@@ -83,6 +85,7 @@
             <td><span class="regime {p.decode.regime}">{p.decode.regime}</span></td>
             <td>{ms(p.decode.timePerTokenS)}</td>
             <td>{rate(p.inputTokenRate)}</td>
+            <td>{rate(1 / p.decode.timePerTokenS)}</td>
             <td>{rate(p.outputTokenRate)}</td>
           </tr>
         {/each}
