@@ -43,6 +43,10 @@
         Plot.barX(parts, {
           x: 'bytes', y: () => '',
           fill: 'component', clip: true,
+          // Force zero inset so the first bar's left edge sits flush with
+          // the plot area's left edge (== container's left edge after
+          // marginLeft: 0). Plot otherwise adds half-pixel insets.
+          insetLeft: 0, insetRight: 0, insetTop: 0, insetBottom: 0,
           tip: { format: { x: false, y: false, fill: false } },
           channels: {
             Component: { value: 'component', label: 'Component' },

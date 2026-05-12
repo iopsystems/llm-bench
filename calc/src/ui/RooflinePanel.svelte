@@ -28,7 +28,7 @@
 
   const data = $derived.by(() => {
     const empty = { roofs: [] as RoofRow[], points: [] as PointRow[],
-                    gaps: [] as GapRow[],
+                    gaps: [] as GapRow[], ridge: 1,
                     xMin: 0.1, xMax: 1000, yMin: 1e10, yMax: 1e15 }
     if (!$input || !$result) return empty
     const variant = $input.gpu.variants.find(v => v.id === $input.gpuVariantId)
@@ -89,7 +89,10 @@
     const xMax = Math.max(...ais) * 3
     const yMin = Math.min(...perfs) / 5
     const yMax = Math.max(...perfs) * 2
-    return { roofs, points, gaps, xMin, xMax, yMin, yMax }
+    // Theoretical ridge — splits memory-bound (AI < ridge) from compute-bound
+    // (AI > ridge). Used by the background shading.
+    const ridge = peakFlops / peakBw
+    return { roofs, points, gaps, ridge, xMin, xMax, yMin, yMax }
   })
 
   function fmtPerf(v: number): string {
@@ -135,6 +138,18 @@
         range: ['square', 'circle']
       },
       marks: [
+        // Background shading by regime — drawn first so it sits behind the
+        // rooflines and markers. Tints reuse the regime-badge palette
+        // (light blue for memory, light orange for compute) so the visual
+        // language is consistent between the chart and the perf table.
+        Plot.rect([
+          { x1: data.xMin, x2: data.ridge, y1: data.yMin, y2: data.yMax }
+        ], { x1: 'x1', x2: 'x2', y1: 'y1', y2: 'y2',
+             fill: '#c8dcfd', fillOpacity: 0.25, stroke: null, clip: true }),
+        Plot.rect([
+          { x1: data.ridge, x2: data.xMax, y1: data.yMin, y2: data.yMax }
+        ], { x1: 'x1', x2: 'x2', y1: 'y1', y2: 'y2',
+             fill: '#fde6c8', fillOpacity: 0.25, stroke: null, clip: true }),
         // Theoretical-peak roofline (solid). The roof anchors extend well
         // beyond the visible domain (so the rising/flat segments span the
         // whole plot regardless of where the data falls); clip: true trims
