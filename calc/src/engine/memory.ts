@@ -1,4 +1,4 @@
-import type { AttentionConfig, CalcInput, GpuVariant, MemoryResult, ModelArch } from './types'
+import type { AttentionConfig, CalcInput, Dtype, GpuVariant, MemoryResult, ModelArch } from './types'
 import { bytesOf } from './dtypes'
 
 const BYTES_PER_GB = 1024 ** 3
@@ -12,6 +12,20 @@ export function activeParams(model: ModelArch): number {
   return model.architecture.type === 'moe'
     ? model.architecture.activeParamCount
     : model.paramCount
+}
+
+export function kvBytesPerToken(model: ModelArch, kvDtype: Dtype): number {
+  const att = model.attention
+  if (att.type === 'mla') {
+    return model.layers * (att.kvLoraRank + att.qkRopeHeadDim) * bytesOf(kvDtype)
+  }
+  return 2 * model.layers * model.numKvHeads * model.headDim * bytesOf(kvDtype)
+}
+
+export function attentionDim(model: ModelArch): number {
+  const att = model.attention
+  if (att.type === 'mla') return att.kvLoraRank + att.qkRopeHeadDim
+  return model.numHeads * model.headDim
 }
 
 function findVariant(input: CalcInput): GpuVariant {
