@@ -85,9 +85,9 @@
       // gray background. When OOM, the stack extends past the right edge and
       // gets truncated by clip:true on the bar mark — the overflow
       // components (or their tail) simply don't render.
-      x: { domain: [0, capBytes], axis: null },
+      x: { domain: [0, capBytes], axis: null, insetLeft: 0, insetRight: 0 },
       // Numeric y domain so we can pin rects to y1=0, y2=1 explicitly.
-      y: { domain: [0, 1], axis: null },
+      y: { domain: [0, 1], axis: null, insetTop: 0, insetBottom: 0 },
       color: {
         domain: Object.keys(PATTERN_IDS),
         range: Object.values(PATTERN_IDS).map(id => `url(#${id})`),
