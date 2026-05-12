@@ -26,19 +26,13 @@
       { component: 'KV cache',    bytes: m.kvCacheTotal },
       { component: 'Activations', bytes: m.activationsPeak }
     ]
-    // Domain extends to whichever is larger so the OOM case visibly overshoots
-    // the capacity line.
-    const xMax = Math.max(capBytes, m.total) * 1.02
 
     return Plot.plot({
       width: 640, height: 28,
       marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0,
-      x: {
-        domain: [0, xMax],
-        axis: null
-      },
-      // padding: 0 removes the default band-scale gap around the bar so the
-      // rendered rect fills the full container height edge-to-edge.
+      // Container width represents capacity exactly. Overflow on OOM is
+      // clipped here and signaled by the container's red border instead.
+      x: { domain: [0, capBytes], axis: null },
       y: { axis: null, padding: 0 },
       color: {
         domain: Object.keys(COLORS),
@@ -48,24 +42,12 @@
       marks: [
         Plot.barX(parts, {
           x: 'bytes', y: () => '',
-          fill: 'component',
-          tip: {
-            format: {
-              x: false, y: false, fill: false
-            }
-          },
+          fill: 'component', clip: true,
+          tip: { format: { x: false, y: false, fill: false } },
           channels: {
             Component: { value: 'component', label: 'Component' },
             Size: { value: 'bytes', label: 'Size' }
           }
-        }),
-        // Format the tooltip's Size channel as human-readable GB.
-        // (Plot's channels above use the raw byte value; the format
-        // option below renders it with units.)
-        Plot.ruleX([m.hbmCapacityGB * GB], {
-          stroke: m.fits ? '#666' : '#c33',
-          strokeWidth: 1.5,
-          strokeDasharray: '4 3'
         })
       ]
     })
@@ -83,7 +65,7 @@
   {@const cap = m.hbmCapacityGB * GB}
   <section class="memory-panel">
     <h3>Memory budget — {gb(cap)} GB</h3>
-    <div bind:this={container} class="bar-chart"></div>
+    <div bind:this={container} class="bar-chart" class:oom={!m.fits}></div>
     <div class="legend">
       {#each Object.entries(COLORS) as [name, color]}
         <span class="entry">
@@ -91,10 +73,6 @@
           <span>{name}</span>
         </span>
       {/each}
-      <span class="entry">
-        <span class="capacity-line"></span>
-        <span>Capacity</span>
-      </span>
     </div>
     <table>
       <tbody>
@@ -117,9 +95,10 @@
 <style>
   .memory-panel { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
   .bar-chart {
-    max-width: 100%; overflow-x: auto;
+    max-width: 100%; overflow: hidden;
     border: 1px solid #888; background: #f0f0f0;
   }
+  .bar-chart.oom { border-color: #c33; }
   .bar-chart :global(svg) { max-width: 100%; height: auto; display: block; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
@@ -128,10 +107,6 @@
   .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
   .swatch {
     width: 14px; height: 10px; border-radius: 2px;
-    display: inline-block;
-  }
-  .capacity-line {
-    width: 18px; height: 0; border-top: 1.5px dashed #666;
     display: inline-block;
   }
   table { font-variant-numeric: tabular-nums; }
