@@ -149,6 +149,8 @@
   }
   table { font-variant-numeric: tabular-nums; border-collapse: collapse; }
   td:first-child { padding-right: 1rem; }
+  /* Memory size column: right-aligned so digits stack to a common edge. */
+  td:last-child { text-align: right; }
   /* Divider above Total separates the breakdown from the summed totals. */
   tr.total td { border-top: 1px solid #ccc; padding-top: 0.3rem; }
   tr.total { font-weight: bold; }
