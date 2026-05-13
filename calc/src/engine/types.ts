@@ -45,6 +45,19 @@ export type AttentionConfig =
       vHeadDim: number;
       topK: number
     }
+  | { type: 'linear-mla-hybrid';
+      // Inner MLA configuration (for the full-attention layers)
+      kvLoraRank: number;
+      qkRopeHeadDim: number;
+      qkNopeHeadDim: number;
+      vHeadDim: number;
+      // Per-layer counts (must sum to model.layers)
+      numLinearLayers: number;
+      numFullLayers: number;
+      // Linear-attention geometry (state size = numLinearHeads × linearHeadDim² per layer)
+      numLinearHeads: number;
+      linearHeadDim: number
+    }
 
 export type ArchitectureConfig =
   | { type: 'dense' }
