@@ -14,12 +14,12 @@ export function activeParams(model: ModelArch): number {
     : model.paramCount
 }
 
-export function kvBytesPerToken(model: ModelArch, kvDtype: Dtype): number {
+export function kvBytesPerTokenPerLayer(model: ModelArch, kvDtype: Dtype): number {
   const att = model.attention
   if (att.type === 'mla') {
-    return model.layers * (att.kvLoraRank + att.qkRopeHeadDim) * bytesOf(kvDtype)
+    return (att.kvLoraRank + att.qkRopeHeadDim) * bytesOf(kvDtype)
   }
-  return 2 * model.layers * model.numKvHeads * model.headDim * bytesOf(kvDtype)
+  return 2 * model.numKvHeads * model.headDim * bytesOf(kvDtype)
 }
 
 export function attentionDim(model: ModelArch): number {
@@ -56,9 +56,9 @@ export function computeMemory(input: CalcInput): MemoryResult {
   const seqlen = workload.promptTokens + workload.outputTokens
 
   const weights = model.paramCount * bytesOf(quant.weights)
-  const kvPerTokenPerRequest = kvBytesPerToken(model, quant.kv)
-  const effSeqlen = effectiveAttentionLength(seqlen, model.attention)
-  const kvCachePerRequest = kvPerTokenPerRequest * effSeqlen
+  const kvPerLayerPerToken = kvBytesPerTokenPerLayer(model, quant.kv)
+  const attendedSeqlen = attendedSeqlenSummedOverLayers(model, seqlen)
+  const kvCachePerRequest = kvPerLayerPerToken * attendedSeqlen
   const kvCacheTotal = kvCachePerRequest * workload.concurrency
 
   // Coarse: one layer's attention + FFN buffer × small constant.

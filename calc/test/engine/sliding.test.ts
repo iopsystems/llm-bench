@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   effectiveAttentionLength,
   activeParams,
-  kvBytesPerToken,
+  kvBytesPerTokenPerLayer,
   attentionDim,
   attendedSeqlenSummedOverLayers
 } from '../../src/engine/memory'
@@ -56,7 +56,7 @@ describe('activeParams', () => {
   })
 })
 
-describe('kvBytesPerToken', () => {
+describe('kvBytesPerTokenPerLayer', () => {
   const base: ModelArch = {
     id: 't', name: 'Test', family: 'test',
     layers: 4, hiddenDim: 16, intermediateDim: 64,
@@ -66,9 +66,9 @@ describe('kvBytesPerToken', () => {
     architecture: { type: 'dense' }
   }
 
-  it('GQA / full attention: 2 × layers × kv_heads × head_dim × bytes', () => {
-    // 2 × 4 × 2 × 8 × 2 (fp16) = 256
-    expect(kvBytesPerToken(base, 'fp16')).toBe(256)
+  it('GQA / full attention: 2 × kv_heads × head_dim × bytes (no layers factor)', () => {
+    // 2 × 2 × 8 × 2 (fp16) = 64
+    expect(kvBytesPerTokenPerLayer(base, 'fp16')).toBe(64)
   })
 
   it('sliding window uses same GQA formula', () => {
@@ -76,16 +76,16 @@ describe('kvBytesPerToken', () => {
       ...base,
       attention: { type: 'sliding', window: 50 }
     }
-    expect(kvBytesPerToken(sliding, 'fp16')).toBe(256)
+    expect(kvBytesPerTokenPerLayer(sliding, 'fp16')).toBe(64)
   })
 
-  it('MLA: layers × (kv_lora + rope) × bytes (no factor of 2)', () => {
+  it('MLA: (kv_lora + rope) × bytes (no factor of 2, no layers factor)', () => {
     const mla: ModelArch = {
       ...base,
       attention: { type: 'mla', kvLoraRank: 32, qkRopeHeadDim: 8 }
     }
-    // 4 × (32 + 8) × 2 = 320
-    expect(kvBytesPerToken(mla, 'fp16')).toBe(320)
+    // (32 + 8) × 2 = 80
+    expect(kvBytesPerTokenPerLayer(mla, 'fp16')).toBe(80)
   })
 })
 
