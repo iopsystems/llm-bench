@@ -82,7 +82,9 @@ export function computeMemory(input: CalcInput): MemoryResult {
   const weights = model.paramCount * bytesOf(quant.weights)
   const kvPerLayerPerToken = kvBytesPerTokenPerLayer(model, quant.kv)
   const attendedSeqlen = attendedSeqlenSummedOverLayers(model, seqlen, true)
-  const kvCachePerRequest = kvPerLayerPerToken * attendedSeqlen
+  const kvCachePerRequest =
+    kvPerLayerPerToken * attendedSeqlen
+    + linearAttentionStateBytes(model, quant.kv)
   const kvCacheTotal = kvCachePerRequest * workload.concurrency
 
   // Coarse: one layer's attention + FFN buffer × small constant.

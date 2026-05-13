@@ -1,6 +1,6 @@
 import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
-import { attendedSeqlenSummedOverLayers, activeParams, attentionDim } from './memory'
+import { attendedSeqlenSummedOverLayers, activeParams, attentionDim, linearAttentionFlopsPerToken } from './memory'
 
 export function computePrefill(
   input: CalcInput,
@@ -12,7 +12,8 @@ export function computePrefill(
 
   const flops =
     2 * activeParams(model) * p +
-    2 * p * attendedSeqlenSummedOverLayers(model, p) * attentionDim(model)
+    2 * p * attendedSeqlenSummedOverLayers(model, p) * attentionDim(model) +
+    p * linearAttentionFlopsPerToken(model)
   const bytes = memory.weights + memory.activationsPeak
 
   const tflops = opPoint.tflops[quant.activations]
