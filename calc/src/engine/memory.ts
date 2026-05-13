@@ -28,6 +28,22 @@ export function attentionDim(model: ModelArch): number {
   return model.numHeads * model.headDim
 }
 
+export function attendedSeqlenSummedOverLayers(model: ModelArch, seqlen: number): number {
+  const att = model.attention
+  if (att.type === 'hybrid') {
+    if (att.numSlidingLayers + att.numGlobalLayers !== model.layers) {
+      throw new Error(
+        `hybrid layer counts must sum to model.layers: ` +
+        `${att.numSlidingLayers} + ${att.numGlobalLayers} ≠ ${model.layers}`
+      )
+    }
+    return att.numSlidingLayers * Math.min(seqlen, att.slidingWindow)
+         + att.numGlobalLayers * seqlen
+  }
+  const perLayer = att.type === 'sliding' ? Math.min(seqlen, att.window) : seqlen
+  return model.layers * perLayer
+}
+
 function findVariant(input: CalcInput): GpuVariant {
   const v = input.gpu.variants.find(v => v.id === input.gpuVariantId)
   if (!v) throw new Error(`Variant ${input.gpuVariantId} not in ${input.gpu.id}`)

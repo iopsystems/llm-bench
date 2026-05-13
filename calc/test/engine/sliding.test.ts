@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveAttentionLength, activeParams, kvBytesPerToken, attentionDim } from '../../src/engine/memory'
+import {
+  effectiveAttentionLength,
+  activeParams,
+  kvBytesPerToken,
+  attentionDim,
+  attendedSeqlenSummedOverLayers
+} from '../../src/engine/memory'
 import type { ModelArch } from '../../src/engine/types'
 
 describe('effectiveAttentionLength', () => {
@@ -113,5 +119,62 @@ describe('attentionDim', () => {
       attention: { type: 'mla', kvLoraRank: 32, qkRopeHeadDim: 8 }
     }
     expect(attentionDim(mla)).toBe(40)
+  })
+})
+
+describe('attendedSeqlenSummedOverLayers', () => {
+  const base: ModelArch = {
+    id: 't', name: 'Test', family: 'test',
+    layers: 4, hiddenDim: 16, intermediateDim: 64,
+    numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
+    paramCount: 1000,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  }
+
+  it('full: layers × seqlen', () => {
+    expect(attendedSeqlenSummedOverLayers(base, 100)).toBe(400) // 4 × 100
+    expect(attendedSeqlenSummedOverLayers(base, 0)).toBe(0)
+  })
+
+  it('sliding: layers × min(seqlen, window)', () => {
+    const m: ModelArch = { ...base, attention: { type: 'sliding', window: 50 } }
+    expect(attendedSeqlenSummedOverLayers(m, 100)).toBe(200) // 4 × 50
+    expect(attendedSeqlenSummedOverLayers(m, 30)).toBe(120)  // 4 × 30
+    expect(attendedSeqlenSummedOverLayers(m, 50)).toBe(200)  // 4 × 50
+  })
+
+  it('mla: layers × seqlen (dimensional reduction is in attentionDim, not seqlen)', () => {
+    const m: ModelArch = { ...base, attention: { type: 'mla', kvLoraRank: 32, qkRopeHeadDim: 8 } }
+    expect(attendedSeqlenSummedOverLayers(m, 100)).toBe(400) // 4 × 100
+  })
+
+  it('hybrid: numSliding × min(seqlen, window) + numGlobal × seqlen', () => {
+    const m: ModelArch = {
+      ...base,
+      layers: 6,
+      attention: {
+        type: 'hybrid', slidingWindow: 50,
+        numSlidingLayers: 5, numGlobalLayers: 1
+      }
+    }
+    // seqlen > window: 5 × min(100, 50) + 1 × 100 = 250 + 100 = 350
+    expect(attendedSeqlenSummedOverLayers(m, 100)).toBe(350)
+    // seqlen < window: 5 × 30 + 1 × 30 = 180 (sliding cap inactive)
+    expect(attendedSeqlenSummedOverLayers(m, 30)).toBe(180)
+    // seqlen == window: 5 × 50 + 1 × 50 = 300
+    expect(attendedSeqlenSummedOverLayers(m, 50)).toBe(300)
+  })
+
+  it('hybrid: throws when numSlidingLayers + numGlobalLayers ≠ model.layers', () => {
+    const m: ModelArch = {
+      ...base,
+      layers: 6,
+      attention: {
+        type: 'hybrid', slidingWindow: 50,
+        numSlidingLayers: 4, numGlobalLayers: 1  // 4+1=5 ≠ 6
+      }
+    }
+    expect(() => attendedSeqlenSummedOverLayers(m, 100)).toThrow(/sum to model\.layers/)
   })
 })
