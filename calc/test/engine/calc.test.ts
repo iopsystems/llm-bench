@@ -357,3 +357,41 @@ describe('calculate — DeepSeek V3.2 (DSA) integration', () => {
     expect(v3AttentionTerm / v32AttentionTerm).toBeCloseTo(32768 / 2048, 6)
   })
 })
+
+describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const glm5 = MODELS.find(m => m.id === 'glm-5')!
+
+  it('GLM-5 at 32k prompt: MLA KV cache uses 78 layers (vs V3.2 61)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: glm5,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // MLA KV per-layer-per-token = (kv_lora + rope) × bytes(fp16) = 576 × 2 = 1152
+    // attendedSeq (kv side, DSA caches all tokens) = 78 × 32768 = 2_555_904
+    // kvCachePerRequest = 1152 × 2_555_904 = 2_944_401_408 ≈ 2.94 GB
+    expect(r.memory.kvCachePerRequest).toBe(78 * (512 + 64) * 2 * 32768)
+  })
+
+  it('GLM-5 decode bytes/step use activeParams (40B), not paramCount (744B)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: glm5,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 744B × 2 bytes = 1.488 TB → way exceeds H100 SXM-80 (80 GB)
+    expect(r.memory.fits).toBe(false)
+    // decode.bytesPerStep ≈ 40B × 2 = 80 GB (active params, not 744B)
+    const activeBytes = 40_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 5e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})

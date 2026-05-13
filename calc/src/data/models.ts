@@ -207,6 +207,25 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 12_000_000_000
     }
   },
+  {
+    id: 'glm-5', name: 'GLM-5', family: 'glm',
+    layers: 78, hiddenDim: 6144, intermediateDim: 12288,
+    numHeads: 64, numKvHeads: 64, headDim: 256, vocabSize: 154880,
+    paramCount: 744_000_000_000,
+    attention: {
+      type: 'mla-dsa',
+      kvLoraRank: 512, qkRopeHeadDim: 64,
+      qkNopeHeadDim: 192, vHeadDim: 256,
+      topK: 2048
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 40_000_000_000
+    }
+  },
   // === Phi ===
   {
     id: 'phi-4', name: 'Phi-4 14B', family: 'phi',
