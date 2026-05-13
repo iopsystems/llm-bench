@@ -255,28 +255,5 @@ export const SYSTEMS: MultiGpuSystem[] = [
       clouds: ['aws']
     },
     notes: 'Inference-focused: 12 Inferentia2 chips connected via PCIe (no dedicated scale-up like NeuronLink). For inference workloads where chips are partitioned across requests rather than sharing weights, PCIe headroom is rarely the bottleneck.'
-  },
-
-  // === Cerebras ===
-  {
-    id: 'cerebras-cs3',
-    name: 'Cerebras CS-3',
-    vendor: 'Cerebras',
-    generation: 'WSE-3',
-    formFactor: 'wafer',
-    gpu: { id: 'cerebras-wse3', variantId: 'cs3', count: 1 },
-    // Wafer-scale: the "interconnect" is the 2D on-die fabric, not a
-    // multi-chip scale-up fabric. Using a placeholder interconnect id is
-    // misleading, so we omit a real one and document the situation in notes.
-    interconnectId: 'pcie-gen5-x16', // host link only; actual on-die fabric not in registry
-    aggregate: {
-      totalHbmGB: 44,                   // on-chip SRAM, not HBM
-      fabricBidirectionalTBs: 21000     // 21 PB/s on-die SRAM bandwidth
-    },
-    availability: {
-      onPrem: true,
-      clouds: ['cerebras-cloud']
-    },
-    notes: 'One wafer per CS-3 chassis. Multi-CS-3 deployments use external MemoryX for weight streaming + SwarmX for collective comms; that fabric is not currently modeled in the interconnect registry. Aggregate fabricBidirectionalTBs reflects on-die SRAM bandwidth, not a chip-to-chip number.'
   }
 ]
