@@ -453,3 +453,100 @@ describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
     expect(r.perf['peak'].decode.regime).toBe('memory')
   })
 })
+
+describe('calculate — DeepSeek V4 integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const v32 = MODELS.find(m => m.id === 'deepseek-v3.2')!
+  const v4Flash = MODELS.find(m => m.id === 'deepseek-v4-flash')!
+  const v4Pro = MODELS.find(m => m.id === 'deepseek-v4-pro')!
+
+  it('V4-Pro at 1M context: KV cache sums CSA + HCA per-layer-type contributions', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: v4Pro,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 1048576, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Per-compressed-entry bytes = 2 × 1 × 512 × 2 = 2048
+    // attendedSeqlen (kv) = 0 + 30 × (1048576/4 + 128) + 31 × (1048576/128 + 128)
+    //                    = 30 × 262272 + 31 × 8320 = 7868160 + 257920 = 8126080
+    // kvCachePerRequest = 2048 × 8126080 = 16_642_211_840 bytes ≈ 16.64 GB
+    const expected = 2048 * (30 * (1048576 / 4 + 128) + 31 * (1048576 / 128 + 128))
+    expect(r.memory.kvCachePerRequest).toBe(expected)
+  })
+
+  it('V4-Pro at 1M: KV cache is ~4.4× smaller than V3.2 at fp16 apples-to-apples', () => {
+    const baseInput: Omit<CalcInput, 'model'> = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 1048576, outputTokens: 0, concurrency: 1 }
+    }
+    const r4 = calculate({ ...baseInput, model: v4Pro })
+    const r32 = calculate({ ...baseInput, model: v32 })
+    const ratio = r32.memory.kvCachePerRequest / r4.memory.kvCachePerRequest
+    // V4-Pro fp16 / V3.2 fp16: actual ≈ 4.43×
+    // Paper's "10×" claim assumes V4 uses fp8 KV — that's a deployment choice, not modeled here.
+    expect(ratio).toBeGreaterThan(4)
+    expect(ratio).toBeLessThan(5)
+  })
+
+  it('V4-Pro decode throughput is 2× the without-MTP equivalent (numNextnLayers=1)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: v4Pro,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
+    }
+    const rMtp = calculate(input)
+    const noMtpInput = { ...input, model: { ...v4Pro, numNextnLayers: 0 } }
+    const rNoMtp = calculate(noMtpInput)
+    expect(rMtp.perf['peak'].decode.aggregateTokensPerS).toBeCloseTo(
+      rNoMtp.perf['peak'].decode.aggregateTokensPerS * 2, 6
+    )
+    expect(rMtp.perf['peak'].decode.timePerTokenS).toBeCloseTo(
+      rNoMtp.perf['peak'].decode.timePerTokenS / 2, 12
+    )
+    // Per-pass FLOPs and bytes unchanged
+    expect(rMtp.perf['peak'].decode.flopsPerStep).toBe(rNoMtp.perf['peak'].decode.flopsPerStep)
+    expect(rMtp.perf['peak'].decode.bytesPerStep).toBe(rNoMtp.perf['peak'].decode.bytesPerStep)
+  })
+
+  it('V4-Flash at 128k: KV cache uses 2 sliding + 21 CSA + 20 HCA', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: v4Flash,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 131072, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 2048 × (2 × 128 + 21 × (131072/4 + 128) + 20 × (131072/128 + 128))
+    //      = 2048 × (256 + 690816 + 23040)
+    //      = 2048 × 714112 = 1_462_501_376 ≈ 1.46 GB
+    const expected = 2048 * (
+      2 * 128 +
+      21 * (131072 / 4 + 128) +
+      20 * (131072 / 128 + 128)
+    )
+    expect(r.memory.kvCachePerRequest).toBe(expected)
+  })
+
+  it('V4-Pro 1.6T weights at fp16 do not fit single H100 SXM-80', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: v4Pro,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 1.6T × 2 bytes = 3.2 TB
+    expect(r.memory.weights / 1e12).toBeCloseTo(3.2, 1)
+    expect(r.memory.fits).toBe(false)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})

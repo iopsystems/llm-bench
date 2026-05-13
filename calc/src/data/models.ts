@@ -191,6 +191,48 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 37_000_000_000
     }
   },
+  {
+    id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', family: 'deepseek',
+    layers: 43, hiddenDim: 4096, intermediateDim: 2048, vocabSize: 129280,
+    numHeads: 64, numKvHeads: 1, headDim: 512,
+    paramCount: 284_000_000_000,
+    numNextnLayers: 1,
+    attention: {
+      type: 'csa-hca-hybrid',
+      numSlidingLayers: 2, numCsaLayers: 21, numHcaLayers: 20,
+      slidingWindow: 128,
+      csaCompressionM: 4, csaTopK: 512,
+      csaIndexerHeads: 64, csaIndexerHeadDim: 128,
+      hcaCompressionM: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 256, numExpertsActive: 6,
+      numSharedExperts: 1,
+      activeParamCount: 13_000_000_000
+    }
+  },
+  {
+    id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro', family: 'deepseek',
+    layers: 61, hiddenDim: 7168, intermediateDim: 3072, vocabSize: 129280,
+    numHeads: 128, numKvHeads: 1, headDim: 512,
+    paramCount: 1_600_000_000_000,
+    numNextnLayers: 1,
+    attention: {
+      type: 'csa-hca-hybrid',
+      numSlidingLayers: 0, numCsaLayers: 30, numHcaLayers: 31,
+      slidingWindow: 128,
+      csaCompressionM: 4, csaTopK: 1024,
+      csaIndexerHeads: 64, csaIndexerHeadDim: 128,
+      hcaCompressionM: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 384, numExpertsActive: 6,
+      numSharedExperts: 1,
+      activeParamCount: 49_000_000_000
+    }
+  },
   // === Moonshot / Kimi ===
   {
     id: 'kimi-k2', name: 'Kimi K2', family: 'kimi',
