@@ -102,6 +102,20 @@ export const MODELS: ModelArch[] = [
     }
   },
   {
+    id: 'mixtral-8x22b', name: 'Mixtral 8x22B v0.1', family: 'mistral',
+    layers: 56, hiddenDim: 6144, intermediateDim: 16384,
+    numHeads: 48, numKvHeads: 8, headDim: 128, vocabSize: 32000,
+    paramCount: 141_000_000_000,
+    attention: { type: 'full' },
+    architecture: {
+      type: 'moe',
+      numExperts: 8,
+      numExpertsActive: 2,
+      numSharedExperts: 0,
+      activeParamCount: 39_000_000_000
+    }
+  },
+  {
     id: 'mistral-small-3.1-24b', name: 'Mistral Small 3.1 24B', family: 'mistral',
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
@@ -144,6 +158,39 @@ export const MODELS: ModelArch[] = [
       numExpertsActive: 8,
       numSharedExperts: 1,
       activeParamCount: 37_000_000_000
+    }
+  },
+  // === Moonshot / Kimi ===
+  {
+    id: 'kimi-k2', name: 'Kimi K2', family: 'kimi',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
+    paramCount: 1_026_000_000_000,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64 },
+    architecture: {
+      type: 'moe',
+      numExperts: 384,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 32_000_000_000
+    }
+  },
+  // === Z.ai / GLM ===
+  // GLM-4.5-Air pairs the new shared-expert MoE schema with regular GQA full
+  // attention (no MLA). The 12:1 KV-head reduction (96 attention / 8 KV) is the
+  // most aggressive GQA ratio in the seed.
+  {
+    id: 'glm-4.5-air', name: 'GLM-4.5-Air', family: 'glm',
+    layers: 46, hiddenDim: 4096, intermediateDim: 10944,
+    numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 151552,
+    paramCount: 106_000_000_000,
+    attention: { type: 'full' },
+    architecture: {
+      type: 'moe',
+      numExperts: 128,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 12_000_000_000
     }
   },
   // === Phi ===

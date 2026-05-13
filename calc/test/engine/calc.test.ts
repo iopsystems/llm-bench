@@ -226,3 +226,101 @@ describe('calculate — DeepSeek V3 (MLA + shared-expert MoE) integration', () =
     expect(r.perf['peak'].decode.regime).toBe('memory')
   })
 })
+
+describe('calculate — Mixtral 8x22B integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const mixtral22b = MODELS.find(m => m.id === 'mixtral-8x22b')!
+
+  it('Mixtral 8x22B on H100 SXM-80: weights 282 GB do not fit; decode uses 39B active', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: mixtral22b,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 141B × 2 bytes = 282 GB → does not fit single H100 (80 GB)
+    expect(r.memory.weights / 1e9).toBeCloseTo(282, 0)
+    expect(r.memory.fits).toBe(false)
+    // decode.bytesPerStep ≈ 39B × 2 = 78 GB (active params, not 141B total)
+    const activeBytes = 39_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 2e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
+
+describe('calculate — Kimi K2 integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const k2 = MODELS.find(m => m.id === 'kimi-k2')!
+
+  it('Kimi K2 at 32k prompt: MLA KV cache uses identical formula to DeepSeek V3 (same layers + MLA dims)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: k2,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // MLA: layers × (kv_lora + rope) × bytes × seq = 61 × 576 × 2 × 32768
+    expect(r.memory.kvCachePerRequest).toBe(61 * (512 + 64) * 2 * 32768)
+    // 1.026T × 2 bytes ≈ 2.05 TB → vastly exceeds single H100 capacity
+    expect(r.memory.weights / 1e12).toBeCloseTo(2.05, 1)
+    expect(r.memory.fits).toBe(false)
+  })
+
+  it('Kimi K2 decode bytes/step use activeParams (32B), not paramCount (1.04T)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: k2,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    const activeBytes = 32_000_000_000 * 2  // 64 GB at fp16
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 5e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
+
+describe('calculate — GLM-4.5-Air integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const glm = MODELS.find(m => m.id === 'glm-4.5-air')!
+
+  it('GLM-4.5-Air at 32k prompt: regular GQA KV cache with 12:1 head ratio', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: glm,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Regular attention KV: 2 × kvHeads × headDim × bytes × layers × seq
+    //                    = 2 × 8 × 128 × 2 × 46 × 32768 ≈ 6.17 GB
+    expect(r.memory.kvCachePerRequest).toBe(2 * 8 * 128 * 2 * 46 * 32768)
+  })
+
+  it('GLM-4.5-Air composes shared-expert MoE with regular GQA attention', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: glm,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 106B × 2 = 212 GB → doesn't fit single H100
+    expect(r.memory.weights / 1e9).toBeCloseTo(212, 0)
+    expect(r.memory.fits).toBe(false)
+    // decode bytes use activeParams (12B), not paramCount (106B)
+    const activeBytes = 12_000_000_000 * 2  // 24 GB
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 2e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
