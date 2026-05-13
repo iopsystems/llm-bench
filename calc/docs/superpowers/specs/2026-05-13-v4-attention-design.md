@@ -137,9 +137,14 @@ Per-pass `flopsPerStep` and `bytesPerStep` are unchanged — they describe the w
 ### Numerical impact
 
 **V4-Pro KV cache at 1M context, fp16**:
-- 30 CSA layers × `(1M/4 + 128) × 1 × 512 × 2 = ~256 MB/layer` = **7.68 GB**
-- 31 HCA layers × `(1M/128 + 128) × 1024 = ~8.13 MB/layer` = **252 MB**
-- **Total ≈ 7.93 GB** vs V3.2's `61 × 1152 × 1M ≈ 70.3 GB` → ratio **8.86×** smaller (paper claims 10× — close)
+
+Per-compressed-entry bytes = `2 × numKvHeads × headDim × bytes(fp16) = 2 × 1 × 512 × 2 = 2048` (K and V both stored per entry).
+
+- 30 CSA layers × `(1M/4 + 128) × 2048 = ~512 MB/layer` = **15.36 GB**
+- 31 HCA layers × `(1M/128 + 128) × 2048 = ~16.26 MB/layer` = **504 MB**
+- **Total ≈ 15.86 GB** vs V3.2's `61 × 1152 × 1M ≈ 70.3 GB` → **~4.4× smaller** at apples-to-apples fp16
+
+The paper's "10% of V3.2 KV" claim assumes V4 deployments use **fp8 KV** while V3.2 uses fp16 (paper-consistent). At fp8, V4-Pro KV at 1M ≈ 7.93 GB ≈ 11% of V3.2 at fp16 ≈ paper's 10×. Our calc supports `quant.kv = 'fp8'` already; users can model V4 production by selecting fp8 KV.
 
 **V4-Pro attention FLOPs per token at 1M decode** (this PR's math): ≈ 36 B ops vs V3.2's ≈ 9 B ops — V4 will appear *higher* in our roofline. The paper's "27% FLOPs" claim incorporates MTP amortization (V4 = 2 tokens/pass) and lower-precision compute (fp4 weights × fp8 indexer × fp8 activations) that strict FLOPs counting doesn't capture. Spec documents this discrepancy honestly.
 
