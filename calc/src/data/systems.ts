@@ -1,4 +1,4 @@
-import type { MultiGpuSystem } from '../engine/types'
+import type { MultiAcceleratorSystem } from '../engine/types'
 
 // Multi-GPU systems registry — concrete products users can buy or rent today
 // (as of 2026-05). Each entry composes a GPU id + variant + count with a
@@ -13,7 +13,7 @@ import type { MultiGpuSystem } from '../engine/types'
 // least one cloud GA region. Pre-announced / preview-only systems
 // (e.g. Rubin platform, Trainium3 instances) are omitted.
 
-export const SYSTEMS: MultiGpuSystem[] = [
+export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === NVIDIA Hopper baseboards / nodes ===
   {
     id: 'hgx-h100-8',
@@ -21,7 +21,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'NVIDIA',
     generation: 'Hopper',
     formFactor: 'baseboard',
-    gpu: { id: 'h100', variantId: 'sxm-80', count: 8 },
+    accelerator: { id: 'h100', variantId: 'sxm-80', count: 8 },
     interconnectId: 'nvlink-4',
     scaleOutInterconnectId: 'ib-ndr',
     scaleOutNicsPerNode: 8,
@@ -41,7 +41,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'NVIDIA',
     generation: 'Hopper',
     formFactor: 'baseboard',
-    gpu: { id: 'h200', variantId: 'sxm-141', count: 8 },
+    accelerator: { id: 'h200', variantId: 'sxm-141', count: 8 },
     interconnectId: 'nvlink-4',
     scaleOutInterconnectId: 'ib-ndr',
     scaleOutNicsPerNode: 8,
@@ -63,7 +63,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'NVIDIA',
     generation: 'Blackwell',
     formFactor: 'baseboard',
-    gpu: { id: 'b200', variantId: 'sxm-180', count: 8 },
+    accelerator: { id: 'b200', variantId: 'sxm-180', count: 8 },
     interconnectId: 'nvlink-5',
     scaleOutInterconnectId: 'ib-xdr',
     scaleOutNicsPerNode: 8,
@@ -83,7 +83,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'NVIDIA',
     generation: 'Blackwell',
     formFactor: 'rack',
-    gpu: { id: 'gb200', variantId: 'nvl72-186', count: 72 },
+    accelerator: { id: 'gb200', variantId: 'nvl72-186', count: 72 },
     interconnectId: 'nvlink-5-nvl72',
     scaleOutInterconnectId: 'ib-xdr',
     scaleOutNicsPerNode: 72,  // 1 per GPU via ConnectX-8 on each compute tray
@@ -105,7 +105,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'AMD',
     generation: 'CDNA3',
     formFactor: 'baseboard',
-    gpu: { id: 'mi300x', variantId: 'oam-192', count: 8 },
+    accelerator: { id: 'mi300x', variantId: 'oam-192', count: 8 },
     interconnectId: 'xgmi-4',
     scaleOutInterconnectId: 'ib-ndr',
     scaleOutNicsPerNode: 8,
@@ -125,7 +125,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'AMD',
     generation: 'CDNA3',
     formFactor: 'baseboard',
-    gpu: { id: 'mi325x', variantId: 'oam-256', count: 8 },
+    accelerator: { id: 'mi325x', variantId: 'oam-256', count: 8 },
     interconnectId: 'xgmi-4',
     scaleOutInterconnectId: 'ib-ndr',
     scaleOutNicsPerNode: 8,
@@ -147,7 +147,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'Intel',
     generation: 'Gaudi 3',
     formFactor: 'baseboard',
-    gpu: { id: 'gaudi-3', variantId: 'oam-128', count: 8 },
+    accelerator: { id: 'gaudi-3', variantId: 'oam-128', count: 8 },
     interconnectId: 'gaudi-3-roce',
     aggregate: {
       totalHbmGB: 1024,
@@ -167,7 +167,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'Google',
     generation: 'v5p',
     formFactor: 'pod-slice',
-    gpu: { id: 'tpu-v5p', variantId: 'chip', count: 8 },
+    accelerator: { id: 'tpu-v5p', variantId: 'chip', count: 8 },
     interconnectId: 'tpu-ici-v5p',
     aggregate: {
       totalHbmGB: 760,
@@ -185,7 +185,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'Google',
     generation: 'v6e',
     formFactor: 'pod-slice',
-    gpu: { id: 'tpu-trillium', variantId: 'chip', count: 8 },
+    accelerator: { id: 'tpu-trillium', variantId: 'chip', count: 8 },
     interconnectId: 'tpu-ici-trillium',
     aggregate: {
       totalHbmGB: 256,
@@ -205,7 +205,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'AWS',
     generation: 'Trainium2',
     formFactor: 'cloud-instance',
-    gpu: { id: 'trainium-2', variantId: 'chip', count: 16 },
+    accelerator: { id: 'trainium-2', variantId: 'chip', count: 16 },
     interconnectId: 'neuronlink-v2',
     scaleOutInterconnectId: 'aws-efa-v3',
     scaleOutNicsPerNode: 16,
@@ -225,7 +225,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'AWS',
     generation: 'Trainium2',
     formFactor: 'cloud-instance',
-    gpu: { id: 'trainium-2', variantId: 'chip', count: 64 },
+    accelerator: { id: 'trainium-2', variantId: 'chip', count: 64 },
     interconnectId: 'neuronlink-v2',
     scaleOutInterconnectId: 'aws-efa-v3',
     aggregate: {
@@ -244,7 +244,7 @@ export const SYSTEMS: MultiGpuSystem[] = [
     vendor: 'AWS',
     generation: 'Inferentia2',
     formFactor: 'cloud-instance',
-    gpu: { id: 'inferentia-2', variantId: 'chip', count: 12 },
+    accelerator: { id: 'inferentia-2', variantId: 'chip', count: 12 },
     interconnectId: 'pcie-gen5-x16',  // Inf2 uses PCIe for inter-chip, no dedicated scale-up fabric
     aggregate: {
       totalHbmGB: 384,

@@ -1,8 +1,14 @@
-import type { GpuSpec } from '../engine/types'
+import type { AcceleratorSpec } from '../engine/types'
 
 // Peak numbers from vendor datasheets. Dense compute (no sparsity).
 // FP16/BF16 columns reflect Tensor Core peak.
-export const GPUS: GpuSpec[] = [
+//
+// Entries span GPUs (NVIDIA/AMD), TPUs (Google), Trainium/Inferentia (AWS),
+// Gaudi (Intel), Apple Silicon, and wafer-scale (Cerebras). The historic
+// "tflops" + "hbmBandwidthGBs" + "hbmCapacityGB" vocabulary is GPU-rooted;
+// for non-HBM parts (Apple unified memory, Cerebras on-die SRAM) the fields
+// hold the equivalent measure, documented per-entry where it diverges.
+export const ACCELERATORS: AcceleratorSpec[] = [
   {
     id: 'h100', name: 'NVIDIA H100', vendor: 'NVIDIA', family: 'Hopper',
     variants: [

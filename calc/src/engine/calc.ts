@@ -6,19 +6,19 @@ import { computeDecode } from './decode'
 import { DerivationBuilder } from './derivation'
 
 export function calculate(input: CalcInput): CalcResult {
-  const variant = input.gpu.variants.find(v => v.id === input.gpuVariantId)
+  const variant = input.accelerator.variants.find(v => v.id === input.acceleratorVariantId)
   if (!variant) {
-    throw new Error(`Variant ${input.gpuVariantId} not in GPU ${input.gpu.id}`)
+    throw new Error(`Variant ${input.acceleratorVariantId} not in ${input.accelerator.id}`)
   }
 
   // Validate activations dtype against each operating point up front, so the
-  // error message names the actual GPU and the supported alternatives instead
-  // of leaking engine vocabulary.
+  // error message names the actual accelerator and the supported alternatives
+  // instead of leaking engine vocabulary.
   for (const op of variant.operatingPoints) {
     if (op.tflops[input.quant.activations] === undefined) {
       const supported = Object.keys(op.tflops).join(', ')
       throw new Error(
-        `${input.gpu.name} ${variant.label} has no ${input.quant.activations} ` +
+        `${input.accelerator.name} ${variant.label} has no ${input.quant.activations} ` +
         `compute throughput. Try: ${supported}.`
       )
     }

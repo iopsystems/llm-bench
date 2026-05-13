@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util'
-import { GPUS } from './data/gpus'
+import { ACCELERATORS } from './data/accelerators'
 import { MODELS } from './data/models'
 import { SOURCES, type Source } from './data/sources'
 import { calculate } from './engine/calc'
@@ -12,13 +12,13 @@ function usage(): string {
 
 USAGE
   llm-calc [OPTIONS]              Calculate performance metrics (default action)
-  llm-calc list gpus              List available GPUs and their variants
+  llm-calc list accelerators      List available accelerators and their variants
   llm-calc list models            List available models with architecture info
   llm-calc --help                 Show this help
 
 CALCULATE OPTIONS
-  -g, --gpu <id>          GPU id (required). See 'list gpus'.
-  -V, --variant <id>      GPU variant id. Defaults to first variant for the GPU.
+  -A, --accelerator <id>  Accelerator id (required). See 'list accelerators'.
+  -V, --variant <id>      Accelerator variant id. Defaults to first variant.
   -m, --model <id>        Model id (required). See 'list models'.
   -p, --prompt <n>        Prompt tokens (default: 2048)
   -o, --output <n>        Output tokens (default: 512)
@@ -31,9 +31,9 @@ CALCULATE OPTIONS
 DTYPES: fp32, fp16, bf16, fp8, int8, int4
 
 EXAMPLES
-  llm-calc -g h100 -V sxm-80 -m llama-3.3-70b
-  llm-calc -g h100 -m llama-3.3-70b --format table
-  llm-calc list gpus
+  llm-calc -A h100 -V sxm-80 -m llama-3.3-70b
+  llm-calc -A h100 -m llama-3.3-70b --format table
+  llm-calc list accelerators
   llm-calc list models | grep qwen
 
 OUTPUT
@@ -52,10 +52,10 @@ function fail(msg: string, exitCode: number): never {
 }
 
 function runList(target: string | undefined): void {
-  if (target === 'gpus') {
-    for (const g of GPUS) {
-      const variants = g.variants.map(v => v.id).join(', ')
-      process.stdout.write(`${g.id.padEnd(20)} ${g.name.padEnd(40)} ${variants}\n`)
+  if (target === 'accelerators') {
+    for (const a of ACCELERATORS) {
+      const variants = a.variants.map(v => v.id).join(', ')
+      process.stdout.write(`${a.id.padEnd(20)} ${a.name.padEnd(40)} ${variants}\n`)
     }
     return
   }
@@ -67,14 +67,14 @@ function runList(target: string | undefined): void {
     }
     return
   }
-  fail(`unknown list target: ${target ?? '(missing)'}. Try 'gpus' or 'models'.`, 64)
+  fail(`unknown list target: ${target ?? '(missing)'}. Try 'accelerators' or 'models'.`, 64)
 }
 
 function buildInput(values: Record<string, string | boolean | undefined>): CalcInput {
-  const gpuId = (values['gpu'] as string | undefined) ?? fail('missing --gpu', 64)
-  const gpu = GPUS.find(g => g.id === gpuId) ?? fail(`unknown gpu: ${gpuId}`, 1)
-  const variantId = (values['variant'] as string | undefined) ?? gpu.variants[0].id
-  if (!gpu.variants.find(v => v.id === variantId)) fail(`unknown variant for ${gpuId}: ${variantId}`, 1)
+  const acceleratorId = (values['accelerator'] as string | undefined) ?? fail('missing --accelerator', 64)
+  const accelerator = ACCELERATORS.find(a => a.id === acceleratorId) ?? fail(`unknown accelerator: ${acceleratorId}`, 1)
+  const variantId = (values['variant'] as string | undefined) ?? accelerator.variants[0].id
+  if (!accelerator.variants.find(v => v.id === variantId)) fail(`unknown variant for ${acceleratorId}: ${variantId}`, 1)
   const modelId = (values['model'] as string | undefined) ?? fail('missing --model', 64)
   const model = MODELS.find(m => m.id === modelId) ?? fail(`unknown model: ${modelId}`, 1)
 
@@ -91,11 +91,11 @@ function buildInput(values: Record<string, string | boolean | undefined>): CalcI
     outputTokens: Number((values['output'] as string | undefined) ?? 512),
     concurrency: Number((values['concurrency'] as string | undefined) ?? 1)
   }
-  return { gpu, gpuVariantId: variantId, model, quant, workload }
+  return { accelerator, acceleratorVariantId: variantId, model, quant, workload }
 }
 
 function formatTable(input: CalcInput, result: ReturnType<typeof calculate>): string {
-  const variant = input.gpu.variants.find(v => v.id === input.gpuVariantId)!
+  const variant = input.accelerator.variants.find(v => v.id === input.acceleratorVariantId)!
   const m = result.memory
   const GB = (n: number) => (n / 1024 ** 3).toFixed(2) + ' GB'
   const ms = (s: number) => (s * 1000).toFixed(2) + ' ms'
@@ -103,7 +103,7 @@ function formatTable(input: CalcInput, result: ReturnType<typeof calculate>): st
   const fits = m.fits ? '✓ fits' : '✗ OOM'
 
   let out = ''
-  out += `${input.gpu.name} ${variant.label}\n`
+  out += `${input.accelerator.name} ${variant.label}\n`
   out += `Model: ${input.model.name}\n`
   out += `Quant: weights=${input.quant.weights} kv=${input.quant.kv} act=${input.quant.activations}\n`
   out += `Workload: prompt=${input.workload.promptTokens} output=${input.workload.outputTokens} concurrency=${input.workload.concurrency}\n`
@@ -186,7 +186,7 @@ function main(): void {
     parsed = parseArgs({
       args: argv,
       options: {
-        gpu:         { type: 'string', short: 'g' },
+        accelerator: { type: 'string', short: 'A' },
         variant:     { type: 'string', short: 'V' },
         model:       { type: 'string', short: 'm' },
         prompt:      { type: 'string', short: 'p' },

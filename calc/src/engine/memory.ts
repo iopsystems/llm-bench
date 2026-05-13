@@ -1,4 +1,4 @@
-import type { CalcInput, Dtype, GpuVariant, MemoryResult, ModelArch } from './types'
+import type { CalcInput, Dtype, AcceleratorVariant, MemoryResult, ModelArch } from './types'
 import { bytesOf } from './dtypes'
 
 const BYTES_PER_GB = 1024 ** 3
@@ -68,9 +68,9 @@ export function linearAttentionFlopsPerToken(model: ModelArch): number {
   return 2 * a.numLinearLayers * a.numLinearHeads * a.linearHeadDim * a.linearHeadDim
 }
 
-function findVariant(input: CalcInput): GpuVariant {
-  const v = input.gpu.variants.find(v => v.id === input.gpuVariantId)
-  if (!v) throw new Error(`Variant ${input.gpuVariantId} not in ${input.gpu.id}`)
+function findVariant(input: CalcInput): AcceleratorVariant {
+  const v = input.accelerator.variants.find(v => v.id === input.acceleratorVariantId)
+  if (!v) throw new Error(`Variant ${input.acceleratorVariantId} not in ${input.accelerator.id}`)
   return v
 }
 

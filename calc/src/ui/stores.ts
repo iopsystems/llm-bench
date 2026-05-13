@@ -1,13 +1,13 @@
 import { writable, derived, type Readable } from 'svelte/store'
-import { GPUS, MODELS } from '../data'
+import { ACCELERATORS, MODELS } from '../data'
 import { calculate } from '../engine'
 import type { CalcInput, CalcResult, Quantization, Workload } from '../engine/types'
 
-const defaultGpu = GPUS[0]
+const defaultAccelerator = ACCELERATORS[0]
 const defaultModel = MODELS[0]
 
-export const gpuId = writable(defaultGpu.id)
-export const variantId = writable(defaultGpu.variants[0].id)
+export const acceleratorId = writable(defaultAccelerator.id)
+export const variantId = writable(defaultAccelerator.variants[0].id)
 export const modelId = writable(defaultModel.id)
 
 export const quant = writable<Quantization>({
@@ -18,13 +18,13 @@ export const workload = writable<Workload>({
 })
 
 export const input: Readable<CalcInput | null> = derived(
-  [gpuId, variantId, modelId, quant, workload],
-  ([$gpuId, $variantId, $modelId, $quant, $workload]) => {
-    const gpu = GPUS.find(g => g.id === $gpuId)
+  [acceleratorId, variantId, modelId, quant, workload],
+  ([$acceleratorId, $variantId, $modelId, $quant, $workload]) => {
+    const accelerator = ACCELERATORS.find(a => a.id === $acceleratorId)
     const model = MODELS.find(m => m.id === $modelId)
-    if (!gpu || !model) return null
-    if (!gpu.variants.find(v => v.id === $variantId)) return null
-    return { gpu, gpuVariantId: $variantId, model, quant: $quant, workload: $workload }
+    if (!accelerator || !model) return null
+    if (!accelerator.variants.find(v => v.id === $variantId)) return null
+    return { accelerator, acceleratorVariantId: $variantId, model, quant: $quant, workload: $workload }
   }
 )
 

@@ -4,7 +4,7 @@ import { testInput } from '../fixtures'
 import { computeMemory } from '../../src/engine/memory'
 
 describe('computeDecode', () => {
-  const opPoint = testInput.gpu.variants[0].operatingPoints[0]
+  const opPoint = testInput.accelerator.variants[0].operatingPoints[0]
   const memory = computeMemory(testInput)
 
   // testInput: prompt=10, output=5, concurrency=2

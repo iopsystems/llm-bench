@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { GPUS, MODELS } from '../data'
-  import { gpuId, variantId, modelId, quant, workload } from './stores'
+  import { ACCELERATORS, MODELS } from '../data'
+  import { acceleratorId, variantId, modelId, quant, workload } from './stores'
   import type { Dtype } from '../engine/types'
 
   const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'int8', 'int4']
 
-  $: gpu = GPUS.find(g => g.id === $gpuId)
-  $: variants = gpu?.variants ?? []
-  // Reset variant if it falls outside the new GPU's list.
-  $: if (gpu && !variants.find(v => v.id === $variantId)) {
+  $: accelerator = ACCELERATORS.find(a => a.id === $acceleratorId)
+  $: variants = accelerator?.variants ?? []
+  // Reset variant if it falls outside the new accelerator's list.
+  $: if (accelerator && !variants.find(v => v.id === $variantId)) {
        variantId.set(variants[0]?.id ?? '')
      }
 </script>
@@ -18,10 +18,10 @@
     <legend>Hardware</legend>
     <div class="row">
       <label>
-        GPU
-        <select bind:value={$gpuId}>
-          {#each GPUS as g}
-            <option value={g.id}>{g.name}</option>
+        Accelerator
+        <select bind:value={$acceleratorId}>
+          {#each ACCELERATORS as a}
+            <option value={a.id}>{a.name}</option>
           {/each}
         </select>
       </label>

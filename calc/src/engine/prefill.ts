@@ -1,10 +1,10 @@
-import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
+import type { CalcInput, AcceleratorOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
 import { attendedSeqlenSummedOverLayers, activeParams, attentionDim, linearAttentionFlopsPerToken } from './memory'
 
 export function computePrefill(
   input: CalcInput,
-  opPoint: GpuOperatingPoint,
+  opPoint: AcceleratorOperatingPoint,
   memory: MemoryResult
 ): PerfTier['prefill'] {
   const { model, quant, workload } = input

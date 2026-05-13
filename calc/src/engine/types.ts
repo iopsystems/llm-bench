@@ -1,6 +1,6 @@
 export type Dtype = 'fp32' | 'fp16' | 'bf16' | 'fp8' | 'int8' | 'int4'
 
-export interface GpuOperatingPoint {
+export interface AcceleratorOperatingPoint {
   id: string
   label: string
   tflops: Partial<Record<Dtype, number>>
@@ -13,26 +13,33 @@ export interface GpuOperatingPoint {
   notes?: string
 }
 
-export interface GpuVariant {
+export interface AcceleratorVariant {
   id: string
   label: string
   hbmCapacityGB: number
-  operatingPoints: GpuOperatingPoint[]
+  operatingPoints: AcceleratorOperatingPoint[]
 }
 
-export interface GpuSpec {
+export interface AcceleratorSpec {
   id: string
   name: string
   vendor: string
   family?: string
-  variants: GpuVariant[]
+  variants: AcceleratorVariant[]
 }
 
-// === Multi-GPU types ===
-// These describe interconnects and parallelism modes for multi-GPU systems.
-// The roofline engine in this directory is still single-GPU; these types back
-// the data registries in src/data/interconnects.ts and src/data/parallelism.ts
-// so callers and a future multi-GPU engine have a stable schema to consume.
+// === Multi-accelerator types ===
+// These describe interconnects and parallelism modes for multi-accelerator
+// systems. The roofline engine in this directory is still single-accelerator;
+// these types back the data registries in src/data/interconnects.ts and
+// src/data/parallelism.ts so callers and a future multi-accelerator engine
+// have a stable schema to consume.
+//
+// Field-naming note: lower-level fields like `perGpuBandwidthGBs` and
+// `linksPerGpu` retain "Gpu" in their names. The vocabulary mirrors how
+// vendors describe interconnect specs, and renaming them touches every
+// consumer. Treat them as "per accelerator" for non-GPU products
+// (TPU/Trainium/Gaudi/etc.).
 
 export type InterconnectTopology =
   | 'point-to-point'   // direct GPU↔GPU links (small meshes; HGX cube-mesh pre-NVSwitch)
@@ -152,13 +159,14 @@ export interface InterconnectAchievableTier {
   notes?: string
 }
 
-// === Multi-GPU systems ===
-// A MultiGpuSystem composes a specific GPU (referenced by id + variant) with a
-// specific scale-up interconnect and a count, capturing concrete products users
-// can actually buy or rent today. The registry lives in src/data/systems.ts.
+// === Multi-accelerator systems ===
+// A MultiAcceleratorSystem composes a specific accelerator (GPU, TPU, Trainium,
+// Gaudi, etc., referenced by id + variant) with a specific scale-up
+// interconnect and a count, capturing concrete products users can actually buy
+// or rent today. The registry lives in src/data/systems.ts.
 
 export type SystemFormFactor =
-  | 'baseboard'        // 8-GPU baseboard sold to OEMs (HGX H100/H200/B200)
+  | 'baseboard'        // 8-accelerator baseboard sold to OEMs (HGX H100/H200/B200)
   | 'node'             // ready-to-deploy server (DGX H100, MI300X 8-OAM)
   | 'rack'             // pre-integrated rack (GB200 NVL72)
   | 'pod-slice'        // TPU pod slice
@@ -176,7 +184,7 @@ export type CloudProvider =
   | 'intel-tiber'
   | 'cerebras-cloud'
 
-export interface MultiGpuSystem {
+export interface MultiAcceleratorSystem {
   id: string
   name: string
   vendor: string
@@ -184,15 +192,15 @@ export interface MultiGpuSystem {
   formFactor: SystemFormFactor
 
   // Composition by reference to other registries. The data file should set
-  // these to ids that exist in GPUS / INTERCONNECTS; not enforced at the
-  // type level (would require const-keyed lookup), but reviewers can check.
-  gpu: {
-    id: string                 // GpuSpec.id
-    variantId: string          // GpuVariant.id (which capacity / SKU)
-    count: number              // GPUs in the system
+  // these to ids that exist in ACCELERATORS / INTERCONNECTS; not enforced at
+  // the type level (would require const-keyed lookup), but reviewers can check.
+  accelerator: {
+    id: string                 // AcceleratorSpec.id
+    variantId: string          // AcceleratorVariant.id (which capacity / SKU)
+    count: number              // accelerators in the system
   }
 
-  // Primary scale-up fabric among the GPUs. References InterconnectSpec.id.
+  // Primary scale-up fabric among the accelerators. References InterconnectSpec.id.
   interconnectId: string
 
   // Optional scale-out NIC layer — DGX-class nodes ship with multiple
@@ -203,11 +211,11 @@ export interface MultiGpuSystem {
 
   // Denormalized aggregates for UI display / cross-system comparison.
   // Consumers MUST NOT recompute a roofline from these — they should look up
-  // the GPU and interconnect entries directly. Stored here so reviewers can
-  // sanity-check the composition at a glance.
+  // the accelerator and interconnect entries directly. Stored here so
+  // reviewers can sanity-check the composition at a glance.
   aggregate: {
-    totalHbmGB: number              // ∑ hbmCapacityGB across GPUs
-    fabricBidirectionalTBs: number  // total per-GPU bidirectional BW × count, in TB/s
+    totalHbmGB: number              // ∑ hbmCapacityGB across accelerators
+    fabricBidirectionalTBs: number  // total per-accelerator bidirectional BW × count, in TB/s
   }
 
   availability?: {
@@ -335,8 +343,8 @@ export interface Workload {
 }
 
 export interface CalcInput {
-  gpu: GpuSpec
-  gpuVariantId: string
+  accelerator: AcceleratorSpec
+  acceleratorVariantId: string
   model: ModelArch
   quant: Quantization
   workload: Workload

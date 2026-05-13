@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { calculate } from '../../src/engine/calc'
 import { testInput } from '../fixtures'
-import { GPUS } from '../../src/data/gpus'
+import { ACCELERATORS } from '../../src/data/accelerators'
 import { MODELS } from '../../src/data/models'
 import type { CalcInput } from '../../src/engine/types'
 
@@ -39,17 +39,17 @@ describe('calculate', () => {
   })
 
   it('throws on unknown variant id', () => {
-    expect(() => calculate({ ...testInput, gpuVariantId: 'nope' })).toThrow()
+    expect(() => calculate({ ...testInput, acceleratorVariantId: 'nope' })).toThrow()
   })
 })
 
 describe('calculate — real data integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const llama70b = MODELS.find(m => m.id === 'llama-3.3-70b')!
 
   const input: CalcInput = {
-    gpu: h100,
-    gpuVariantId: 'sxm-80',
+    accelerator: h100,
+    acceleratorVariantId: 'sxm-80',
     model: llama70b,
     quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
     workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -76,13 +76,13 @@ describe('calculate — real data integration', () => {
 })
 
 describe('calculate — sliding window integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const mistral = MODELS.find(m => m.id === 'mistral-7b-v0.1')!
 
   it('Mistral 7B at 32k prompt: KV cache bounded by 4k window, not 32k', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: mistral,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
@@ -96,13 +96,13 @@ describe('calculate — sliding window integration', () => {
 })
 
 describe('calculate — MoE integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const mixtral = MODELS.find(m => m.id === 'mixtral-8x7b')!
 
   it('Mixtral 8x7B on H100 SXM-80: weights use total params, decode bytes use active', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: mixtral,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -127,13 +127,13 @@ describe('calculate — MoE integration', () => {
 })
 
 describe('calculate — MLA integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const dsv2 = MODELS.find(m => m.id === 'deepseek-v2')!
 
   it('DeepSeek-V2 at 32k prompt: KV cache uses MLA latent formula', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: dsv2,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
@@ -153,13 +153,13 @@ describe('calculate — MLA integration', () => {
 })
 
 describe('calculate — hybrid attention integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const gemma27b = MODELS.find(m => m.id === 'gemma-3-27b')!
 
   it('Gemma 3 27B at 8k prompt: KV cache uses hybrid formula (~3.8× smaller than full attention)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: gemma27b,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 8192, outputTokens: 0, concurrency: 1 }
@@ -184,13 +184,13 @@ describe('calculate — hybrid attention integration', () => {
 })
 
 describe('calculate — DeepSeek V3 (MLA + shared-expert MoE) integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const dsv3 = MODELS.find(m => m.id === 'deepseek-v3')!
 
   it('DeepSeek V3 at 32k prompt: MLA KV cache matches V3 geometry', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: dsv3,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
@@ -210,8 +210,8 @@ describe('calculate — DeepSeek V3 (MLA + shared-expert MoE) integration', () =
 
   it('DeepSeek V3 decode bytes/step use activeParams (37B), not paramCount (671B)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: dsv3,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -228,13 +228,13 @@ describe('calculate — DeepSeek V3 (MLA + shared-expert MoE) integration', () =
 })
 
 describe('calculate — Mixtral 8x22B integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const mixtral22b = MODELS.find(m => m.id === 'mixtral-8x22b')!
 
   it('Mixtral 8x22B on H100 SXM-80: weights 282 GB do not fit; decode uses 39B active', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: mixtral22b,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -252,13 +252,13 @@ describe('calculate — Mixtral 8x22B integration', () => {
 })
 
 describe('calculate — Kimi K2 integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const k2 = MODELS.find(m => m.id === 'kimi-k2')!
 
   it('Kimi K2 at 32k prompt: MLA KV cache uses identical formula to DeepSeek V3 (same layers + MLA dims)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: k2,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
@@ -273,8 +273,8 @@ describe('calculate — Kimi K2 integration', () => {
 
   it('Kimi K2 decode bytes/step use activeParams (32B), not paramCount (1.04T)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: k2,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -288,13 +288,13 @@ describe('calculate — Kimi K2 integration', () => {
 })
 
 describe('calculate — GLM-4.5-Air integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const glm = MODELS.find(m => m.id === 'glm-4.5-air')!
 
   it('GLM-4.5-Air at 32k prompt: regular GQA KV cache with 12:1 head ratio', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: glm,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
@@ -307,8 +307,8 @@ describe('calculate — GLM-4.5-Air integration', () => {
 
   it('GLM-4.5-Air composes shared-expert MoE with regular GQA attention', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: glm,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -326,13 +326,13 @@ describe('calculate — GLM-4.5-Air integration', () => {
 })
 
 describe('calculate — DeepSeek V3.2 (DSA) integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const v3 = MODELS.find(m => m.id === 'deepseek-v3')!
   const v32 = MODELS.find(m => m.id === 'deepseek-v3.2')!
 
   const baseInput: Omit<CalcInput, 'model'> = {
-    gpu: h100,
-    gpuVariantId: 'sxm-80',
+    accelerator: h100,
+    acceleratorVariantId: 'sxm-80',
     quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
     workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
   }
@@ -359,13 +359,13 @@ describe('calculate — DeepSeek V3.2 (DSA) integration', () => {
 })
 
 describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const glm5 = MODELS.find(m => m.id === 'glm-5')!
 
   it('GLM-5 at 32k prompt: MLA KV cache uses 78 layers (vs V3.2 61)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: glm5,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
@@ -379,8 +379,8 @@ describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', (
 
   it('GLM-5 decode bytes/step use activeParams (40B), not paramCount (744B)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: glm5,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
@@ -397,13 +397,13 @@ describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', (
 })
 
 describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const kl = MODELS.find(m => m.id === 'kimi-linear')!
 
   it('Kimi-Linear at 128k prompt: KV cache uses 7 MLA layers + 20 KDA state', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: kl,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 131072, outputTokens: 0, concurrency: 1 }
@@ -421,8 +421,8 @@ describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
 
   it('Kimi-Linear KV cache at 128k is ~3.78× smaller than hypothetical all-MLA equivalent', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: kl,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 131072, outputTokens: 0, concurrency: 1 }
@@ -437,8 +437,8 @@ describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
 
   it('Kimi-Linear decode at batch=1 is memory-bound on weight reads (3B active)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: kl,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }

@@ -32,7 +32,7 @@
                     gaps: [] as GapRow[], ridge: 1,
                     xMin: 0.1, xMax: 1000, yMin: 1e10, yMax: 1e15 }
     if (!$input || !$result) return empty
-    const variant = $input.gpu.variants.find(v => v.id === $input.gpuVariantId)
+    const variant = $input.accelerator.variants.find(v => v.id === $input.acceleratorVariantId)
     if (!variant) return empty
 
     const peakOp = variant.operatingPoints.find(o => o.id === 'peak')

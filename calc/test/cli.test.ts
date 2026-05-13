@@ -16,15 +16,15 @@ function run(args: string[]): { stdout: string; stderr: string; status: number }
 }
 
 describe('llm-calc CLI', () => {
-  it('list gpus: contains h100 and exits 0', () => {
-    const { stdout, status } = run(['list', 'gpus'])
+  it('list accelerators: contains h100 and exits 0', () => {
+    const { stdout, status } = run(['list', 'accelerators'])
     expect(status).toBe(0)
     expect(stdout).toContain('h100')
   })
 
   it('calc JSON: produces valid JSON and exits 0', () => {
     const { stdout, status } = run([
-      '-g', 'h100', '-V', 'sxm-80', '-m', 'llama-3.3-70b',
+      '-A', 'h100', '-V', 'sxm-80', '-m', 'llama-3.3-70b',
       '-p', '2048', '-o', '512', '-c', '1',
       '-w', 'fp16', '-k', 'fp16', '-a', 'fp16'
     ])
@@ -37,7 +37,7 @@ describe('llm-calc CLI', () => {
 
   it('calc table: output contains TTFT and exits 0', () => {
     const { stdout, status } = run([
-      '-g', 'h100', '-V', 'sxm-80', '-m', 'llama-3.3-70b',
+      '-A', 'h100', '-V', 'sxm-80', '-m', 'llama-3.3-70b',
       '-p', '2048', '-o', '512', '-c', '1',
       '--format', 'table'
     ])

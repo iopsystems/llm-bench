@@ -1,4 +1,4 @@
-import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
+import type { CalcInput, AcceleratorOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
 import {
   attendedSeqlenSummedOverLayers,
@@ -11,7 +11,7 @@ import { bytesOf } from './dtypes'
 
 export function computeDecode(
   input: CalcInput,
-  opPoint: GpuOperatingPoint,
+  opPoint: AcceleratorOperatingPoint,
   memory: MemoryResult
 ): PerfTier['decode'] {
   const { model, quant, workload } = input

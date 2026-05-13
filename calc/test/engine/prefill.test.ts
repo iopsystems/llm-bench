@@ -4,7 +4,7 @@ import { testInput } from '../fixtures'
 import { computeMemory } from '../../src/engine/memory'
 
 describe('computePrefill', () => {
-  const opPoint = testInput.gpu.variants[0].operatingPoints[0]
+  const opPoint = testInput.accelerator.variants[0].operatingPoints[0]
   const memory = computeMemory(testInput)
 
   it('flops = 2 × params × prompt + 2 × layers × prompt² × hidden', () => {

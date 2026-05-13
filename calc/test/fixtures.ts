@@ -1,10 +1,10 @@
-import type { GpuSpec, ModelArch, Quantization, Workload, CalcInput } from '../src/engine/types'
+import type { AcceleratorSpec, ModelArch, Quantization, Workload, CalcInput } from '../src/engine/types'
 
-// Tiny synthetic GPU: 1 TFLOP fp16, 1 GB/s HBM, 1 GB capacity.
+// Tiny synthetic accelerator: 1 TFLOP fp16, 1 GB/s HBM, 1 GB capacity.
 // Numbers chosen so arithmetic is exact and hand-verifiable.
-export const testGpu: GpuSpec = {
-  id: 'test-gpu',
-  name: 'Test GPU',
+export const testAccelerator: AcceleratorSpec = {
+  id: 'test-accel',
+  name: 'Test Accelerator',
   vendor: 'test',
   variants: [{
     id: 'v',
@@ -47,8 +47,8 @@ export const testWorkload: Workload = {
 }
 
 export const testInput: CalcInput = {
-  gpu: testGpu,
-  gpuVariantId: 'v',
+  accelerator: testAccelerator,
+  acceleratorVariantId: 'v',
   model: testModel,
   quant: fp16Quant,
   workload: testWorkload
