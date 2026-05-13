@@ -1,6 +1,12 @@
 import type { CalcInput, GpuOperatingPoint, MemoryResult, PerfTier } from './types'
 import { roofline } from './roofline'
-import { attendedSeqlenSummedOverLayers, activeParams, attentionDim } from './memory'
+import {
+  attendedSeqlenSummedOverLayers,
+  activeParams,
+  attentionDim,
+  linearAttentionFlopsPerToken,
+  linearAttentionStateBytes
+} from './memory'
 import { bytesOf } from './dtypes'
 
 export function computeDecode(
@@ -12,11 +18,14 @@ export function computeDecode(
   const avgSeqlen = workload.promptTokens + workload.outputTokens / 2
 
   const flopsPerStep =
-    (2 * activeParams(model) + 2 * attendedSeqlenSummedOverLayers(model, avgSeqlen) * attentionDim(model)) *
+    (2 * activeParams(model)
+     + 2 * attendedSeqlenSummedOverLayers(model, avgSeqlen) * attentionDim(model)
+     + linearAttentionFlopsPerToken(model)) *
     workload.concurrency
   const bytesPerStep =
     activeParams(model) * bytesOf(quant.weights) +
-    memory.kvCachePerRequest * workload.concurrency
+    memory.kvCachePerRequest * workload.concurrency +
+    linearAttentionStateBytes(model, quant.kv) * workload.concurrency  // KDA state write-back
 
   const tflops = opPoint.tflops[quant.activations]
   if (tflops === undefined) {
