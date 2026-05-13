@@ -160,6 +160,20 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 37_000_000_000
     }
   },
+  {
+    id: 'deepseek-v3.2', name: 'DeepSeek-V3.2', family: 'deepseek',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
+    paramCount: 671_000_000_000,
+    attention: { type: 'mla-dsa', kvLoraRank: 512, qkRopeHeadDim: 64, topK: 2048 },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 37_000_000_000
+    }
+  },
   // === Moonshot / Kimi ===
   {
     id: 'kimi-k2', name: 'Kimi K2', family: 'kimi',

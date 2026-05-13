@@ -324,3 +324,36 @@ describe('calculate — GLM-4.5-Air integration', () => {
     expect(r.perf['peak'].decode.regime).toBe('memory')
   })
 })
+
+describe('calculate — DeepSeek V3.2 (DSA) integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const v3 = MODELS.find(m => m.id === 'deepseek-v3')!
+  const v32 = MODELS.find(m => m.id === 'deepseek-v3.2')!
+
+  const baseInput: Omit<CalcInput, 'model'> = {
+    gpu: h100,
+    gpuVariantId: 'sxm-80',
+    quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+    workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+  }
+
+  it('V3.2 KV cache at 32k is identical to V3 (DSA does not shrink KV)', () => {
+    const r3 = calculate({ ...baseInput, model: v3 })
+    const r32 = calculate({ ...baseInput, model: v32 })
+    expect(r32.memory.kvCachePerRequest).toBe(r3.memory.kvCachePerRequest)
+    expect(r32.memory.kvCachePerRequest).toBe(61 * (512 + 64) * 2 * 32768)
+  })
+
+  it('V3.2 prefill attention term shrinks by ratio seqlen/topK ≈ 16× vs V3', () => {
+    const r3 = calculate({ ...baseInput, model: v3 })
+    const r32 = calculate({ ...baseInput, model: v32 })
+    // MLP term identical (same activeParams, same prompt). Attention term differs.
+    const mlpTerm = 2 * 37_000_000_000 * 32768
+    const v3AttentionTerm = r3.perf['peak'].prefill.flops - mlpTerm
+    const v32AttentionTerm = r32.perf['peak'].prefill.flops - mlpTerm
+    // V3:   attendedSeq = 61 × 32768 = 1_998_848
+    // V3.2: attendedSeq = 61 × 2048  = 124_928 (capped at topK)
+    // Ratio: 32768 / 2048 = 16
+    expect(v3AttentionTerm / v32AttentionTerm).toBeCloseTo(32768 / 2048, 6)
+  })
+})
