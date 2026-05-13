@@ -85,4 +85,27 @@ describe('computePrefill', () => {
     const p = computePrefill(input, opPoint, mlaMemory)
     expect(p.flops).toBe(24800)
   })
+
+  it('attention term uses hybrid formula in prefill flops', () => {
+    // testModel: layers=2, hiddenDim=4, paramCount=1000, prompt=10.
+    // numHeads=2, headDim=2 → attentionDim=4.
+    // Hybrid with slidingWindow=5, numSlidingLayers=1, numGlobalLayers=1:
+    //   attendedSeq(10) = 1 × min(10, 5) + 1 × 10 = 15
+    //   MLP: 2 × 1000 × 10 = 20000
+    //   Attention: 2 × 10 × 15 × 4 = 1200
+    //   Total = 21200
+    const hybridModel = {
+      ...testInput.model,
+      attention: {
+        type: 'hybrid' as const,
+        slidingWindow: 5,
+        numSlidingLayers: 1,
+        numGlobalLayers: 1
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const hybridMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, hybridMemory)
+    expect(p.flops).toBe(21200)
+  })
 })

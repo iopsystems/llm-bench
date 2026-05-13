@@ -82,4 +82,26 @@ describe('computeMemory', () => {
     expect(m.kvCachePerRequest).toBe(720)
     expect(m.kvCacheTotal).toBe(1440)
   })
+
+  it('kvCachePerRequest uses hybrid formula: numSliding × min(seq,W) + numGlobal × seq', () => {
+    // testModel: layers=2, kvHeads=1, headDim=2, fp16 KV; prompt+output=15.
+    // Hybrid with slidingWindow=5, numSlidingLayers=1, numGlobalLayers=1:
+    //   per-layer KV bytes = 2 × 1 × 2 × 2 = 8
+    //   attendedSeqlen = 1 × min(15, 5) + 1 × 15 = 5 + 15 = 20
+    //   kvCachePerRequest = 8 × 20 = 160
+    const hybridModel = {
+      ...testInput.model,
+      attention: {
+        type: 'hybrid' as const,
+        slidingWindow: 5,
+        numSlidingLayers: 1,
+        numGlobalLayers: 1
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const m = computeMemory(input)
+    expect(m.kvCachePerRequest).toBe(160)
+    // × concurrency 2 = 320 bytes total
+    expect(m.kvCacheTotal).toBe(320)
+  })
 })

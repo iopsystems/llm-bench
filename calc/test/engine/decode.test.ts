@@ -105,4 +105,26 @@ describe('computeDecode', () => {
     const d = computeDecode(input, opPoint, mlaMemory)
     expect(d.flopsPerStep).toBe(5200)
   })
+
+  it('attention term uses hybrid formula in decode flopsPerStep', () => {
+    // testModel: layers=2, hiddenDim=4, paramCount=1000, concurrency=2.
+    // numHeads=2, headDim=2 → attentionDim=4.
+    // avgSeqlen = 10 + 5/2 = 12.5.
+    // Hybrid with slidingWindow=5, numSlidingLayers=1, numGlobalLayers=1:
+    //   attendedSeq(12.5) = 1 × min(12.5, 5) + 1 × 12.5 = 17.5
+    //   flopsPerStep = (2×1000 + 2×17.5×4) × 2 = (2000 + 140) × 2 = 4280
+    const hybridModel = {
+      ...testInput.model,
+      attention: {
+        type: 'hybrid' as const,
+        slidingWindow: 5,
+        numSlidingLayers: 1,
+        numGlobalLayers: 1
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const hybridMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, hybridMemory)
+    expect(d.flopsPerStep).toBe(4280)
+  })
 })
