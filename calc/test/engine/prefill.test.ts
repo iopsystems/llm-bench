@@ -109,4 +109,21 @@ describe('computePrefill', () => {
     const p = computePrefill(input, opPoint, hybridMemory)
     expect(p.flops).toBe(21200)
   })
+
+  it('attention term caps at topK for mla-dsa', () => {
+    // testModel: layers=2, paramCount=1000, prompt=10.
+    // MLA-DSA with kvLoraRank=10, rope=2 → attentionDim=12; topK=3 (< prompt=10).
+    //   attendedSeq = 2 × min(10, 3) = 6
+    //   MLP: 2 × 1000 × 10 = 20000
+    //   Attention: 2 × 10 × 6 × 12 = 1440
+    //   Total = 21440
+    const dsaModel = {
+      ...testInput.model,
+      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, topK: 3 }
+    }
+    const input = { ...testInput, model: dsaModel }
+    const dsaMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, dsaMemory)
+    expect(p.flops).toBe(21440)
+  })
 })

@@ -129,4 +129,20 @@ describe('computeDecode', () => {
     const d = computeDecode(input, opPoint, hybridMemory)
     expect(d.flopsPerStep).toBe(4280)
   })
+
+  it('attention term caps at topK for mla-dsa', () => {
+    // testModel: layers=2, paramCount=1000, concurrency=2.
+    // avgSeqlen = 10 + 5/2 = 12.5.
+    // MLA-DSA with kvLoraRank=10, rope=2 → attentionDim=12; topK=4 (< 12.5).
+    //   attendedSeq = 2 × min(12.5, 4) = 8
+    //   flopsPerStep = (2×1000 + 2×8×12) × 2 = (2000 + 192) × 2 = 4384
+    const dsaModel = {
+      ...testInput.model,
+      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, topK: 4 }
+    }
+    const input = { ...testInput, model: dsaModel }
+    const dsaMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, dsaMemory)
+    expect(d.flopsPerStep).toBe(4384)
+  })
 })

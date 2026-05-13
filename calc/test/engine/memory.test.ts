@@ -104,4 +104,21 @@ describe('computeMemory', () => {
     // × concurrency 2 = 320 bytes total
     expect(m.kvCacheTotal).toBe(320)
   })
+
+  it('kvCachePerRequest uses MLA formula for mla-dsa (DSA does not shrink KV)', () => {
+    // testModel: layers=2, fp16 KV; prompt+output=15.
+    // MLA-DSA with kvLoraRank=10, rope=2, topK=4:
+    //   per-layer KV bytes = (10+2) × 2 = 24
+    //   attendedSeqlen = 2 × 15 = 30  (KV unaffected by topK — every past token cached)
+    //   kvCachePerRequest = 24 × 30 = 720
+    const dsaModel = {
+      ...testInput.model,
+      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, topK: 4 }
+    }
+    const input = { ...testInput, model: dsaModel }
+    const m = computeMemory(input)
+    expect(m.kvCachePerRequest).toBe(720)
+    // × concurrency 2 = 1440 bytes total
+    expect(m.kvCacheTotal).toBe(1440)
+  })
 })
