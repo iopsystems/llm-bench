@@ -1,4 +1,4 @@
-export type Dtype = 'fp32' | 'fp16' | 'bf16' | 'fp8' | 'int8' | 'int4'
+export type Dtype = 'fp32' | 'fp16' | 'bf16' | 'fp8' | 'fp4' | 'int8' | 'int4'
 
 export interface GpuOperatingPoint {
   id: string
@@ -151,6 +151,22 @@ export type AttentionConfig =
       numLinearHeads: number;
       linearHeadDim: number
     }
+  | { type: 'csa-hca-hybrid';
+      // Layer counts (must sum to model.layers)
+      numSlidingLayers: number;
+      numCsaLayers: number;
+      numHcaLayers: number;
+      // Sliding-window size (applies to dedicated sliding layers AND
+      // to the per-layer side-branch on CSA/HCA layers)
+      slidingWindow: number;
+      // CSA params
+      csaCompressionM: number;
+      csaTopK: number;
+      csaIndexerHeads: number;
+      csaIndexerHeadDim: number;
+      // HCA params
+      hcaCompressionM: number
+    }
 
 export type ArchitectureConfig =
   | { type: 'dense' }
@@ -175,6 +191,7 @@ export interface ModelArch {
   paramCount: number
   attention: AttentionConfig
   architecture: ArchitectureConfig
+  numNextnLayers: number  // Multi-Token Prediction depth; 0 for non-MTP models
 }
 
 export interface Quantization {
