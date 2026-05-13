@@ -152,6 +152,74 @@ export interface InterconnectAchievableTier {
   notes?: string
 }
 
+// === Multi-GPU systems ===
+// A MultiGpuSystem composes a specific GPU (referenced by id + variant) with a
+// specific scale-up interconnect and a count, capturing concrete products users
+// can actually buy or rent today. The registry lives in src/data/systems.ts.
+
+export type SystemFormFactor =
+  | 'baseboard'        // 8-GPU baseboard sold to OEMs (HGX H100/H200/B200)
+  | 'node'             // ready-to-deploy server (DGX H100, MI300X 8-OAM)
+  | 'rack'             // pre-integrated rack (GB200 NVL72)
+  | 'pod-slice'        // TPU pod slice
+  | 'cloud-instance'   // cloud-only SKU with no on-prem equivalent (AWS Trn2)
+  | 'wafer'            // wafer-scale (Cerebras CS-3)
+
+export type CloudProvider =
+  | 'aws'
+  | 'azure'
+  | 'gcp'
+  | 'oci'
+  | 'coreweave'
+  | 'lambda'
+  | 'crusoe'
+  | 'intel-tiber'
+  | 'cerebras-cloud'
+
+export interface MultiGpuSystem {
+  id: string
+  name: string
+  vendor: string
+  generation?: string
+  formFactor: SystemFormFactor
+
+  // Composition by reference to other registries. The data file should set
+  // these to ids that exist in GPUS / INTERCONNECTS; not enforced at the
+  // type level (would require const-keyed lookup), but reviewers can check.
+  gpu: {
+    id: string                 // GpuSpec.id
+    variantId: string          // GpuVariant.id (which capacity / SKU)
+    count: number              // GPUs in the system
+  }
+
+  // Primary scale-up fabric among the GPUs. References InterconnectSpec.id.
+  interconnectId: string
+
+  // Optional scale-out NIC layer — DGX-class nodes ship with multiple
+  // ConnectX/EFA NICs for multi-node training. Single-instance serving
+  // rarely crosses this, but useful for fleet sizing.
+  scaleOutInterconnectId?: string
+  scaleOutNicsPerNode?: number
+
+  // Denormalized aggregates for UI display / cross-system comparison.
+  // Consumers MUST NOT recompute a roofline from these — they should look up
+  // the GPU and interconnect entries directly. Stored here so reviewers can
+  // sanity-check the composition at a glance.
+  aggregate: {
+    totalHbmGB: number              // ∑ hbmCapacityGB across GPUs
+    fabricBidirectionalTBs: number  // total per-GPU bidirectional BW × count, in TB/s
+  }
+
+  availability?: {
+    onPrem?: boolean                  // sold through OEM channel
+    clouds?: CloudProvider[]
+  }
+
+  sources?: string[]
+  asOf?: string
+  notes?: string
+}
+
 
 export type CollectivePrimitive =
   | 'all-reduce'
