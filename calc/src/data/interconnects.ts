@@ -14,6 +14,12 @@ import type { InterconnectSpec } from '../engine/types'
 // PCIe rows are reference baselines; in practice a PCIe-only multi-GPU box
 // also bounces through the CPU's root complex, which adds another factor of
 // slowdown not modeled here.
+//
+// Achievable BW: entries may carry an optional `contention` (analytical
+// fabric model) and/or `tiers` (empirical measurements). Both assume one
+// workload owns the entire fabric — see the docstrings on FabricContention
+// and InterconnectAchievableTier in src/engine/types.ts. None of the entries
+// below populate these fields yet; population happens in a follow-up.
 export const INTERCONNECTS: InterconnectSpec[] = [
   // === NVIDIA NVLink (per-GPU scale-up) ===
   {
