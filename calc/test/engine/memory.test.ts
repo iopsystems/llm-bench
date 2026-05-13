@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { computeMemory } from '../../src/engine/memory'
 import { testInput } from '../fixtures'
+import type { ModelArch } from '../../src/engine/types'
 
 describe('computeMemory', () => {
   it('weights = paramCount × bytes(weight_dtype)', () => {
@@ -145,5 +146,31 @@ describe('computeMemory', () => {
     expect(m.kvCachePerRequest).toBe(196)
     // × concurrency 2 = 392 bytes total
     expect(m.kvCacheTotal).toBe(392)
+  })
+
+  it('kvCachePerRequest for csa-hca-hybrid sums sliding + CSA + HCA contributions', () => {
+    // testModel base: prompt+output=15, fp16, concurrency=2.
+    // csa-hca-hybrid with layers=3 (1 sliding + 1 CSA + 1 HCA):
+    //   slidingWindow=2, csaCompressionM=2, csaTopK=3, hcaCompressionM=4
+    // attendedSeqlen(forKv=true) =
+    //   1 × min(15, 2) + 1 × (15/2 + 2) + 1 × (15/4 + 2) = 2 + 9.5 + 5.75 = 17.25
+    // kvBytesPerTokenPerLayer = 2 × 1 × 2 × 2 (fp16) = 8
+    // kvCachePerRequest = 8 × 17.25 = 138
+    const hybridModel: ModelArch = {
+      ...testInput.model,
+      layers: 3,
+      attention: {
+        type: 'csa-hca-hybrid',
+        numSlidingLayers: 1, numCsaLayers: 1, numHcaLayers: 1,
+        slidingWindow: 2,
+        csaCompressionM: 2, csaTopK: 3,
+        csaIndexerHeads: 2, csaIndexerHeadDim: 2,
+        hcaCompressionM: 4
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const m = computeMemory(input)
+    expect(m.kvCachePerRequest).toBe(138)
+    expect(m.kvCacheTotal).toBe(276)
   })
 })

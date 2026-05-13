@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { computeDecode } from '../../src/engine/decode'
 import { testInput } from '../fixtures'
 import { computeMemory } from '../../src/engine/memory'
+import type { ModelArch } from '../../src/engine/types'
 
 describe('computeDecode', () => {
   const opPoint = testInput.gpu.variants[0].operatingPoints[0]
@@ -187,5 +188,35 @@ describe('computeDecode', () => {
     // Effective per-token time halves; aggregate throughput doubles
     expect(dMtp.timePerTokenS).toBeCloseTo(dBase.timePerTokenS / 2, 12)
     expect(dMtp.aggregateTokensPerS).toBeCloseTo(dBase.aggregateTokensPerS * 2, 6)
+  })
+
+  it('flopsPerStep and bytesPerStep for csa-hca-hybrid include all three layer types', () => {
+    // testModel base: paramCount=1000, concurrency=2, prompt+output=15.
+    // avgSeqlen = 12.5.
+    // csa-hca-hybrid (layers=3):
+    //   attendedSeqlen(forKv=false, 12.5) =
+    //     1 × min(12.5, 2) + 1 × (csaTopK=3 + 2) + 1 × (12.5/4 + 2)
+    //     = 2 + 5 + 5.125 = 12.125
+    //   attentionDim = 4
+    //   flopsPerStep = (2 × 1000 + 2 × 12.125 × 4) × 2 = (2000 + 97) × 2 = 4194
+    //   memory.kvCachePerRequest (from prompt+output=15) = 138
+    //   bytesPerStep = 1000 × 2 + 138 × 2 = 2276
+    const hybridModel: ModelArch = {
+      ...testInput.model,
+      layers: 3,
+      attention: {
+        type: 'csa-hca-hybrid',
+        numSlidingLayers: 1, numCsaLayers: 1, numHcaLayers: 1,
+        slidingWindow: 2,
+        csaCompressionM: 2, csaTopK: 3,
+        csaIndexerHeads: 2, csaIndexerHeadDim: 2,
+        hcaCompressionM: 4
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const hybridMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, hybridMemory)
+    expect(d.flopsPerStep).toBe(4194)
+    expect(d.bytesPerStep).toBe(2276)
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { computePrefill } from '../../src/engine/prefill'
 import { testInput } from '../fixtures'
 import { computeMemory } from '../../src/engine/memory'
+import type { ModelArch } from '../../src/engine/types'
 
 describe('computePrefill', () => {
   const opPoint = testInput.gpu.variants[0].operatingPoints[0]
@@ -150,5 +151,33 @@ describe('computePrefill', () => {
     const hybridMemory = computeMemory(input)
     const p = computePrefill(input, opPoint, hybridMemory)
     expect(p.flops).toBe(21360)
+  })
+
+  it('flops for csa-hca-hybrid uses topK for CSA layer compute', () => {
+    // testModel base: paramCount=1000, prompt=10.
+    // csa-hca-hybrid (layers=3, same params as memory test):
+    //   attendedSeqlen(forKv=false, seqlen=10) =
+    //     1 × min(10, 2) + 1 × (csaTopK=3 + 2) + 1 × (10/4 + 2)
+    //     = 2 + 5 + 4.5 = 11.5
+    //   attentionDim = numHeads × headDim = 2 × 2 = 4
+    //   MLP: 2 × 1000 × 10 = 20000
+    //   Attention: 2 × prompt × attendedSeq × attentionDim = 2 × 10 × 11.5 × 4 = 920
+    //   Total: 20920
+    const hybridModel: ModelArch = {
+      ...testInput.model,
+      layers: 3,
+      attention: {
+        type: 'csa-hca-hybrid',
+        numSlidingLayers: 1, numCsaLayers: 1, numHcaLayers: 1,
+        slidingWindow: 2,
+        csaCompressionM: 2, csaTopK: 3,
+        csaIndexerHeads: 2, csaIndexerHeadDim: 2,
+        hcaCompressionM: 4
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const hybridMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, hybridMemory)
+    expect(p.flops).toBe(20920)
   })
 })
