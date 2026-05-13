@@ -189,6 +189,26 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 32_000_000_000
     }
   },
+  {
+    id: 'kimi-linear', name: 'Kimi-Linear-48B-A3B', family: 'kimi',
+    layers: 27, hiddenDim: 2304, intermediateDim: 9216,
+    numHeads: 32, numKvHeads: 32, headDim: 192, vocabSize: 163840,
+    paramCount: 48_000_000_000,
+    attention: {
+      type: 'linear-mla-hybrid',
+      kvLoraRank: 512, qkRopeHeadDim: 64,
+      qkNopeHeadDim: 128, vHeadDim: 128,
+      numLinearLayers: 20, numFullLayers: 7,
+      numLinearHeads: 32, linearHeadDim: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 3_000_000_000
+    }
+  },
   // === Z.ai / GLM ===
   // GLM-4.5-Air pairs the new shared-expert MoE schema with regular GQA full
   // attention (no MLA). The 12:1 KV-head reduction (96 attention / 8 KV) is the
