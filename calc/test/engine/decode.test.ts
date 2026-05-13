@@ -100,7 +100,7 @@ describe('computeDecode', () => {
     // flopsPerStep = (2×1000 + 2×2×12.5×12) × 2 = (2000 + 600) × 2 = 5200
     const mlaModel = {
       ...testInput.model,
-      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2 }
+      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2 }
     }
     const input = { ...testInput, model: mlaModel }
     const mlaMemory = computeMemory(input)
@@ -138,7 +138,7 @@ describe('computeDecode', () => {
     //   flopsPerStep = (2×1000 + 2×8×12) × 2 = (2000 + 192) × 2 = 4384
     const dsaModel = {
       ...testInput.model,
-      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, topK: 4 }
+      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2, topK: 4 }
     }
     const input = { ...testInput, model: dsaModel }
     const dsaMemory = computeMemory(input)

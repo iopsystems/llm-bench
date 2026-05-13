@@ -79,7 +79,7 @@ describe('computePrefill', () => {
     // Total = 24800
     const mlaModel = {
       ...testInput.model,
-      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2 }
+      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2 }
     }
     const input = { ...testInput, model: mlaModel }
     const mlaMemory = computeMemory(input)
@@ -119,7 +119,7 @@ describe('computePrefill', () => {
     //   Total = 21440
     const dsaModel = {
       ...testInput.model,
-      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, topK: 3 }
+      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2, topK: 3 }
     }
     const input = { ...testInput, model: dsaModel }
     const dsaMemory = computeMemory(input)

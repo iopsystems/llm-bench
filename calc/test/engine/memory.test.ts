@@ -75,7 +75,7 @@ describe('computeMemory', () => {
     // × concurrency 2 = 1440 bytes total.
     const mlaModel = {
       ...testInput.model,
-      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2 }
+      attention: { type: 'mla' as const, kvLoraRank: 10, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2 }
     }
     const input = { ...testInput, model: mlaModel }
     const m = computeMemory(input)
@@ -113,7 +113,7 @@ describe('computeMemory', () => {
     //   kvCachePerRequest = 24 × 30 = 720
     const dsaModel = {
       ...testInput.model,
-      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, topK: 4 }
+      attention: { type: 'mla-dsa' as const, kvLoraRank: 10, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2, topK: 4 }
     }
     const input = { ...testInput, model: dsaModel }
     const m = computeMemory(input)

@@ -31,9 +31,20 @@ export interface GpuSpec {
 export type AttentionConfig =
   | { type: 'full' }
   | { type: 'sliding'; window: number }
-  | { type: 'mla'; kvLoraRank: number; qkRopeHeadDim: number }
+  | { type: 'mla';
+      kvLoraRank: number;
+      qkRopeHeadDim: number;
+      qkNopeHeadDim: number;
+      vHeadDim: number
+    }
   | { type: 'hybrid'; slidingWindow: number; numSlidingLayers: number; numGlobalLayers: number }
-  | { type: 'mla-dsa'; kvLoraRank: number; qkRopeHeadDim: number; topK: number }
+  | { type: 'mla-dsa';
+      kvLoraRank: number;
+      qkRopeHeadDim: number;
+      qkNopeHeadDim: number;
+      vHeadDim: number;
+      topK: number
+    }
 
 export type ArchitectureConfig =
   | { type: 'dense' }

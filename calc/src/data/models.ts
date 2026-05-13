@@ -137,7 +137,7 @@ export const MODELS: ModelArch[] = [
     layers: 60, hiddenDim: 5120, intermediateDim: 12288,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 102400,
     paramCount: 236_000_000_000,
-    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64 },
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
       numExperts: 160,
@@ -151,7 +151,7 @@ export const MODELS: ModelArch[] = [
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
-    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64 },
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
       numExperts: 256,
@@ -165,7 +165,7 @@ export const MODELS: ModelArch[] = [
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
-    attention: { type: 'mla-dsa', kvLoraRank: 512, qkRopeHeadDim: 64, topK: 2048 },
+    attention: { type: 'mla-dsa', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128, topK: 2048 },
     architecture: {
       type: 'moe',
       numExperts: 256,
@@ -180,7 +180,7 @@ export const MODELS: ModelArch[] = [
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
     paramCount: 1_026_000_000_000,
-    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64 },
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
       numExperts: 384,
