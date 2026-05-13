@@ -151,3 +151,34 @@ describe('calculate — MLA integration', () => {
     expect(gqaEquivalent / r.memory.kvCachePerRequest).toBeGreaterThan(40)
   })
 })
+
+describe('calculate — hybrid attention integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const gemma27b = MODELS.find(m => m.id === 'gemma-3-27b')!
+
+  it('Gemma 3 27B at 8k prompt: KV cache uses hybrid formula (~3.8× smaller than full attention)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: gemma27b,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 8192, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Per-layer KV bytes per token = 2 × kvHeads × headDim × bytes(fp16)
+    //                              = 2 × 16 × 128 × 2 = 8192
+    // attendedSeq = 52 × min(8192, 1024) + 10 × 8192
+    //             = 52 × 1024 + 10 × 8192
+    //             = 53248 + 81920 = 135168
+    // kvCachePerRequest = 8192 × 135168 = 1_107_296_256
+    expect(r.memory.kvCachePerRequest).toBe(8192 * 135168)
+
+    // Sanity vs the would-have-been full-attention value:
+    //   2 × layers × kvHeads × headDim × bytes × seqlen
+    // = 2 × 62 × 16 × 128 × 2 × 8192 = 8192 × (62 × 8192) = 8192 × 507_904
+    const fullEquivalent = 8192 * 62 * 8192
+    const ratio = fullEquivalent / r.memory.kvCachePerRequest
+    expect(ratio).toBeGreaterThan(3.5)        // 3.76 actually
+    expect(ratio).toBeLessThan(6.3)           // asymptote layers/numGlobal = 62/10 = 6.2
+  })
+})

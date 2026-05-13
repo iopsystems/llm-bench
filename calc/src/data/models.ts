@@ -67,7 +67,7 @@ export const MODELS: ModelArch[] = [
     layers: 48, hiddenDim: 3840, intermediateDim: 15360,
     numHeads: 16, numKvHeads: 8, headDim: 256, vocabSize: 262144,
     paramCount: 12_187_000_000,
-    attention: { type: 'full' },
+    attention: { type: 'hybrid', slidingWindow: 1024, numSlidingLayers: 40, numGlobalLayers: 8 },
     architecture: { type: 'dense' }
   },
   {
@@ -75,7 +75,7 @@ export const MODELS: ModelArch[] = [
     layers: 62, hiddenDim: 5376, intermediateDim: 21504,
     numHeads: 32, numKvHeads: 16, headDim: 128, vocabSize: 262144,
     paramCount: 27_009_000_000,
-    attention: { type: 'full' },
+    attention: { type: 'hybrid', slidingWindow: 1024, numSlidingLayers: 52, numGlobalLayers: 10 },
     architecture: { type: 'dense' }
   },
   // === Mistral ===
