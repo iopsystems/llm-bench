@@ -121,4 +121,29 @@ describe('computeMemory', () => {
     // × concurrency 2 = 1440 bytes total
     expect(m.kvCacheTotal).toBe(1440)
   })
+
+  it('kvCachePerRequest for linear-mla-hybrid = MLA kv + KDA state', () => {
+    // testModel: layers=2, fp16; prompt+output=15.
+    // linear-mla-hybrid with numLinear=1, numFull=1; MLA kvLoraRank=5, rope=1;
+    // KDA: numLinearHeads=2, linearHeadDim=2.
+    //   per-full-layer-per-token KV bytes = (5 + 1) × 2 = 12
+    //   attendedSeqlen for kv (numFull × seq) = 1 × 15 = 15
+    //   KDA state bytes = 1 × 2 × 2² × 2 = 16
+    //   kvCachePerRequest = 12 × 15 + 16 = 196
+    const hybridModel = {
+      ...testInput.model,
+      attention: {
+        type: 'linear-mla-hybrid' as const,
+        kvLoraRank: 5, qkRopeHeadDim: 1,
+        qkNopeHeadDim: 1, vHeadDim: 1,
+        numLinearLayers: 1, numFullLayers: 1,
+        numLinearHeads: 2, linearHeadDim: 2
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const m = computeMemory(input)
+    expect(m.kvCachePerRequest).toBe(196)
+    // × concurrency 2 = 392 bytes total
+    expect(m.kvCacheTotal).toBe(392)
+  })
 })
