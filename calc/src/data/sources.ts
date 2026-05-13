@@ -42,6 +42,23 @@ export const SOURCES = {
   'nvidia-cublas-12-0': {
     title: 'NVIDIA cuBLAS 12.0 Performance Blog',
     url: 'https://developer.nvidia.com/blog/new-cublas-12-0-features-and-matrix-multiplication-performance-on-nvidia-hopper-gpus/'
+  },
+  // === Interconnect sources ===
+  'nvidia-nvlink': {
+    title: 'NVIDIA NVLink and NVLink Switch product page',
+    url: 'https://www.nvidia.com/en-us/data-center/nvlink/'
+  },
+  'amd-cdna3-whitepaper': {
+    title: 'AMD CDNA 3 Architecture White Paper',
+    url: 'https://www.amd.com/system/files/documents/amd-cdna-3-white-paper.pdf'
+  },
+  'google-tpu-v5p-docs': {
+    title: 'Google Cloud — TPU v5p system architecture',
+    url: 'https://cloud.google.com/tpu/docs/v5p'
+  },
+  'google-tpu-v6e-docs': {
+    title: 'Google Cloud — TPU v6e (Trillium) system architecture',
+    url: 'https://cloud.google.com/tpu/docs/v6e'
   }
 } as const satisfies Record<string, Source>
 
