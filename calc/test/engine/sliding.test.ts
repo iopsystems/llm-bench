@@ -3,7 +3,9 @@ import {
   activeParams,
   kvBytesPerTokenPerLayer,
   attentionDim,
-  attendedSeqlenSummedOverLayers
+  attendedSeqlenSummedOverLayers,
+  linearAttentionStateBytes,
+  linearAttentionFlopsPerToken
 } from '../../src/engine/memory'
 import type { ModelArch } from '../../src/engine/types'
 
@@ -187,5 +189,114 @@ describe('attendedSeqlenSummedOverLayers', () => {
     expect(attendedSeqlenSummedOverLayers(m, 30)).toBe(120)
     // seqlen == topK: 4 × 50 = 200
     expect(attendedSeqlenSummedOverLayers(m, 50)).toBe(200)
+  })
+})
+
+describe('linear-mla-hybrid branches in existing helpers', () => {
+  const base: ModelArch = {
+    id: 't', name: 'Test', family: 'test',
+    layers: 4, hiddenDim: 16, intermediateDim: 64,
+    numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
+    paramCount: 1000,
+    attention: {
+      type: 'linear-mla-hybrid',
+      kvLoraRank: 8, qkRopeHeadDim: 2,
+      qkNopeHeadDim: 2, vHeadDim: 2,
+      numLinearLayers: 3, numFullLayers: 1,
+      numLinearHeads: 2, linearHeadDim: 4
+    },
+    architecture: { type: 'dense' }
+  }
+
+  it('kvBytesPerTokenPerLayer: returns the per-full-MLA-layer-per-token bytes', () => {
+    // (kvLoraRank + qkRopeHeadDim) × 2 (fp16) = (8 + 2) × 2 = 20
+    expect(kvBytesPerTokenPerLayer(base, 'fp16')).toBe(20)
+  })
+
+  it('attentionDim: returns the MLA absorbed-form attention dim', () => {
+    // kvLoraRank + qkRopeHeadDim = 10
+    expect(attentionDim(base)).toBe(10)
+  })
+
+  it('attendedSeqlenSummedOverLayers: returns numFullLayers × seqlen', () => {
+    expect(attendedSeqlenSummedOverLayers(base, 100)).toBe(100)
+    expect(attendedSeqlenSummedOverLayers(base, 30)).toBe(30)
+  })
+
+  it('attendedSeqlenSummedOverLayers throws when layer counts do not sum to model.layers', () => {
+    const m: ModelArch = {
+      ...base,
+      attention: {
+        type: 'linear-mla-hybrid',
+        kvLoraRank: 8, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2,
+        numLinearLayers: 2, numFullLayers: 1,
+        numLinearHeads: 2, linearHeadDim: 4
+      }
+    }
+    expect(() => attendedSeqlenSummedOverLayers(m, 100)).toThrow(/sum to model\.layers/)
+  })
+})
+
+describe('linearAttentionStateBytes', () => {
+  it('returns 0 for non-linear attention types', () => {
+    const m: ModelArch = {
+      id: 't', name: 'Test', family: 'test',
+      layers: 4, hiddenDim: 16, intermediateDim: 64,
+      numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
+      paramCount: 1000,
+      attention: { type: 'full' },
+      architecture: { type: 'dense' }
+    }
+    expect(linearAttentionStateBytes(m, 'fp16')).toBe(0)
+  })
+
+  it('returns numLinearLayers × numLinearHeads × linearHeadDim² × bytes for linear-mla-hybrid', () => {
+    const m: ModelArch = {
+      id: 't', name: 'Test', family: 'test',
+      layers: 4, hiddenDim: 16, intermediateDim: 64,
+      numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
+      paramCount: 1000,
+      attention: {
+        type: 'linear-mla-hybrid',
+        kvLoraRank: 8, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2,
+        numLinearLayers: 3, numFullLayers: 1,
+        numLinearHeads: 2, linearHeadDim: 4
+      },
+      architecture: { type: 'dense' }
+    }
+    // 3 × 2 × 4² × 2 (fp16) = 192
+    expect(linearAttentionStateBytes(m, 'fp16')).toBe(192)
+  })
+})
+
+describe('linearAttentionFlopsPerToken', () => {
+  it('returns 0 for non-linear attention types', () => {
+    const m: ModelArch = {
+      id: 't', name: 'Test', family: 'test',
+      layers: 4, hiddenDim: 16, intermediateDim: 64,
+      numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
+      paramCount: 1000,
+      attention: { type: 'full' },
+      architecture: { type: 'dense' }
+    }
+    expect(linearAttentionFlopsPerToken(m)).toBe(0)
+  })
+
+  it('returns 2 × numLinearLayers × numLinearHeads × linearHeadDim² for linear-mla-hybrid', () => {
+    const m: ModelArch = {
+      id: 't', name: 'Test', family: 'test',
+      layers: 4, hiddenDim: 16, intermediateDim: 64,
+      numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
+      paramCount: 1000,
+      attention: {
+        type: 'linear-mla-hybrid',
+        kvLoraRank: 8, qkRopeHeadDim: 2, qkNopeHeadDim: 2, vHeadDim: 2,
+        numLinearLayers: 3, numFullLayers: 1,
+        numLinearHeads: 2, linearHeadDim: 4
+      },
+      architecture: { type: 'dense' }
+    }
+    // 2 × 3 × 2 × 4² = 192
+    expect(linearAttentionFlopsPerToken(m)).toBe(192)
   })
 })
