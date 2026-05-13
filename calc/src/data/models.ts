@@ -132,6 +132,20 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 21_000_000_000
     }
   },
+  {
+    id: 'deepseek-v3', name: 'DeepSeek-V3', family: 'deepseek',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
+    paramCount: 671_000_000_000,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64 },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 37_000_000_000
+    }
+  },
   // === Phi ===
   {
     id: 'phi-4', name: 'Phi-4 14B', family: 'phi',

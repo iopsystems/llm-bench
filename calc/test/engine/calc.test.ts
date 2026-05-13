@@ -182,3 +182,47 @@ describe('calculate — hybrid attention integration', () => {
     expect(ratio).toBeLessThan(6.3)           // asymptote layers/numGlobal = 62/10 = 6.2
   })
 })
+
+describe('calculate — DeepSeek V3 (MLA + shared-expert MoE) integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const dsv3 = MODELS.find(m => m.id === 'deepseek-v3')!
+
+  it('DeepSeek V3 at 32k prompt: MLA KV cache matches V3 geometry', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: dsv3,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // MLA KV per-layer-per-token bytes = (kv_lora + rope) × bytes(fp16) = 576 × 2 = 1152
+    // attendedSeq = layers × seq = 61 × 32768 = 1_998_848
+    // kvCachePerRequest = 1152 × 1_998_848 = 2_302_672_896
+    expect(r.memory.kvCachePerRequest).toBe(61 * (512 + 64) * 2 * 32768)
+
+    // Sanity: GQA-equivalent (same kvHeads=128, headDim=192) would be ~85× larger.
+    // 2 × 61 × 128 × 192 × 2 × 32768 vs 61 × 576 × 2 × 32768
+    //   = (2 × 128 × 192) / 576 = 49152 / 576 = 85.33
+    const gqaEquivalent = 2 * 61 * 128 * 192 * 2 * 32768
+    expect(gqaEquivalent / r.memory.kvCachePerRequest).toBeGreaterThan(80)
+  })
+
+  it('DeepSeek V3 decode bytes/step use activeParams (37B), not paramCount (671B)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: dsv3,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // decode.bytesPerStep = activeParams × bytes(fp16) + kvCachePerRequest × concurrency
+    //                    = 37e9 × 2 + small KV
+    // Lower bound: 37e9 × 2 = 74 GB (small KV is negligible at batch=1, prompt=2048)
+    const activeBytes = 37_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 5e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
