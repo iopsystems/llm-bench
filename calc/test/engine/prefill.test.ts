@@ -126,4 +126,29 @@ describe('computePrefill', () => {
     const p = computePrefill(input, opPoint, dsaMemory)
     expect(p.flops).toBe(21440)
   })
+
+  it('flops for linear-mla-hybrid includes KDA per-token term', () => {
+    // testModel: layers=2, paramCount=1000, prompt=10.
+    // linear-mla-hybrid as above:
+    //   attentionDim = 5 + 1 = 6
+    //   attendedSeqlen(10) = 1 × 10 = 10  (only the 1 full layer)
+    //   MLP: 2 × 1000 × 10 = 20000
+    //   Softmax attention: 2 × 10 × 10 × 6 = 1200
+    //   KDA per-token FLOPs = 2 × 1 × 2 × 2² = 16; × 10 prompt = 160
+    //   Total = 21360
+    const hybridModel = {
+      ...testInput.model,
+      attention: {
+        type: 'linear-mla-hybrid' as const,
+        kvLoraRank: 5, qkRopeHeadDim: 1,
+        qkNopeHeadDim: 1, vHeadDim: 1,
+        numLinearLayers: 1, numFullLayers: 1,
+        numLinearHeads: 2, linearHeadDim: 2
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const hybridMemory = computeMemory(input)
+    const p = computePrefill(input, opPoint, hybridMemory)
+    expect(p.flops).toBe(21360)
+  })
 })

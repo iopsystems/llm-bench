@@ -145,4 +145,33 @@ describe('computeDecode', () => {
     const d = computeDecode(input, opPoint, dsaMemory)
     expect(d.flopsPerStep).toBe(4384)
   })
+
+  it('flopsPerStep and bytesPerStep for linear-mla-hybrid include KDA terms', () => {
+    // testModel: layers=2, paramCount=1000, concurrency=2.
+    // avgSeqlen = 10 + 5/2 = 12.5.
+    // linear-mla-hybrid (kvLoraRank=5, rope=1, numLinear=1, numFull=1,
+    //                    numLinearHeads=2, linearHeadDim=2):
+    //   attentionDim = 6
+    //   attendedSeqlen(12.5) = 1 × 12.5 = 12.5  (only the 1 full layer)
+    //   KDA per-token FLOPs = 2 × 1 × 2 × 2² = 16
+    //   flopsPerStep = (2 × 1000 + 2 × 12.5 × 6 + 16) × 2 = (2000 + 150 + 16) × 2 = 4332
+    //   memory.kvCachePerRequest (from prompt+output=15) = 12 × 15 + 16 = 196
+    //   KDA state bytes = 16
+    //   bytesPerStep = 1000 × 2 + 196 × 2 + 16 × 2 = 2000 + 392 + 32 = 2424
+    const hybridModel = {
+      ...testInput.model,
+      attention: {
+        type: 'linear-mla-hybrid' as const,
+        kvLoraRank: 5, qkRopeHeadDim: 1,
+        qkNopeHeadDim: 1, vHeadDim: 1,
+        numLinearLayers: 1, numFullLayers: 1,
+        numLinearHeads: 2, linearHeadDim: 2
+      }
+    }
+    const input = { ...testInput, model: hybridModel }
+    const hybridMemory = computeMemory(input)
+    const d = computeDecode(input, opPoint, hybridMemory)
+    expect(d.flopsPerStep).toBe(4332)
+    expect(d.bytesPerStep).toBe(2424)
+  })
 })
