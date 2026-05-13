@@ -246,6 +246,23 @@ export const GPUS: GpuSpec[] = [
     }]
   },
   {
+    id: 'gb200', name: 'NVIDIA GB200', vendor: 'NVIDIA', family: 'Blackwell',
+    // Per-GPU numbers derived from NVIDIA's GB200 Grace Blackwell Superchip
+    // spec (1 Grace CPU + 2 Blackwell GPUs): 372 GB HBM3e ÷ 2 = 186 GB; 16 TB/s
+    // ÷ 2 = 8 TB/s; 10 PFLOPS FP16/BF16 sparse ÷ 2 GPUs ÷ 2 (sparse→dense) =
+    // 2500 TF dense; 20 PFLOPS FP8 sparse ÷ 2 ÷ 2 = 5000 TF dense; same for
+    // INT8. GB200 runs at higher TDP than HGX B200, hence the ~11% compute
+    // bump per GPU. FP4 not modeled (engine has no fp4 dtype).
+    variants: [{
+      id: 'nvl72-186', label: 'NVL72 (per GPU) 186GB', hbmCapacityGB: 186,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp16: 2500, bf16: 2500, fp8: 5000, int8: 5000 },
+        hbmBandwidthGBs: 8000
+      }]
+    }]
+  },
+  {
     id: 'mi300x', name: 'AMD Instinct MI300X', vendor: 'AMD', family: 'CDNA3',
     variants: [{
       id: 'oam-192', label: 'OAM 192GB', hbmCapacityGB: 192,
@@ -268,6 +285,22 @@ export const GPUS: GpuSpec[] = [
           notes: 'hipBLASLt GEMM at sustained clocks, 750W; HBM not separately measured (using peak)'
         }
       ]
+    }]
+  },
+  {
+    id: 'mi325x', name: 'AMD Instinct MI325X', vendor: 'AMD', family: 'CDNA3',
+    // Same CDNA3 silicon as MI300X, refreshed with 256GB HBM3e at 6 TB/s.
+    // Compute is unchanged from MI300X per AMD's product page; only memory
+    // capacity/bandwidth differ. No verified achievable-FLOPS source for
+    // MI325X yet — MI300X's mamf measurement would not transfer cleanly
+    // because the 256GB stack runs at different sustained clocks.
+    variants: [{
+      id: 'oam-256', label: 'OAM 256GB', hbmCapacityGB: 256,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp16: 1300, bf16: 1300, fp8: 2610, int8: 2600 },
+        hbmBandwidthGBs: 6000
+      }]
     }]
   },
 
@@ -405,6 +438,43 @@ export const GPUS: GpuSpec[] = [
         id: 'peak', label: 'Peak',
         tflops: { bf16: 918, int8: 1836 },
         hbmBandwidthGBs: 1759
+      }]
+    }]
+  },
+
+  // === AWS Neuron ===
+  // AWS publishes Inferentia/Trainium specs at the instance (multi-chip) level;
+  // per-chip values below are derived by division. Dense vs sparse is not
+  // disclosed in AWS marketing — FP8 numbers here are taken at face value as
+  // "peak" without sparsity, but treat with care.
+  {
+    id: 'trainium-2', name: 'AWS Trainium2', vendor: 'AWS', family: 'Neuron',
+    // Per-chip derived from Trn2.48xlarge aggregates: 16 chips, 1.5 TB HBM3,
+    // 46 TB/s aggregate bandwidth, 20.8 PFLOPS FP8 (no sparsity qualifier
+    // given by AWS). BF16 not separately published; omitted rather than
+    // guessed at half-FP8. The HBM rounds to ~94 GB exactly (1500/16) but AWS
+    // datasheets typically refer to 96 GB per chip — keeping 96 to match.
+    variants: [{
+      id: 'chip', label: 'per chip 96GB', hbmCapacityGB: 96,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp8: 1300 },
+        hbmBandwidthGBs: 2875
+      }]
+    }]
+  },
+  {
+    id: 'inferentia-2', name: 'AWS Inferentia2', vendor: 'AWS', family: 'Neuron',
+    // Per chip: 32 GB HBM (explicit on AWS Inf2 page); 9.8 TB/s aggregate ÷ 12
+    // chips = ~817 GB/s per chip; 190 TFLOPS FP16 explicit on the AWS Neuron/
+    // Inferentia product page. AWS lists FP8 support but no TFLOPS figure;
+    // omitted rather than inferred.
+    variants: [{
+      id: 'chip', label: 'per chip 32GB', hbmCapacityGB: 32,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp16: 190, bf16: 190 },
+        hbmBandwidthGBs: 817
       }]
     }]
   },
