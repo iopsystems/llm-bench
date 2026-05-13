@@ -17,6 +17,9 @@ export function kvBytesPerTokenPerLayer(model: ModelArch, kvDtype: Dtype): numbe
   if (att.type === 'linear-mla-hybrid') {
     return (att.kvLoraRank + att.qkRopeHeadDim) * bytesOf(kvDtype)
   }
+  if (att.type === 'csa-hca-hybrid') {
+    return 2 * model.numKvHeads * model.headDim * bytesOf(kvDtype)
+  }
   return 2 * model.numKvHeads * model.headDim * bytesOf(kvDtype)
 }
 
@@ -24,6 +27,7 @@ export function attentionDim(model: ModelArch): number {
   const att = model.attention
   if (att.type === 'mla' || att.type === 'mla-dsa') return att.kvLoraRank + att.qkRopeHeadDim
   if (att.type === 'linear-mla-hybrid') return att.kvLoraRank + att.qkRopeHeadDim
+  if (att.type === 'csa-hca-hybrid') return model.numHeads * model.headDim
   return model.numHeads * model.headDim
 }
 
@@ -48,6 +52,18 @@ export function attendedSeqlenSummedOverLayers(model: ModelArch, seqlen: number,
       )
     }
     return att.numFullLayers * seqlen
+  }
+  if (att.type === 'csa-hca-hybrid') {
+    if (att.numSlidingLayers + att.numCsaLayers + att.numHcaLayers !== model.layers) {
+      throw new Error(
+        `csa-hca-hybrid layer counts must sum to model.layers: ` +
+        `${att.numSlidingLayers} + ${att.numCsaLayers} + ${att.numHcaLayers} ≠ ${model.layers}`
+      )
+    }
+    const csaCount = forKv ? (seqlen / att.csaCompressionM) : att.csaTopK
+    return att.numSlidingLayers * Math.min(seqlen, att.slidingWindow)
+         + att.numCsaLayers * (csaCount + att.slidingWindow)
+         + att.numHcaLayers * (seqlen / att.hcaCompressionM + att.slidingWindow)
   }
   if (att.type === 'mla-dsa') return model.layers * (forKv ? seqlen : Math.min(seqlen, att.topK))
   const perLayer = att.type === 'sliding' ? Math.min(seqlen, att.window) : seqlen

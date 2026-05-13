@@ -276,6 +276,68 @@ describe('linearAttentionStateBytes', () => {
   })
 })
 
+describe('csa-hca-hybrid branches in existing helpers', () => {
+  const base: ModelArch = {
+    id: 't', name: 'Test', family: 'test',
+    layers: 3, hiddenDim: 16, intermediateDim: 64,
+    numHeads: 8, numKvHeads: 1, headDim: 8, vocabSize: 100,
+    paramCount: 1000,
+    numNextnLayers: 0,
+    attention: {
+      type: 'csa-hca-hybrid',
+      numSlidingLayers: 1, numCsaLayers: 1, numHcaLayers: 1,
+      slidingWindow: 2,
+      csaCompressionM: 2, csaTopK: 3,
+      csaIndexerHeads: 2, csaIndexerHeadDim: 2,
+      hcaCompressionM: 4
+    },
+    architecture: { type: 'dense' }
+  }
+
+  it('kvBytesPerTokenPerLayer: 2 × numKvHeads × headDim × bytes (MQA-style)', () => {
+    // 2 × 1 × 8 × 2 (fp16) = 32
+    expect(kvBytesPerTokenPerLayer(base, 'fp16')).toBe(32)
+  })
+
+  it('attentionDim: numHeads × headDim (full Q-head MQA)', () => {
+    // 8 × 8 = 64
+    expect(attentionDim(base)).toBe(64)
+  })
+
+  it('attendedSeqlenSummedOverLayers (forKv=true): storage formula', () => {
+    // seqlen=20:
+    // sliding contrib: 1 × min(20, 2) = 2
+    // CSA contrib:     1 × (20/2 + 2) = 12
+    // HCA contrib:     1 × (20/4 + 2) = 7
+    // total = 21
+    expect(attendedSeqlenSummedOverLayers(base, 20, true)).toBe(21)
+  })
+
+  it('attendedSeqlenSummedOverLayers (forKv=false default): compute formula uses csaTopK for CSA', () => {
+    // seqlen=20:
+    // sliding contrib: 1 × min(20, 2) = 2
+    // CSA contrib:     1 × (csaTopK=3 + 2) = 5
+    // HCA contrib:     1 × (20/4 + 2) = 7
+    // total = 14
+    expect(attendedSeqlenSummedOverLayers(base, 20)).toBe(14)
+  })
+
+  it('attendedSeqlenSummedOverLayers throws when layer counts do not sum to model.layers', () => {
+    const m: ModelArch = {
+      ...base,
+      attention: {
+        type: 'csa-hca-hybrid',
+        numSlidingLayers: 1, numCsaLayers: 1, numHcaLayers: 2,  // 1+1+2=4 ≠ 3
+        slidingWindow: 2,
+        csaCompressionM: 2, csaTopK: 3,
+        csaIndexerHeads: 2, csaIndexerHeadDim: 2,
+        hcaCompressionM: 4
+      }
+    }
+    expect(() => attendedSeqlenSummedOverLayers(m, 20)).toThrow(/sum to model\.layers/)
+  })
+})
+
 describe('linearAttentionFlopsPerToken', () => {
   it('returns 0 for non-linear attention types', () => {
     const m: ModelArch = {
