@@ -9,6 +9,7 @@ export const MODELS: ModelArch[] = [
     layers: 28, hiddenDim: 2048, intermediateDim: 6144,
     numHeads: 16, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 1_720_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -17,6 +18,7 @@ export const MODELS: ModelArch[] = [
     layers: 36, hiddenDim: 2560, intermediateDim: 9728,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 4_020_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -25,6 +27,7 @@ export const MODELS: ModelArch[] = [
     layers: 36, hiddenDim: 4096, intermediateDim: 12288,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 8_190_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -33,6 +36,7 @@ export const MODELS: ModelArch[] = [
     layers: 40, hiddenDim: 5120, intermediateDim: 17408,
     numHeads: 40, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 14_770_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -41,6 +45,7 @@ export const MODELS: ModelArch[] = [
     layers: 64, hiddenDim: 5120, intermediateDim: 25600,
     numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 32_760_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -50,6 +55,7 @@ export const MODELS: ModelArch[] = [
     layers: 80, hiddenDim: 8192, intermediateDim: 28672,
     numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 128256,
     paramCount: 70_553_706_496,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -58,6 +64,7 @@ export const MODELS: ModelArch[] = [
     layers: 126, hiddenDim: 16384, intermediateDim: 53248,
     numHeads: 128, numKvHeads: 8, headDim: 128, vocabSize: 128256,
     paramCount: 405_853_356_032,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -67,6 +74,7 @@ export const MODELS: ModelArch[] = [
     layers: 48, hiddenDim: 3840, intermediateDim: 15360,
     numHeads: 16, numKvHeads: 8, headDim: 256, vocabSize: 262144,
     paramCount: 12_187_000_000,
+    numNextnLayers: 0,
     attention: { type: 'hybrid', slidingWindow: 1024, numSlidingLayers: 40, numGlobalLayers: 8 },
     architecture: { type: 'dense' }
   },
@@ -75,6 +83,7 @@ export const MODELS: ModelArch[] = [
     layers: 62, hiddenDim: 5376, intermediateDim: 21504,
     numHeads: 32, numKvHeads: 16, headDim: 128, vocabSize: 262144,
     paramCount: 27_009_000_000,
+    numNextnLayers: 0,
     attention: { type: 'hybrid', slidingWindow: 1024, numSlidingLayers: 52, numGlobalLayers: 10 },
     architecture: { type: 'dense' }
   },
@@ -84,6 +93,7 @@ export const MODELS: ModelArch[] = [
     layers: 32, hiddenDim: 4096, intermediateDim: 14336,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
     paramCount: 7_241_732_096,
+    numNextnLayers: 0,
     attention: { type: 'sliding', window: 4096 },
     architecture: { type: 'dense' }
   },
@@ -92,6 +102,7 @@ export const MODELS: ModelArch[] = [
     layers: 32, hiddenDim: 4096, intermediateDim: 14336,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
     paramCount: 46_702_792_704,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -106,6 +117,7 @@ export const MODELS: ModelArch[] = [
     layers: 56, hiddenDim: 6144, intermediateDim: 16384,
     numHeads: 48, numKvHeads: 8, headDim: 128, vocabSize: 32000,
     paramCount: 141_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -120,6 +132,7 @@ export const MODELS: ModelArch[] = [
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
     paramCount: 23_572_403_200,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -128,6 +141,7 @@ export const MODELS: ModelArch[] = [
     layers: 88, hiddenDim: 12288, intermediateDim: 28672,
     numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 32768,
     paramCount: 122_610_524_160,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   },
@@ -137,6 +151,7 @@ export const MODELS: ModelArch[] = [
     layers: 60, hiddenDim: 5120, intermediateDim: 12288,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 102400,
     paramCount: 236_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
@@ -151,6 +166,7 @@ export const MODELS: ModelArch[] = [
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
@@ -165,6 +181,7 @@ export const MODELS: ModelArch[] = [
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'mla-dsa', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128, topK: 2048 },
     architecture: {
       type: 'moe',
@@ -180,6 +197,7 @@ export const MODELS: ModelArch[] = [
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
     paramCount: 1_026_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
@@ -194,6 +212,7 @@ export const MODELS: ModelArch[] = [
     layers: 27, hiddenDim: 2304, intermediateDim: 9216,
     numHeads: 32, numKvHeads: 32, headDim: 192, vocabSize: 163840,
     paramCount: 48_000_000_000,
+    numNextnLayers: 0,
     attention: {
       type: 'linear-mla-hybrid',
       kvLoraRank: 512, qkRopeHeadDim: 64,
@@ -218,6 +237,7 @@ export const MODELS: ModelArch[] = [
     layers: 46, hiddenDim: 4096, intermediateDim: 10944,
     numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 151552,
     paramCount: 106_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -232,6 +252,7 @@ export const MODELS: ModelArch[] = [
     layers: 78, hiddenDim: 6144, intermediateDim: 12288,
     numHeads: 64, numKvHeads: 64, headDim: 256, vocabSize: 154880,
     paramCount: 744_000_000_000,
+    numNextnLayers: 0,
     attention: {
       type: 'mla-dsa',
       kvLoraRank: 512, qkRopeHeadDim: 64,
@@ -252,6 +273,7 @@ export const MODELS: ModelArch[] = [
     layers: 40, hiddenDim: 5120, intermediateDim: 17920,
     numHeads: 40, numKvHeads: 10, headDim: 128, vocabSize: 100352,
     paramCount: 14_659_507_200,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
   }
