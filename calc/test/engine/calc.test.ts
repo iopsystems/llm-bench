@@ -395,3 +395,61 @@ describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', (
     expect(r.perf['peak'].decode.regime).toBe('memory')
   })
 })
+
+describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
+  const h100 = GPUS.find(g => g.id === 'h100')!
+  const kl = MODELS.find(m => m.id === 'kimi-linear')!
+
+  it('Kimi-Linear at 128k prompt: KV cache uses 7 MLA layers + 20 KDA state', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: kl,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 131072, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // MLA per-layer-per-token = (512+64) × 2 = 1152 bytes
+    // attendedSeq (kv) = 7 × 131072 = 917_504
+    // MLA KV cache = 1152 × 917_504 = 1_056_964_608 ≈ 1.057 GB
+    // KDA state = 20 × 32 × 128² × 2 = 20_971_520 ≈ 20 MB
+    // Total kvCachePerRequest = 1_077_936_128 ≈ 1.08 GB
+    const mlaKv = 7 * (512 + 64) * 2 * 131072
+    const kdaState = 20 * 32 * 128 * 128 * 2
+    expect(r.memory.kvCachePerRequest).toBe(mlaKv + kdaState)
+  })
+
+  it('Kimi-Linear KV cache at 128k is ~3.78× smaller than hypothetical all-MLA equivalent', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: kl,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 131072, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Hypothetical all-MLA: 27 × 576 × 2 × 131072 = 4_076_863_488
+    const allMlaEquivalent = 27 * 576 * 2 * 131072
+    const ratio = allMlaEquivalent / r.memory.kvCachePerRequest
+    expect(ratio).toBeGreaterThan(3.5)        // actual ≈ 3.78
+    expect(ratio).toBeLessThan(3.9)           // asymptote 27/7 ≈ 3.86
+  })
+
+  it('Kimi-Linear decode at batch=1 is memory-bound on weight reads (3B active)', () => {
+    const input: CalcInput = {
+      gpu: h100,
+      gpuVariantId: 'sxm-80',
+      model: kl,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 48B × 2 = 96 GB → exceeds H100 SXM-80 capacity (80 GB)
+    expect(r.memory.fits).toBe(false)
+    // decode bytes/step ≈ 3B × 2 = 6 GB (active params) + small KV/state
+    const activeBytes = 3_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 1e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
