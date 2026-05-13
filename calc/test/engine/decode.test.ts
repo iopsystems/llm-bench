@@ -174,4 +174,18 @@ describe('computeDecode', () => {
     expect(d.flopsPerStep).toBe(4332)
     expect(d.bytesPerStep).toBe(2424)
   })
+
+  it('MTP doubles aggregateTokensPerS and halves timePerTokenS for numNextnLayers=1', () => {
+    const mtpModel = { ...testInput.model, numNextnLayers: 1 }
+    const input = { ...testInput, model: mtpModel }
+    const mtpMemory = computeMemory(input)
+    const dMtp = computeDecode(input, opPoint, mtpMemory)
+    const dBase = computeDecode(testInput, opPoint, memory)
+    // Per-pass FLOPs and bytes are unchanged
+    expect(dMtp.flopsPerStep).toBe(dBase.flopsPerStep)
+    expect(dMtp.bytesPerStep).toBe(dBase.bytesPerStep)
+    // Effective per-token time halves; aggregate throughput doubles
+    expect(dMtp.timePerTokenS).toBeCloseTo(dBase.timePerTokenS / 2, 12)
+    expect(dMtp.aggregateTokensPerS).toBeCloseTo(dBase.aggregateTokensPerS * 2, 6)
+  })
 })

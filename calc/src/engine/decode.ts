@@ -37,11 +37,12 @@ export function computeDecode(
     tflops, bwGBs: opPoint.hbmBandwidthGBs
   })
 
+  const mtpFactor = 1 + model.numNextnLayers
   return {
     flopsPerStep,
     bytesPerStep,
-    timePerTokenS: timeS,
+    timePerTokenS: timeS / mtpFactor,
     regime,
-    aggregateTokensPerS: workload.concurrency / timeS
+    aggregateTokensPerS: workload.concurrency * mtpFactor / timeS
   }
 }
