@@ -55,6 +55,7 @@ export const MODELS: ModelArch[] = [
     layers: 48, hiddenDim: 2048, intermediateDim: 768,
     numHeads: 32, numKvHeads: 4, headDim: 128, vocabSize: 151936,
     paramCount: 30_500_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -69,6 +70,7 @@ export const MODELS: ModelArch[] = [
     layers: 94, hiddenDim: 4096, intermediateDim: 1536,
     numHeads: 64, numKvHeads: 4, headDim: 128, vocabSize: 151936,
     paramCount: 235_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -84,6 +86,7 @@ export const MODELS: ModelArch[] = [
     layers: 48, hiddenDim: 2048, intermediateDim: 768,
     numHeads: 32, numKvHeads: 4, headDim: 128, vocabSize: 151936,
     paramCount: 30_500_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -98,6 +101,7 @@ export const MODELS: ModelArch[] = [
     layers: 62, hiddenDim: 6144, intermediateDim: 2560,
     numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 480_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: {
       type: 'moe',
@@ -354,6 +358,7 @@ export const MODELS: ModelArch[] = [
     layers: 47, hiddenDim: 2048, intermediateDim: 1536,
     numHeads: 20, numKvHeads: 20, headDim: 256, vocabSize: 154880,
     paramCount: 30_000_000_000,
+    numNextnLayers: 0,
     attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 192, vHeadDim: 256 },
     architecture: {
       type: 'moe',

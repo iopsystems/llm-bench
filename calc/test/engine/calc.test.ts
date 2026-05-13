@@ -455,15 +455,15 @@ describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
 })
 
 describe('calculate — DeepSeek V4 integration', () => {
-  const h100 = GPUS.find(g => g.id === 'h100')!
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const v32 = MODELS.find(m => m.id === 'deepseek-v3.2')!
   const v4Flash = MODELS.find(m => m.id === 'deepseek-v4-flash')!
   const v4Pro = MODELS.find(m => m.id === 'deepseek-v4-pro')!
 
   it('V4-Pro at 1M context: KV cache sums CSA + HCA per-layer-type contributions', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: v4Pro,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 1048576, outputTokens: 0, concurrency: 1 }
@@ -479,8 +479,8 @@ describe('calculate — DeepSeek V4 integration', () => {
 
   it('V4-Pro at 1M: KV cache is ~4.4× smaller than V3.2 at fp16 apples-to-apples', () => {
     const baseInput: Omit<CalcInput, 'model'> = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 1048576, outputTokens: 0, concurrency: 1 }
     }
@@ -495,8 +495,8 @@ describe('calculate — DeepSeek V4 integration', () => {
 
   it('V4-Pro decode throughput is 2× the without-MTP equivalent (numNextnLayers=1)', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: v4Pro,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
@@ -517,8 +517,8 @@ describe('calculate — DeepSeek V4 integration', () => {
 
   it('V4-Flash at 128k: KV cache uses 2 sliding + 21 CSA + 20 HCA', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: v4Flash,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 131072, outputTokens: 0, concurrency: 1 }
@@ -537,8 +537,8 @@ describe('calculate — DeepSeek V4 integration', () => {
 
   it('V4-Pro 1.6T weights at fp16 do not fit single H100 SXM-80', () => {
     const input: CalcInput = {
-      gpu: h100,
-      gpuVariantId: 'sxm-80',
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
       model: v4Pro,
       quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
