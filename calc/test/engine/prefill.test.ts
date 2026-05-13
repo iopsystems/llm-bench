@@ -60,6 +60,7 @@ describe('computePrefill', () => {
         type: 'moe' as const,
         numExperts: 4,
         numExpertsActive: 1,
+        numSharedExperts: 0,
         activeParamCount: 250
       }
     }

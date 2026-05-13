@@ -29,6 +29,7 @@ describe('activeParams', () => {
         type: 'moe',
         numExperts: 8,
         numExpertsActive: 2,
+        numSharedExperts: 0,
         activeParamCount: 2000
       }
     }

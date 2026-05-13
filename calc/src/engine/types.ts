@@ -36,7 +36,12 @@ export type AttentionConfig =
 
 export type ArchitectureConfig =
   | { type: 'dense' }
-  | { type: 'moe'; numExperts: number; numExpertsActive: number; activeParamCount: number }
+  | { type: 'moe';
+      numExperts: number;          // routed-only
+      numExpertsActive: number;    // top-K routed per token
+      numSharedExperts: number;    // always-active expert count (separate from routed pool)
+      activeParamCount: number;    // aggregate routed-active + shared (from model card)
+    }
 
 export interface ModelArch {
   id: string
