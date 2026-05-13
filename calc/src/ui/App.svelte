@@ -10,7 +10,7 @@
 <main>
   <header>
     <h1>LLM Performance Calculator</h1>
-    <p>Roofline estimates for dense decoder-only transformers.</p>
+    <p>Roofline estimates for modern decoder-only LLMs.</p>
   </header>
   <InputPanel />
   {#if $error}
