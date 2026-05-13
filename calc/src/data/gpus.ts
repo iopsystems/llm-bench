@@ -230,6 +230,22 @@ export const GPUS: GpuSpec[] = [
     }]
   },
   {
+    id: 'b200', name: 'NVIDIA B200', vendor: 'NVIDIA', family: 'Blackwell',
+    // Per-GPU numbers derived from NVIDIA's HGX B200 spec table (8 GPUs):
+    // 1.4 TB total memory ÷ 8 = 180 GB; FP16/BF16 36 PFLOPS sparse ÷ 8 ÷ 2 = 2250
+    // TF dense; FP8 72 PFLOPS sparse ÷ 8 ÷ 2 = 4500 TF dense. FP4 dense (9000 TF
+    // per GPU) is in the datasheet but not modeled here — the calc doesn't
+    // currently support fp4 as a dtype.
+    variants: [{
+      id: 'sxm-180', label: 'SXM 180GB', hbmCapacityGB: 180,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp16: 2250, bf16: 2250, fp8: 4500, int8: 4500 },
+        hbmBandwidthGBs: 8000
+      }]
+    }]
+  },
+  {
     id: 'mi300x', name: 'AMD Instinct MI300X', vendor: 'AMD', family: 'CDNA3',
     variants: [{
       id: 'oam-192', label: 'OAM 192GB', hbmCapacityGB: 192,
@@ -333,5 +349,85 @@ export const GPUS: GpuSpec[] = [
         operatingPoints: [{ id: 'peak', label: 'Peak',
           tflops: { fp16: 70, bf16: 70 }, hbmBandwidthGBs: 640 }] }
     ]
+  },
+
+  // === Intel Gaudi ===
+  // MME (matrix) throughput from Intel's Gaudi 3 white paper (Table 5 and the
+  // Gaudi 2 vs Gaudi 3 comparison table). FP16 on Gaudi 3 MME is materially
+  // slower than BF16 (459 vs 1678 TFLOPS) per the same table. INT8 is not in
+  // the MME spec table; integer ops run on the TPC (vector) units which are
+  // ~30× slower than the MME, so we omit int8 rather than blend the figures.
+  {
+    id: 'gaudi-2', name: 'Intel Gaudi 2', vendor: 'Intel', family: 'Gaudi 2',
+    variants: [{
+      id: 'oam-96', label: 'HL-225 OAM 96GB', hbmCapacityGB: 96,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { bf16: 432, fp8: 865 },
+        hbmBandwidthGBs: 2460
+      }]
+    }]
+  },
+  {
+    id: 'gaudi-3', name: 'Intel Gaudi 3', vendor: 'Intel', family: 'Gaudi 3',
+    variants: [{
+      id: 'oam-128', label: 'HL-325L OAM 128GB', hbmCapacityGB: 128,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp16: 459, bf16: 1678, fp8: 1678 },
+        hbmBandwidthGBs: 3700
+      }]
+    }]
+  },
+
+  // === Google TPU ===
+  // Google's cloud docs report HBM bandwidth in GiB/s; we convert to decimal
+  // GB/s here (×1024³/10⁹) to match the rest of the table. v5p lists FP8 at
+  // the same throughput as BF16, suggesting no dedicated FP8 datapath — the
+  // chip just runs FP8 at BF16 rate. v6e (Trillium) doesn't list FP8 at all;
+  // INT8 doubles BF16, indicating a true INT8 datapath.
+  {
+    id: 'tpu-v5p', name: 'Google TPU v5p', vendor: 'Google', family: 'TPU',
+    variants: [{
+      id: 'chip', label: 'per chip 95GB', hbmCapacityGB: 95,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { bf16: 459, fp8: 459 },
+        hbmBandwidthGBs: 2765
+      }]
+    }]
+  },
+  {
+    id: 'tpu-trillium', name: 'Google TPU v6e (Trillium)', vendor: 'Google', family: 'TPU',
+    variants: [{
+      id: 'chip', label: 'per chip 32GB', hbmCapacityGB: 32,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { bf16: 918, int8: 1836 },
+        hbmBandwidthGBs: 1759
+      }]
+    }]
+  },
+
+  // === Cerebras Wafer-Scale ===
+  // Wafer-scale architecture is a poor fit for the HBM-based roofline model
+  // this calc assumes. The "capacity" field below is on-chip SRAM (44 GB),
+  // not HBM — production deployments stream weights from external MemoryX
+  // (1.5 TB / 12 TB / 1.2 PB tiers per Cerebras's CS-3 announcement), so
+  // most LLM workloads don't actually live in the 44 GB shown here.
+  // Bandwidth is on-die SRAM (21 PB/s); the 125 PFLOPS figure is Cerebras's
+  // headline "AI compute" number with precision and sparsity unspecified in
+  // the datasheet — treat the FP16/BF16 entries as a rough upper bound.
+  {
+    id: 'cerebras-wse3', name: 'Cerebras WSE-3', vendor: 'Cerebras', family: 'Wafer-Scale',
+    variants: [{
+      id: 'cs3', label: 'CS-3', hbmCapacityGB: 44,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        tflops: { fp16: 125000, bf16: 125000 },
+        hbmBandwidthGBs: 21_000_000,
+        notes: 'On-chip SRAM (44 GB) and SRAM bandwidth (21 PB/s), not HBM; weights normally stream from external MemoryX. 125 PFLOPS is Cerebras\'s headline figure — precision/sparsity not explicit in datasheet.'
+      }]
+    }]
   }
 ]

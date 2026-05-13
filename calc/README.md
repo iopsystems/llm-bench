@@ -124,7 +124,8 @@ Models store `paramCount` explicitly rather than deriving from shape — saves u
 from arch-specific param formulas drifting across families.
 
 The property database lives as typed TS modules in `src/data/`:
-- `gpus.ts` — 13 GPUs across NVIDIA Hopper/Ampere/Ada/Blackwell, AMD CDNA3,
+- `gpus.ts` — 19 accelerators across NVIDIA Hopper/Ampere/Ada/Blackwell,
+  AMD CDNA3, Intel Gaudi 2/3, Google TPU v5p and Trillium, Cerebras WSE-3,
   and Apple Silicon (M3–M5).
 - `models.ts` — 11 dense / GQA-class models (Qwen3, Llama 3.x, Gemma 3,
   Mistral, Phi-4).
