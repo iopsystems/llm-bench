@@ -19,7 +19,7 @@
     phase: 'prefill' | 'decode'
     ai: number
     perf: number
-    regime: 'compute' | 'memory'
+    regime: 'compute' | 'memory' | 'comms'
   }
   type GapRow = {
     phase: 'prefill' | 'decode'

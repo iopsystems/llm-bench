@@ -371,12 +371,19 @@ export interface Workload {
   concurrency: number
 }
 
+export interface MultiDeviceConfig {
+  system: MultiAcceleratorSystem
+  parallelism: ParallelismMode['id'][]
+  parallelismDegrees: Partial<Record<ParallelismMode['id'], number>>
+}
+
 export interface CalcInput {
   accelerator: AcceleratorSpec
   acceleratorVariantId: string
   model: ModelArch
   quant: Quantization
   workload: Workload
+  multiDevice?: MultiDeviceConfig
 }
 
 export interface MemoryResult {
@@ -388,12 +395,20 @@ export interface MemoryResult {
   hbmCapacityGB: number
   headroom: number
   fits: boolean
+  perRank?: {
+    weights: number
+    kvCachePerRequest: number
+    activationsPeak: number
+    total: number
+    headroom: number
+    fits: boolean
+  }
 }
 
 export interface PerfTier {
-  prefill: { flops: number; bytes: number; timeS: number; regime: 'compute' | 'memory' }
+  prefill: { flops: number; bytes: number; timeS: number; regime: 'compute' | 'memory' | 'comms' }
   decode:  { flopsPerStep: number; bytesPerStep: number; timePerTokenS: number;
-             regime: 'compute' | 'memory'; aggregateTokensPerS: number }
+             regime: 'compute' | 'memory' | 'comms'; aggregateTokensPerS: number }
   ttftS: number
   inputTokenRate: number
   outputTokenRate: number
