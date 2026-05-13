@@ -68,6 +68,15 @@ describe('kvBytesPerTokenPerLayer', () => {
     // (32 + 8) × 2 = 80
     expect(kvBytesPerTokenPerLayer(mla, 'fp16')).toBe(80)
   })
+
+  it('mla-dsa: same as MLA (DSA does not change KV size)', () => {
+    const dsa: ModelArch = {
+      ...base,
+      attention: { type: 'mla-dsa', kvLoraRank: 32, qkRopeHeadDim: 8, topK: 16 }
+    }
+    // (32 + 8) × 2 = 80
+    expect(kvBytesPerTokenPerLayer(dsa, 'fp16')).toBe(80)
+  })
 })
 
 describe('attentionDim', () => {
@@ -100,6 +109,14 @@ describe('attentionDim', () => {
       attention: { type: 'mla', kvLoraRank: 32, qkRopeHeadDim: 8 }
     }
     expect(attentionDim(mla)).toBe(40)
+  })
+
+  it('mla-dsa: same as MLA (DSA does not change attention representation)', () => {
+    const dsa: ModelArch = {
+      ...base,
+      attention: { type: 'mla-dsa', kvLoraRank: 32, qkRopeHeadDim: 8, topK: 16 }
+    }
+    expect(attentionDim(dsa)).toBe(40)
   })
 })
 
@@ -157,5 +174,18 @@ describe('attendedSeqlenSummedOverLayers', () => {
       }
     }
     expect(() => attendedSeqlenSummedOverLayers(m, 100)).toThrow(/sum to model\.layers/)
+  })
+
+  it('mla-dsa: layers × min(seqlen, topK)', () => {
+    const m: ModelArch = {
+      ...base,
+      attention: { type: 'mla-dsa', kvLoraRank: 32, qkRopeHeadDim: 8, topK: 50 }
+    }
+    // seqlen > topK: 4 × 50 = 200
+    expect(attendedSeqlenSummedOverLayers(m, 100)).toBe(200)
+    // seqlen < topK: 4 × 30 = 120
+    expect(attendedSeqlenSummedOverLayers(m, 30)).toBe(120)
+    // seqlen == topK: 4 × 50 = 200
+    expect(attendedSeqlenSummedOverLayers(m, 50)).toBe(200)
   })
 })
