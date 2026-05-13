@@ -33,6 +33,7 @@ export type AttentionConfig =
   | { type: 'sliding'; window: number }
   | { type: 'mla'; kvLoraRank: number; qkRopeHeadDim: number }
   | { type: 'hybrid'; slidingWindow: number; numSlidingLayers: number; numGlobalLayers: number }
+  | { type: 'mla-dsa'; kvLoraRank: number; qkRopeHeadDim: number; topK: number }
 
 export type ArchitectureConfig =
   | { type: 'dense' }
