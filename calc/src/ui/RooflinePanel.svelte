@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Plot from '@observablehq/plot'
-  import { input, result } from './stores'
+  import { input, result, multiDevice } from './stores'
+  import { INTERCONNECTS } from '../data/interconnects'
   import { PLOT_STYLE } from './plotDefaults'
 
   let container: HTMLDivElement | undefined = $state(undefined)
@@ -105,6 +106,15 @@
 
   const hasAchievable = $derived(data.points.some(p => p.tier === 'Achievable'))
 
+  // Interconnect ceiling — only when a multi-device system is active.
+  const interconnectBwGBs = $derived.by(() => {
+    if (!$multiDevice) return null
+    const ic = INTERCONNECTS.find(i => i.id === $multiDevice!.system.interconnectId)
+    if (!ic) return null
+    // Use explicit perDirectionGBs if set; fall back to half of bidirectional.
+    return ic.perDirectionGBs ?? ic.perGpuBandwidthGBs / 2
+  })
+
   const chart = $derived.by(() => {
     if (data.roofs.length === 0) return null
     return Plot.plot({
@@ -170,6 +180,16 @@
           x: 'ai', y: 'perf', stroke: '#bbb', strokeWidth: 1,
           strokeDasharray: '2 3', z: 'phase', clip: true
         }),
+        // Interconnect bandwidth ceiling (dashed purple) — lower slope than HBM,
+        // represents the comms bottleneck when collective traffic saturates the fabric.
+        ...(interconnectBwGBs ? [
+          Plot.line(
+            [{ x: data.xMin, y: data.xMin * interconnectBwGBs * 1e9 },
+             { x: data.xMax, y: data.xMax * interconnectBwGBs * 1e9 }],
+            { x: 'x', y: 'y', stroke: '#9b59b6', strokeWidth: 1.5,
+              strokeDasharray: '4,2', clip: true }
+          )
+        ] : []),
         Plot.dot(data.points, {
           x: 'ai', y: 'perf',
           stroke: 'tier', fill: 'tier', fillOpacity: 0.7, symbol: 'phase',
@@ -224,6 +244,14 @@
             <line x1="1" y1="5" x2="21" y2="5" stroke="#21a87a" stroke-width="2" stroke-dasharray="6 4"/>
           </svg>
           <span>Achievable</span>
+        </span>
+      {/if}
+      {#if interconnectBwGBs}
+        <span class="entry">
+          <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
+            <line x1="1" y1="5" x2="21" y2="5" stroke="#9b59b6" stroke-width="2" stroke-dasharray="4 2"/>
+          </svg>
+          <span>Interconnect BW</span>
         </span>
       {/if}
       <span class="entry">

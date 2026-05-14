@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as Plot from '@observablehq/plot'
-  import { result } from './stores'
+  import { result, multiDevice } from './stores'
   import { PLOT_STYLE } from './plotDefaults'
 
   let container: HTMLDivElement | undefined = $state(undefined)
@@ -44,11 +44,14 @@
   const chart = $derived.by(() => {
     if (!$result) return null
     const m = $result.memory
+    // Per-GPU capacity is always m.hbmCapacityGB (engine echoes variant capacity).
     const capBytes = m.hbmCapacityGB * GB
+    // When perRank is present, show per-GPU segments against per-GPU HBM cap.
+    const pr = m.perRank
     const raw: { component: Component; bytes: number }[] = [
-      { component: 'Weights',     bytes: m.weights },
-      { component: 'KV cache',    bytes: m.kvCacheTotal },
-      { component: 'Activations', bytes: m.activationsPeak }
+      { component: 'Weights',     bytes: pr ? pr.weights           : m.weights },
+      { component: 'KV cache',    bytes: pr ? pr.kvCachePerRequest : m.kvCacheTotal },
+      { component: 'Activations', bytes: pr ? pr.activationsPeak   : m.activationsPeak }
     ]
     let cum = 0
     const parts = raw.map(p => {
@@ -114,10 +117,20 @@
 
 {#if $result}
   {@const m = $result.memory}
+  {@const pr = m.perRank}
   {@const cap = m.hbmCapacityGB * GB}
+  {@const barFits = pr ? pr.fits : m.fits}
+  {@const barTotal = pr ? pr.total : m.total}
+  {@const barHeadroom = pr ? pr.headroom : m.headroom}
   <section class="memory-panel">
-    <h3>Memory budget — {gb(cap)} GB</h3>
-    <div bind:this={container} class="bar-chart" class:oom={!m.fits}></div>
+    <h3>Memory budget — {gb(cap)} GB per GPU</h3>
+    <div bind:this={container} class="bar-chart" class:oom={!barFits}></div>
+    {#if pr && $multiDevice}
+      <div class="cluster-total">
+        {$multiDevice.system.accelerator.count} × {(pr.total / 1e9).toFixed(1)} GB per GPU
+        = {(m.total / 1e9).toFixed(0)} GB cluster total
+      </div>
+    {/if}
     <table>
       <tbody>
         <tr>
@@ -128,7 +141,7 @@
             </svg>
             Weights
           </td>
-          <td>{gb(m.weights)} GB</td>
+          <td>{gb(pr ? pr.weights : m.weights)} GB</td>
         </tr>
         <tr>
           <td>
@@ -136,9 +149,9 @@
               <defs>{@html patternDefsSvg()}</defs>
               <rect width="14" height="10" fill={FILL['KV cache']}/>
             </svg>
-            KV cache (total)
+            KV cache {pr ? '(per request)' : '(total)'}
           </td>
-          <td>{gb(m.kvCacheTotal)} GB</td>
+          <td>{gb(pr ? pr.kvCachePerRequest : m.kvCacheTotal)} GB</td>
         </tr>
         <tr>
           <td>
@@ -148,15 +161,15 @@
             </svg>
             Activations (~)
           </td>
-          <td>{gb(m.activationsPeak)} GB</td>
+          <td>{gb(pr ? pr.activationsPeak : m.activationsPeak)} GB</td>
         </tr>
-        <tr class="total"><td>Total</td><td>{gb(m.total)} GB</td></tr>
+        <tr class="total"><td>Total {pr ? 'per GPU' : ''}</td><td>{gb(barTotal)} GB</td></tr>
         <tr>
           <td>Headroom</td>
           <td class="headroom-value">
-            {gb(m.headroom)} GB
-            <span class="status-badge" class:fits={m.fits} class:oom={!m.fits}>
-              {m.fits ? '✓ fits' : '✗ OOM'}
+            {gb(barHeadroom)} GB
+            <span class="status-badge" class:fits={barFits} class:oom={!barFits}>
+              {barFits ? '✓ fits' : '✗ OOM'}
             </span>
           </td>
         </tr>
@@ -208,6 +221,7 @@
     padding: 0.15rem 0.5rem; border-radius: 0.2rem; font-weight: 600;
   }
   .caveat { font-size: 0.8rem; color: #666; font-style: italic; }
+  .cluster-total { font-size: 0.85rem; color: #555; margin-top: 0.3rem; }
 
   @media (max-width: 640px) {
     /* Tighter spacing and smaller font on narrow screens. The dangling
