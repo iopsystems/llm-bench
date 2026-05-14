@@ -3,6 +3,7 @@ import { calculate } from '../../src/engine/calc'
 import { testInput } from '../fixtures'
 import { ACCELERATORS } from '../../src/data/accelerators'
 import { MODELS } from '../../src/data/models'
+import { SYSTEMS } from '../../src/data/systems'
 import type { CalcInput } from '../../src/engine/types'
 
 describe('calculate', () => {
@@ -564,14 +565,9 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
     }
     const r = calculate(input)
-    // KV per token = 2 × 4 × 256 × 2 = 4096 bytes
-    // attendedSeq = 8 × 32768 = 262144 (only full layers)
-    // KV cache = 4096 × 262144 = 1_073_741_824 ≈ 1.07 GB
     const kv = 4096 * 262144
-    // DeltaNet state = 24 × 32 × 128² × 2 = 25_165_824 ≈ 24 MB
     const state = 24 * 32 * 128 * 128 * 2
     expect(r.memory.kvCachePerRequest).toBe(kv + state)
-    // Sanity: full-attention equivalent ≈ 4× larger (32 layers vs 8 full layers)
     const fullEq = 2 * 32 * 4 * 256 * 2 * 32768
     expect(fullEq / r.memory.kvCachePerRequest).toBeGreaterThan(3.5)
     expect(fullEq / r.memory.kvCachePerRequest).toBeLessThan(4.5)
@@ -587,12 +583,8 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
     }
     const r = calculate(input)
-    // 397B × 2 bytes ≈ 794 GB → vastly exceeds single H100
     expect(r.memory.weights / 1e9).toBeCloseTo(794, 0)
     expect(r.memory.fits).toBe(false)
-    // KV cache: only 15 full layers
-    // KV = 2 × 2 × 256 × 2 × 15 × 32768 = 251_658_240 ≈ 240 MB
-    // State = 45 × 64 × 128² × 2 = 94_371_840 ≈ 90 MB
     const kv = 2 * 2 * 256 * 2 * 15 * 32768
     const state = 45 * 64 * 128 * 128 * 2
     expect(r.memory.kvCachePerRequest).toBe(kv + state)
@@ -608,7 +600,6 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
     }
     const r = calculate(input)
-    // decode.bytesPerStep ≈ 17B × 2 = 34 GB (active params) + KV + state
     const activeBytes = 17_000_000_000 * 2
     expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
     expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 2e9)
@@ -625,11 +616,7 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
       workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
     }
     const r = calculate(input)
-    // KV: only 16 full layers × 32768
-    // KV per token = 2 × 4 × 256 × 2 = 4096
-    // KV cache = 4096 × 16 × 32768 = 2_147_483_648 ≈ 2.15 GB
     const kv = 4096 * 16 * 32768
-    // State = 48 × 64 × 128² × 2 = 100_663_296 ≈ 96 MB
     const state = 48 * 64 * 128 * 128 * 2
     expect(r.memory.kvCachePerRequest).toBe(kv + state)
   })
@@ -644,17 +631,13 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
       workload: { promptTokens: 65536, outputTokens: 0, concurrency: 1 }
     }
     const r = calculate(input)
-    // KV: 8 full layers × 65536
-    // KV per token = 2 × 4 × 256 × 2 = 4096
     const kv = 4096 * 8 * 65536
-    // State = 24 × 32 × 128² × 2 = 25_165_824 ≈ 24 MB
     const state = 24 * 32 * 128 * 128 * 2
     expect(r.memory.kvCachePerRequest).toBe(kv + state)
-    // Sanity: full-attention equiv = 2 × 32 × 4 × 256 × 2 × 65536
     const fullEq = 2 * 32 * 4 * 256 * 2 * 65536
     const ratio = fullEq / r.memory.kvCachePerRequest
     expect(ratio).toBeGreaterThan(3.5)
-    expect(ratio).toBeLessThan(4.5)  // asymptote = 32/8 = 4, state adds small overhead
+    expect(ratio).toBeLessThan(4.5)
   })
 
   it('Qwen3.5-4B at 8k is memory-bound on decode (4B dense)', () => {
@@ -667,9 +650,87 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
       workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
     }
     const r = calculate(input)
-    // 4.24B × 2 ≈ 8.48 GB → fits in H100 SXM-80
     expect(r.memory.weights / 1e9).toBeCloseTo(8.48, 1)
     expect(r.memory.fits).toBe(true)
     expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
+
+describe('calculate — multi-GPU integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const llama70b = MODELS.find(m => m.id === 'llama-3.3-70b')!
+  const v3 = MODELS.find(m => m.id === 'deepseek-v3')!
+  const hgxH100 = SYSTEMS.find(s => s.id === 'hgx-h100-8')!
+  const nvl72 = SYSTEMS.find(s => s.id === 'gb200-nvl72')!
+
+  it('HGX H100 + Llama 70B + TP=8: weights/8 fits per GPU', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: llama70b,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
+      multiDevice: {
+        system: hgxH100,
+        parallelism: ['tp'],
+        parallelismDegrees: { tp: 8 }
+      }
+    }
+    const r = calculate(input)
+    expect(r.memory.perRank).toBeDefined()
+    expect(r.memory.perRank!.weights / 1e9).toBeCloseTo(17.6, 1)
+    expect(r.memory.perRank!.fits).toBe(true)
+    expect(r.memory.fits).toBe(false)
+  })
+
+  it('HGX H100 + Llama 70B + TP=8: regime is one of compute/memory/comms', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: llama70b,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
+      multiDevice: {
+        system: hgxH100,
+        parallelism: ['tp'],
+        parallelismDegrees: { tp: 8 }
+      }
+    }
+    const r = calculate(input)
+    expect(['compute', 'memory', 'comms']).toContain(r.perf['peak'].prefill.regime)
+    expect(['compute', 'memory', 'comms']).toContain(r.perf['peak'].decode.regime)
+  })
+
+  it('GB200 NVL72 + DeepSeek V3 + TP=8 × EP=72: weights / 576 fits per GPU', () => {
+    const gb200 = ACCELERATORS.find(a => a.id === 'gb200')!
+    const input: CalcInput = {
+      accelerator: gb200,
+      acceleratorVariantId: 'nvl72-186',
+      model: v3,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
+      multiDevice: {
+        system: nvl72,
+        parallelism: ['tp', 'ep'],
+        parallelismDegrees: { tp: 8, ep: 72 }
+      }
+    }
+    const r = calculate(input)
+    expect(r.memory.perRank).toBeDefined()
+    expect(r.memory.perRank!.weights / 1e9).toBeLessThan(5)
+    expect(r.memory.perRank!.fits).toBe(true)
+  })
+
+  it('single-accelerator path unchanged when multiDevice omitted', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: llama70b,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    expect(r.memory.perRank).toBeUndefined()
+    expect(r.memory.fits).toBe(false)
   })
 })
