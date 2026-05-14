@@ -656,6 +656,25 @@ describe('calculate — Qwen3.5 delta-hybrid integration', () => {
   })
 })
 
+describe('models data — maxContext', () => {
+  it('every model has a positive maxContext value', () => {
+    for (const m of MODELS) {
+      expect(m.maxContext, `${m.id}`).toBeGreaterThan(0)
+    }
+  })
+
+  it('DeepSeek V4 and Kimi-Linear support 1M context', () => {
+    expect(MODELS.find(m => m.id === 'deepseek-v4-pro')!.maxContext).toBe(1048576)
+    expect(MODELS.find(m => m.id === 'deepseek-v4-flash')!.maxContext).toBe(1048576)
+    expect(MODELS.find(m => m.id === 'kimi-linear')!.maxContext).toBe(1048576)
+  })
+
+  it('Llama 3.x has 128k context', () => {
+    expect(MODELS.find(m => m.id === 'llama-3.3-70b')!.maxContext).toBe(131072)
+    expect(MODELS.find(m => m.id === 'llama-3.1-405b')!.maxContext).toBe(131072)
+  })
+})
+
 describe('calculate — multi-GPU integration', () => {
   const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const llama70b = MODELS.find(m => m.id === 'llama-3.3-70b')!

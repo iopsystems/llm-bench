@@ -44,6 +44,19 @@
   $: if (accelerator && !variants.find(v => v.id === $variantId)) {
        variantId.set(variants[0]?.id ?? '')
      }
+
+  // Soft warning when promptTokens exceeds the model's trained context window.
+  // Calc still runs and extrapolates linearly; the badge surfaces the caveat.
+  $: selectedModel = MODELS.find(m => m.id === $modelId)
+  $: contextWarning = selectedModel && $workload.promptTokens > selectedModel.maxContext
+    ? `> trained ceiling ${formatContext(selectedModel.maxContext)}`
+    : null
+
+  function formatContext(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_048_576).toFixed(1).replace('.0', '')}M`
+    if (n >= 1_000) return `${(n / 1024).toFixed(0)}k`
+    return `${n}`
+  }
 </script>
 
 <section class="input-panel">
@@ -135,6 +148,11 @@
       <label>
         Prompt tokens
         <input type="number" min="1" bind:value={$workload.promptTokens} />
+        {#if contextWarning}
+          <span class="warn" title="Model trained at max_position_embeddings={selectedModel?.maxContext}. The calc still runs but accuracy is extrapolated past this ceiling.">
+            ⚠ {contextWarning}
+          </span>
+        {/if}
       </label>
       <label>
         Output tokens
@@ -168,5 +186,6 @@
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; }
   label.inline { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
   label.inline input[type=checkbox] { width: auto; }
+  .warn { font-size: 0.78rem; color: #b85b00; margin-top: 0.15rem; }
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
 </style>

@@ -34,6 +34,7 @@ export const testModel: ModelArch = {
   headDim: 2,
   vocabSize: 100,
   paramCount: 1000,
+  maxContext: 8192,
   numNextnLayers: 0,
   attention: { type: 'full' },
   architecture: { type: 'dense' }

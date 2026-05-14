@@ -8,6 +8,7 @@ const dense: ModelArch = {
   layers: 32, hiddenDim: 4096, intermediateDim: 14336,
   numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
   paramCount: 7_000_000_000,
+  maxContext: 8192,
   numNextnLayers: 0,
   attention: { type: 'full' },
   architecture: { type: 'dense' }
@@ -15,6 +16,7 @@ const dense: ModelArch = {
 const moe: ModelArch = {
   ...dense,
   paramCount: 47_000_000_000,
+  maxContext: 8192,
   architecture: {
     type: 'moe', numExperts: 8, numExpertsActive: 2,
     numSharedExperts: 0, activeParamCount: 13_000_000_000

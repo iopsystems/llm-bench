@@ -15,6 +15,7 @@ describe('activeParams', () => {
     layers: 2, hiddenDim: 4, intermediateDim: 8,
     numHeads: 2, numKvHeads: 1, headDim: 2, vocabSize: 100,
     paramCount: 1000,
+    maxContext: 8192,
     numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
@@ -28,6 +29,7 @@ describe('activeParams', () => {
     const moe: ModelArch = {
       ...base,
       paramCount: 8000,
+      maxContext: 8192,
       architecture: {
         type: 'moe',
         numExperts: 8,
@@ -46,6 +48,7 @@ describe('kvBytesPerTokenPerLayer', () => {
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
+    maxContext: 8192,
     numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
@@ -89,6 +92,7 @@ describe('attentionDim', () => {
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
+    maxContext: 8192,
     numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
@@ -131,6 +135,7 @@ describe('attendedSeqlenSummedOverLayers', () => {
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
+    maxContext: 8192,
     numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
@@ -202,6 +207,7 @@ describe('linear-mla-hybrid branches in existing helpers', () => {
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
+    maxContext: 8192,
     numNextnLayers: 0,
     attention: {
       type: 'linear-mla-hybrid',
@@ -249,6 +255,7 @@ describe('linearAttentionStateBytes', () => {
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
+      maxContext: 8192,
       numNextnLayers: 0,
       attention: { type: 'full' },
       architecture: { type: 'dense' }
@@ -262,6 +269,7 @@ describe('linearAttentionStateBytes', () => {
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
+      maxContext: 8192,
       numNextnLayers: 0,
       attention: {
         type: 'linear-mla-hybrid',
@@ -282,6 +290,7 @@ describe('csa-hca-hybrid branches in existing helpers', () => {
     layers: 3, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 1, headDim: 8, vocabSize: 100,
     paramCount: 1000,
+    maxContext: 8192,
     numNextnLayers: 0,
     attention: {
       type: 'csa-hca-hybrid',
@@ -345,6 +354,7 @@ describe('linearAttentionFlopsPerToken', () => {
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
+      maxContext: 8192,
       numNextnLayers: 0,
       attention: { type: 'full' },
       architecture: { type: 'dense' }
@@ -358,6 +368,7 @@ describe('linearAttentionFlopsPerToken', () => {
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
+      maxContext: 8192,
       numNextnLayers: 0,
       attention: {
         type: 'linear-mla-hybrid',

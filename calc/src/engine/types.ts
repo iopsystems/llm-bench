@@ -357,6 +357,11 @@ export interface ModelArch {
   attention: AttentionConfig
   architecture: ArchitectureConfig
   numNextnLayers: number  // Multi-Token Prediction depth; 0 for non-MTP models
+  // Trained context window in tokens. Sourced from each model's
+  // `max_position_embeddings` (or equivalent) on HuggingFace. UI uses this for
+  // a soft-warn when the user's promptTokens exceeds the trained ceiling;
+  // calc math still runs and extrapolates linearly past it.
+  maxContext: number
 }
 
 export interface Quantization {
