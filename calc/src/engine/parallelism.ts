@@ -1,4 +1,4 @@
-import type { Dtype, ModelArch, ParallelismMode } from './types'
+import type { Dtype, ModelArch, MultiAcceleratorSystem, ParallelismMode } from './types'
 import { bytesOf } from './dtypes'
 
 export interface RankDivisors {
@@ -67,4 +67,33 @@ export function commsBytesPerStep(
   }
 
   return total
+}
+
+export interface ParallelismConfig {
+  parallelism: ParallelismMode['id'][]
+  parallelismDegrees: Partial<Record<ParallelismMode['id'], number>>
+}
+
+export function defaultParallelism(
+  system: MultiAcceleratorSystem,
+  model: ModelArch
+): ParallelismConfig {
+  const N = system.accelerator.count
+  const isMoE = model.architecture.type === 'moe'
+
+  const tp = Math.min(N, 8)
+  const pp = N > 8 ? Math.ceil(N / 8) : 1
+
+  const parallelism: ParallelismMode['id'][] = ['tp']
+  const degrees: Partial<Record<ParallelismMode['id'], number>> = { tp }
+
+  if (pp > 1) {
+    parallelism.push('pp')
+    degrees.pp = pp
+  }
+  if (isMoE) {
+    parallelism.push('ep')
+    degrees.ep = N
+  }
+  return { parallelism, parallelismDegrees: degrees }
 }

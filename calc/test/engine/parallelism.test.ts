@@ -131,3 +131,57 @@ describe('commsBytesPerStep', () => {
     expect(bytes).toBe(0)
   })
 })
+
+import { defaultParallelism } from '../../src/engine/parallelism'
+import type { MultiAcceleratorSystem } from '../../src/engine/types'
+
+const hgxH100 = {
+  id: 'hgx-h100-8', name: 'HGX H100', vendor: 'NVIDIA',
+  formFactor: 'baseboard' as const,
+  accelerator: { id: 'h100', variantId: 'sxm-80', count: 8 },
+  interconnectId: 'nvlink-4',
+  aggregate: { totalHbmGB: 640, fabricBidirectionalTBs: 7.2 }
+} satisfies MultiAcceleratorSystem
+
+const nvl72 = {
+  ...hgxH100,
+  id: 'gb200-nvl72',
+  accelerator: { id: 'gb200', variantId: 'nvl72-186', count: 72 }
+} satisfies MultiAcceleratorSystem
+
+describe('defaultParallelism', () => {
+  it('dense on HGX (N=8): TP=8', () => {
+    const p = defaultParallelism(hgxH100, dense)
+    expect(p.parallelism).toEqual(['tp'])
+    expect(p.parallelismDegrees).toEqual({ tp: 8 })
+  })
+
+  it('MoE on HGX (N=8): TP=8, EP=8', () => {
+    const p = defaultParallelism(hgxH100, moe)
+    expect(p.parallelism).toContain('tp')
+    expect(p.parallelism).toContain('ep')
+    expect(p.parallelismDegrees).toEqual({ tp: 8, ep: 8 })
+  })
+
+  it('dense on NVL72 (N=72): TP=8 × PP=9', () => {
+    const p = defaultParallelism(nvl72, dense)
+    expect(p.parallelism).toContain('tp')
+    expect(p.parallelism).toContain('pp')
+    expect(p.parallelismDegrees).toEqual({ tp: 8, pp: 9 })
+  })
+
+  it('MoE on NVL72 (N=72): TP=8 × PP=9 × EP=72', () => {
+    const p = defaultParallelism(nvl72, moe)
+    expect(p.parallelism.sort()).toEqual(['ep', 'pp', 'tp'].sort())
+    expect(p.parallelismDegrees).toEqual({ tp: 8, pp: 9, ep: 72 })
+  })
+
+  it('dense single-node MI300X (N=8): TP=8', () => {
+    const mi300x8 = {
+      ...hgxH100, id: 'mi300x-8', vendor: 'AMD',
+      accelerator: { id: 'mi300x', variantId: 'oam-192', count: 8 }
+    } satisfies MultiAcceleratorSystem
+    const p = defaultParallelism(mi300x8, dense)
+    expect(p.parallelismDegrees).toEqual({ tp: 8 })
+  })
+})
