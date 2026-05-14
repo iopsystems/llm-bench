@@ -117,7 +117,7 @@ export const MODELS: ModelArch[] = [
     layers: 24, hiddenDim: 1024, intermediateDim: 3584,
     numHeads: 8, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 830_000_000,
-    numNextnLayers: 0,
+    numNextnLayers: 1,
     attention: {
       type: 'delta-hybrid',
       numDeltaNetLayers: 18, numFullLayers: 6,
@@ -131,7 +131,7 @@ export const MODELS: ModelArch[] = [
     layers: 24, hiddenDim: 2048, intermediateDim: 6144,
     numHeads: 8, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 2_240_000_000,
-    numNextnLayers: 0,
+    numNextnLayers: 1,
     attention: {
       type: 'delta-hybrid',
       numDeltaNetLayers: 18, numFullLayers: 6,
