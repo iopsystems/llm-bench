@@ -21,6 +21,9 @@ export const parallelismOverride = writable<ParallelismConfig | null>(null)
 // Disaggregated serving: id of the inter-cluster fabric used to ship KV cache
 // from prefill to decode. Empty string means integrated (no disagg).
 export const disaggKvTransferFabricId = writable<string>('')
+// Production-standard optimization: prefill node emits the first token while
+// KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
+export const disaggFirstTokenOnPrefill = writable<boolean>(true)
 
 export const quant = writable<Quantization>({
   weights: 'fp16', kv: 'fp16', activations: 'fp16'
@@ -30,8 +33,8 @@ export const workload = writable<Workload>({
 })
 
 export const multiDevice: Readable<MultiDeviceConfig | undefined> = derived(
-  [systemId, modelId, parallelismOverride, disaggKvTransferFabricId],
-  ([$systemId, $modelId, $override, $disagg]) => {
+  [systemId, modelId, parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill],
+  ([$systemId, $modelId, $override, $disagg, $firstTokenOnPrefill]) => {
     if (!$systemId) return undefined
     const system = SYSTEMS.find(s => s.id === $systemId)
     const model = MODELS.find(m => m.id === $modelId)
@@ -41,7 +44,10 @@ export const multiDevice: Readable<MultiDeviceConfig | undefined> = derived(
       system,
       parallelism: pc.parallelism,
       parallelismDegrees: pc.parallelismDegrees,
-      ...($disagg && { disaggKvTransferFabricId: $disagg })
+      ...($disagg && {
+        disaggKvTransferFabricId: $disagg,
+        disaggFirstTokenOnPrefill: $firstTokenOnPrefill,
+      })
     }
   }
 )

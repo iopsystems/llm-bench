@@ -2,7 +2,7 @@
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
   import { INTERCONNECTS } from '../data/interconnects'
-  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId } from './stores'
+  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
 
@@ -87,6 +87,12 @@
             {/each}
           </select>
         </label>
+        {#if $disaggKvTransferFabricId}
+          <label class="inline">
+            <input type="checkbox" bind:checked={$disaggFirstTokenOnPrefill} />
+            <span>1st token on prefill (hide transfer in TTFT)</span>
+          </label>
+        {/if}
       {/if}
     </div>
   </fieldset>
@@ -160,5 +166,7 @@
      enough to sit three-across on a typical viewport. */
   .row { display: flex; flex-direction: column; gap: 0.5rem; }
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; }
+  label.inline { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+  label.inline input[type=checkbox] { width: auto; }
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
 </style>

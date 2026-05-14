@@ -55,17 +55,27 @@ export function calculate(input: CalcInput): CalcResult {
       kvTransferS = memory.kvCachePerRequest / (bw * 1e9)
     }
   }
+  // Production-standard: prefill node emits the first decoded token locally
+  // while KV transfer streams in parallel. Defaults true when disagg is on.
+  const firstTokenOnPrefill =
+    input.multiDevice?.disaggFirstTokenOnPrefill ?? true
 
   const perf: Record<string, PerfTier> = {}
   for (const op of variant.operatingPoints) {
     const prefill = computePrefill(input, op, memory)
     const decode = computeDecode(input, op, memory)
-    const ttftS = prefill.timeS + kvTransferS
+    // TTFT composition under disagg:
+    //   firstTokenOnPrefill=true:  ttft = prefill + first decode step (transfer
+    //                               hidden in parallel with that decode step).
+    //   firstTokenOnPrefill=false: ttft = prefill + full kv transfer (worst case).
+    const ttftS = kvTransferS > 0 && firstTokenOnPrefill
+      ? prefill.timeS + decode.timePerTokenS
+      : prefill.timeS + kvTransferS
     perf[op.id] = {
       prefill, decode,
       ttftS,
       // inputTokenRate stays on prefill (cluster throughput); ttftS includes
-      // KV transfer (user-facing latency to first decoded token).
+      // disagg overhead (user-facing latency to first decoded token).
       inputTokenRate: input.workload.promptTokens / prefill.timeS,
       outputTokenRate: decode.aggregateTokensPerS,
       ...(op.tflopsSources && { tflopsSources: op.tflopsSources }),
@@ -81,7 +91,9 @@ export function calculate(input: CalcInput): CalcResult {
     if (kvTransferS > 0) {
       d.add(
         `kv transfer time @ ${op.id}`,
-        'kv_cache_per_request / disagg_fabric_bw',
+        firstTokenOnPrefill
+          ? 'kv_cache_per_request / disagg_fabric_bw (overlapped with first decode)'
+          : 'kv_cache_per_request / disagg_fabric_bw',
         kvTransferS, 's'
       )
     }
