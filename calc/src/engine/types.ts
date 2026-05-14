@@ -375,6 +375,10 @@ export interface MultiDeviceConfig {
   system: MultiAcceleratorSystem
   parallelism: ParallelismMode['id'][]
   parallelismDegrees: Partial<Record<ParallelismMode['id'], number>>
+  // Disaggregated serving: prefill cluster ships KV cache to decode cluster
+  // over this fabric. References InterconnectSpec.id. Undefined = integrated
+  // serving (prefill and decode on the same hardware, no transfer cost).
+  disaggKvTransferFabricId?: string
 }
 
 export interface CalcInput {

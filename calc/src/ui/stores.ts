@@ -18,6 +18,10 @@ export const modelId = writable(defaultModel.id)
 // User overrides for parallelism. null means "use defaultParallelism".
 export const parallelismOverride = writable<ParallelismConfig | null>(null)
 
+// Disaggregated serving: id of the inter-cluster fabric used to ship KV cache
+// from prefill to decode. Empty string means integrated (no disagg).
+export const disaggKvTransferFabricId = writable<string>('')
+
 export const quant = writable<Quantization>({
   weights: 'fp16', kv: 'fp16', activations: 'fp16'
 })
@@ -26,14 +30,19 @@ export const workload = writable<Workload>({
 })
 
 export const multiDevice: Readable<MultiDeviceConfig | undefined> = derived(
-  [systemId, modelId, parallelismOverride],
-  ([$systemId, $modelId, $override]) => {
+  [systemId, modelId, parallelismOverride, disaggKvTransferFabricId],
+  ([$systemId, $modelId, $override, $disagg]) => {
     if (!$systemId) return undefined
     const system = SYSTEMS.find(s => s.id === $systemId)
     const model = MODELS.find(m => m.id === $modelId)
     if (!system || !model) return undefined
     const pc = $override ?? defaultParallelism(system, model)
-    return { system, parallelism: pc.parallelism, parallelismDegrees: pc.parallelismDegrees }
+    return {
+      system,
+      parallelism: pc.parallelism,
+      parallelismDegrees: pc.parallelismDegrees,
+      ...($disagg && { disaggKvTransferFabricId: $disagg })
+    }
   }
 )
 
