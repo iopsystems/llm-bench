@@ -12,9 +12,16 @@ export interface RooflineResult {
   regime: 'compute' | 'memory' | 'comms'
 }
 
-export function roofline({ flops, bytes, tflops, bwGBs }: RooflineInput): RooflineResult {
+export function roofline({ flops, bytes, tflops, bwGBs, commsBytes, interconnectBwGBs }: RooflineInput): RooflineResult {
   const computeS = flops / (tflops * 1e12)
-  const memoryS = bytes / (bwGBs * 1e9)
-  if (computeS > memoryS) return { timeS: computeS, regime: 'compute' }
-  return { timeS: memoryS, regime: 'memory' }
+  const memoryS  = bytes / (bwGBs * 1e9)
+  const commsS = commsBytes !== undefined && interconnectBwGBs !== undefined
+    ? commsBytes / (interconnectBwGBs * 1e9)
+    : 0
+
+  let regime: 'compute' | 'memory' | 'comms' = 'compute'
+  let timeS = computeS
+  if (memoryS > timeS) { regime = 'memory'; timeS = memoryS }
+  if (commsS  > timeS) { regime = 'comms';  timeS = commsS  }
+  return { timeS, regime }
 }

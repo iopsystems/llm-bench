@@ -1,26 +1,45 @@
 import { describe, it, expect } from 'vitest'
 import { roofline } from '../../src/engine/roofline'
 
-describe('roofline', () => {
-  it('returns compute regime when flops/tflops > bytes/bw', () => {
-    // flops/tflops = 4 / 1e12 / 1e-12 = ...
-    // Use simpler numbers: tflops in TFLOPs = 1 (so 1e12 FLOP/s), bw in GB/s = 1 (so 1e9 B/s)
-    //   flops = 2e12 → time = 2s ; bytes = 1e9 → time = 1s → compute wins
-    const r = roofline({ flops: 2e12, bytes: 1e9, tflops: 1, bwGBs: 1 })
+describe('roofline — single-accelerator (existing behavior)', () => {
+  it('compute-bound when flops/tflops > bytes/bw', () => {
+    const r = roofline({ flops: 1e12, bytes: 1e6, tflops: 1, bwGBs: 1000 })
     expect(r.regime).toBe('compute')
-    expect(r.timeS).toBe(2)
+    expect(r.timeS).toBeCloseTo(1e12 / 1e12, 12)  // = 1 s
   })
 
-  it('returns memory regime when bytes/bw > flops/tflops', () => {
-    //   flops = 1e12 → time = 1s ; bytes = 2e9 → time = 2s → memory wins
-    const r = roofline({ flops: 1e12, bytes: 2e9, tflops: 1, bwGBs: 1 })
+  it('memory-bound when bytes/bw > flops/tflops', () => {
+    const r = roofline({ flops: 1e6, bytes: 1e9, tflops: 1, bwGBs: 1 })
     expect(r.regime).toBe('memory')
-    expect(r.timeS).toBe(2)
+    expect(r.timeS).toBeCloseTo(1e9 / 1e9, 12)  // = 1 s
+  })
+})
+
+describe('roofline — multi-accelerator (comms ceiling)', () => {
+  it('comms-bound when commsBytes/interconnect > both other terms', () => {
+    const r = roofline({
+      flops: 1, bytes: 1,
+      tflops: 1, bwGBs: 1,
+      commsBytes: 1e10,
+      interconnectBwGBs: 100
+    })
+    expect(r.regime).toBe('comms')
+    expect(r.timeS).toBeCloseTo(0.1, 6)
   })
 
-  it('ties classify as memory regime (defensive choice)', () => {
-    const r = roofline({ flops: 1e12, bytes: 1e9, tflops: 1, bwGBs: 1 })
-    expect(r.timeS).toBe(1)
+  it('memory-bound still wins if HBM term exceeds comms term', () => {
+    const r = roofline({
+      flops: 1, bytes: 1e10,
+      tflops: 1, bwGBs: 1000,
+      commsBytes: 1e8,
+      interconnectBwGBs: 100
+    })
+    expect(r.regime).toBe('memory')
+    expect(r.timeS).toBeCloseTo(0.01, 6)
+  })
+
+  it('commsBytes undefined → no comms ceiling (back-compat)', () => {
+    const r = roofline({ flops: 1, bytes: 1e9, tflops: 1, bwGBs: 1 })
     expect(r.regime).toBe('memory')
   })
 })
