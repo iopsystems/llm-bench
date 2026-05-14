@@ -1,13 +1,40 @@
 <script lang="ts">
   import { ACCELERATORS, MODELS } from '../data'
-  import { acceleratorId, variantId, modelId, quant, workload } from './stores'
+  import { SYSTEMS } from '../data/systems'
+  import { acceleratorId, variantId, systemId, modelId, quant, workload } from './stores'
   import type { Dtype } from '../engine/types'
 
-  const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'int8', 'int4']
+  const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
+
+  // Combined catalog entries — each is either a single accelerator or a named system.
+  type Entry =
+    | { kind: 'single'; id: string; vendor: string; name: string }
+    | { kind: 'system'; id: string; vendor: string; name: string; count: number }
+
+  const entries: Entry[] = [
+    ...ACCELERATORS.map(a => ({ kind: 'single' as const, id: a.id, vendor: a.vendor, name: a.name })),
+    ...SYSTEMS.map(s => ({
+      kind: 'system' as const, id: s.id, vendor: s.vendor,
+      name: s.name, count: s.accelerator.count
+    }))
+  ]
+  const vendors = Array.from(new Set(entries.map(e => e.vendor)))
+
+  // Single combined value for the dropdown, prefixed to distinguish kind.
+  $: comboValue = $systemId ? `sys:${$systemId}` : `chip:${$acceleratorId}`
+
+  function onComboChange(e: Event) {
+    const v = (e.target as HTMLSelectElement).value
+    if (v.startsWith('sys:')) {
+      systemId.set(v.slice(4))
+    } else {
+      systemId.set('')
+      acceleratorId.set(v.slice(5))
+    }
+  }
 
   $: accelerator = ACCELERATORS.find(a => a.id === $acceleratorId)
   $: variants = accelerator?.variants ?? []
-  // Reset variant if it falls outside the new accelerator's list.
   $: if (accelerator && !variants.find(v => v.id === $variantId)) {
        variantId.set(variants[0]?.id ?? '')
      }
@@ -19,20 +46,30 @@
     <div class="row">
       <label>
         Accelerator
-        <select bind:value={$acceleratorId}>
-          {#each ACCELERATORS as a}
-            <option value={a.id}>{a.name}</option>
+        <select value={comboValue} on:change={onComboChange}>
+          {#each vendors as v}
+            <optgroup label={v}>
+              {#each entries.filter(e => e.vendor === v) as e}
+                {#if e.kind === 'single'}
+                  <option value={`chip:${e.id}`}>{e.name}</option>
+                {:else}
+                  <option value={`sys:${e.id}`}>{e.name} ({e.count}×)</option>
+                {/if}
+              {/each}
+            </optgroup>
           {/each}
         </select>
       </label>
-      <label>
-        Variant
-        <select bind:value={$variantId}>
-          {#each variants as v}
-            <option value={v.id}>{v.label}</option>
-          {/each}
-        </select>
-      </label>
+      {#if !$systemId}
+        <label>
+          Variant
+          <select bind:value={$variantId}>
+            {#each variants as v}
+              <option value={v.id}>{v.label}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
     </div>
   </fieldset>
 
