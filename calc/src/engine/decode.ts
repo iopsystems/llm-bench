@@ -10,6 +10,8 @@ import {
   deltaAttentionFlopsPerToken
 } from './memory'
 import { bytesOf } from './dtypes'
+import { commsBytesPerStep } from './parallelism'
+import { INTERCONNECTS } from '../data/interconnects'
 
 export function computeDecode(
   input: CalcInput,
@@ -36,9 +38,25 @@ export function computeDecode(
     throw new Error(`Operating point ${opPoint.id} lacks tflops for ${quant.activations}`)
   }
 
+  let commsBytes: number | undefined = undefined
+  let interconnectBwGBs: number | undefined = undefined
+  if (input.multiDevice) {
+    const B = workload.concurrency  // decode: one token per request per pass
+    commsBytes = commsBytesPerStep(
+      input.multiDevice.parallelism,
+      input.multiDevice.parallelismDegrees,
+      model,
+      B,
+      quant.activations
+    )
+    const ic = INTERCONNECTS.find(i => i.id === input.multiDevice!.system.interconnectId)
+    if (ic) interconnectBwGBs = ic.perDirectionGBs ?? ic.perGpuBandwidthGBs / 2
+  }
+
   const { timeS, regime } = roofline({
     flops: flopsPerStep, bytes: bytesPerStep,
-    tflops, bwGBs: opPoint.hbmBandwidthGBs
+    tflops, bwGBs: opPoint.hbmBandwidthGBs,
+    commsBytes, interconnectBwGBs
   })
 
   const mtpFactor = 1 + model.numNextnLayers

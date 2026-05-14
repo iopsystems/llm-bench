@@ -1,5 +1,6 @@
 import type { CalcInput, Dtype, AcceleratorVariant, MemoryResult, ModelArch } from './types'
 import { bytesOf } from './dtypes'
+import { perRankMemoryDivisors } from './parallelism'
 
 const BYTES_PER_GB = 1024 ** 3
 
@@ -147,6 +148,30 @@ export function computeMemory(input: CalcInput): MemoryResult {
   const headroom = hbmCapacityBytes - total
   const fits = headroom >= 0
 
+  let perRank: MemoryResult['perRank'] = undefined
+  if (input.multiDevice) {
+    const divisors = perRankMemoryDivisors(
+      input.multiDevice.parallelism,
+      input.multiDevice.parallelismDegrees,
+      model
+    )
+    const rankWeights = weights / divisors.weights
+    const perReplicaConcurrency = workload.concurrency / divisors.replicas
+    const rankKvPerRequest = kvCachePerRequest / divisors.kv
+    const rankKvTotal = rankKvPerRequest * perReplicaConcurrency
+    const rankActivations = activationsPeak / divisors.activations
+    const rankTotal = rankWeights + rankKvTotal + rankActivations
+    const rankHeadroom = hbmCapacityBytes - rankTotal
+    perRank = {
+      weights: rankWeights,
+      kvCachePerRequest: rankKvPerRequest,
+      activationsPeak: rankActivations,
+      total: rankTotal,
+      headroom: rankHeadroom,
+      fits: rankHeadroom >= 0
+    }
+  }
+
   return {
     weights,
     kvCachePerRequest,
@@ -155,6 +180,7 @@ export function computeMemory(input: CalcInput): MemoryResult {
     total,
     hbmCapacityGB: variant.hbmCapacityGB,
     headroom,
-    fits
+    fits,
+    ...(perRank && { perRank })
   }
 }
