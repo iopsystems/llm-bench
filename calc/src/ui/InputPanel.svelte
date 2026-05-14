@@ -3,6 +3,7 @@
   import { SYSTEMS } from '../data/systems'
   import { acceleratorId, variantId, systemId, modelId, quant, workload } from './stores'
   import type { Dtype } from '../engine/types'
+  import ParallelismPicker from './ParallelismPicker.svelte'
 
   const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
 
@@ -72,6 +73,8 @@
       {/if}
     </div>
   </fieldset>
+
+  <ParallelismPicker />
 
   <fieldset class="island">
     <legend>Model</legend>
