@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { perRankMemoryDivisors } from '../../src/engine/parallelism'
+import { perRankMemoryDivisors, commsBytesPerStep } from '../../src/engine/parallelism'
 import type { ModelArch } from '../../src/engine/types'
+import { bytesOf } from '../../src/engine/dtypes'
 
 const dense: ModelArch = {
   id: 'd', name: 'D', family: 't',
@@ -82,5 +83,51 @@ describe('perRankMemoryDivisors', () => {
     expect(d.kv).toBe(8)
     expect(d.activations).toBe(8)
     expect(d.replicas).toBe(1)
+  })
+})
+
+describe('commsBytesPerStep', () => {
+  it('TP all-reduce volume: 2 × layers × 2 × (N-1)/N × B × hidden × bytes', () => {
+    const N = 8, B = 1, hidden = 4096, layers = 32
+    const bytes = commsBytesPerStep(['tp'], { tp: N }, dense, B, 'fp16')
+    const expected = 2 * layers * 2 * ((N - 1) / N) * B * hidden * bytesOf('fp16')
+    expect(bytes).toBe(expected)
+  })
+
+  it('PP point-to-point volume: (N-1) × B × hidden × bytes', () => {
+    const N = 4, B = 1, hidden = 4096
+    const bytes = commsBytesPerStep(['pp'], { pp: N }, dense, B, 'fp16')
+    const expected = (N - 1) * B * hidden * bytesOf('fp16')
+    expect(bytes).toBe(expected)
+  })
+
+  it('EP all-to-all volume: 2 × moeLayers × (1 - 1/N) × B × hidden × bytes (MoE only)', () => {
+    const N = 8, B = 1, hidden = 4096, layers = 32
+    const bytes = commsBytesPerStep(['ep'], { ep: N }, moe, B, 'fp16')
+    const expected = 2 * layers * (1 - 1 / N) * B * hidden * bytesOf('fp16')
+    expect(bytes).toBe(expected)
+  })
+
+  it('EP on dense model: 0 (no MoE layers)', () => {
+    const bytes = commsBytesPerStep(['ep'], { ep: 8 }, dense, 1, 'fp16')
+    expect(bytes).toBe(0)
+  })
+
+  it('DP: 0 in inference', () => {
+    const bytes = commsBytesPerStep(['dp'], { dp: 2 }, dense, 1, 'fp16')
+    expect(bytes).toBe(0)
+  })
+
+  it('TP × EP composed: sum of both volumes', () => {
+    const N = 8, B = 1, hidden = 4096, layers = 32
+    const bytes = commsBytesPerStep(['tp', 'ep'], { tp: N, ep: N }, moe, B, 'fp16')
+    const tpVol = 2 * layers * 2 * ((N - 1) / N) * B * hidden * bytesOf('fp16')
+    const epVol = 2 * layers * (1 - 1 / N) * B * hidden * bytesOf('fp16')
+    expect(bytes).toBe(tpVol + epVol)
+  })
+
+  it('no parallelism: 0', () => {
+    const bytes = commsBytesPerStep([], {}, dense, 1, 'fp16')
+    expect(bytes).toBe(0)
   })
 })

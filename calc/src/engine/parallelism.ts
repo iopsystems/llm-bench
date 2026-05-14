@@ -1,4 +1,5 @@
-import type { ModelArch, ParallelismMode } from './types'
+import type { Dtype, ModelArch, ParallelismMode } from './types'
+import { bytesOf } from './dtypes'
 
 export interface RankDivisors {
   weights: number
@@ -34,4 +35,36 @@ export function perRankMemoryDivisors(
     activations: activationsDivisor,
     replicas: dp
   }
+}
+
+export function commsBytesPerStep(
+  parallelism: ParallelismMode['id'][],
+  degrees: Partial<Record<ParallelismMode['id'], number>>,
+  model: ModelArch,
+  B: number,
+  activationDtype: Dtype
+): number {
+  const tp = parallelism.includes('tp') ? (degrees.tp ?? 1) : 1
+  const pp = parallelism.includes('pp') ? (degrees.pp ?? 1) : 1
+  const ep = parallelism.includes('ep') ? (degrees.ep ?? 1) : 1
+
+  const d = model.hiddenDim
+  const L = model.layers
+  const bytes = bytesOf(activationDtype)
+  let total = 0
+
+  // TP: two all-reduces per layer (ring algorithm): 2 × (N-1)/N × B × d × bytes each
+  if (tp > 1) {
+    total += 2 * L * 2 * ((tp - 1) / tp) * B * d * bytes
+  }
+  // PP: (N-1) point-to-point sends per forward pass
+  if (pp > 1) {
+    total += (pp - 1) * B * d * bytes
+  }
+  // EP: all-to-all per MoE layer (forward gather + scatter); zero for dense
+  if (ep > 1 && model.architecture.type === 'moe') {
+    total += 2 * L * (1 - 1 / ep) * B * d * bytes
+  }
+
+  return total
 }
