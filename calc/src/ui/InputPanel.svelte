@@ -71,10 +71,9 @@
           </select>
         </label>
       {/if}
+      <ParallelismPicker />
     </div>
   </fieldset>
-
-  <ParallelismPicker />
 
   <fieldset class="island">
     <legend>Model</legend>

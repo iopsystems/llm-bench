@@ -227,8 +227,9 @@
     <h3>Roofline</h3>
     <p class="caption">
       Roof = theoretical ceiling at peak {$input?.quant.activations} (sloped = memory-bound,
-      flat = compute-bound). Markers are the workload's prefill and decode; the gap between
-      the achievable marker and the roof above it is the hardware-efficiency loss.
+      flat = compute-bound{#if interconnectBwGBs}, dashed purple = interconnect-bound{/if}).
+      Markers are the workload's prefill and decode; the gap between the achievable marker
+      and the roof above it is the hardware-efficiency loss.
     </p>
     <div bind:this={container} class="plot"></div>
     <div class="legend">

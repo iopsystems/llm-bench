@@ -49,30 +49,18 @@
 </script>
 
 {#if system && active && defaults}
-  <fieldset class="island">
-    <legend>Parallelism</legend>
-    <label>
-      Mode
-      <select on:change={onChange}>
-        <option value="default">Auto: {describe(defaults)}</option>
-        {#each opts as o}
-          <option value={JSON.stringify(o)}>{describe(o)}</option>
-        {/each}
-      </select>
-    </label>
-  </fieldset>
+  <label>
+    Parallelism
+    <select on:change={onChange}>
+      <option value="default">Auto: {describe(defaults)}</option>
+      {#each opts as o}
+        <option value={JSON.stringify(o)}>{describe(o)}</option>
+      {/each}
+    </select>
+  </label>
 {/if}
 
 <style>
-  .island {
-    border: 1px solid #d4d4d4; border-radius: 0.4rem;
-    padding: 0.4rem 0.9rem 0.7rem; margin: 0; background: #fff;
-    flex: 1 1 220px; min-width: 0;
-  }
-  legend {
-    padding: 0 0.4rem; font-size: 0.85rem; font-weight: 600;
-    color: #555; text-transform: uppercase; letter-spacing: 0.04em;
-  }
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; }
   select { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
 </style>
