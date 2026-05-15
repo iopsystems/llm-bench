@@ -21,6 +21,10 @@
     ai: number
     perf: number
     regime: 'compute' | 'memory' | 'comms'
+    // X-factors that lift the plotted rate off its tier's roof (currently
+    // MTP — decode emits multiple tokens per forward pass). Shown as a
+    // "Note: …" row in the tooltip; absent for points that sit on the roof.
+    note?: string
   }
   type GapRow = {
     phase: 'prefill' | 'decode'
@@ -69,8 +73,13 @@
       const decAi = p.decode.flopsPerStep / p.decode.bytesPerStep
       const decPerf = p.decode.flopsPerStep / p.decode.timePerTokenS
 
+      const mtpFactor = 1 + $input.model.numNextnLayers
+      const decNote = mtpFactor > 1
+        ? `MTP ×${mtpFactor} (${mtpFactor} tokens per forward pass)`
+        : undefined
+
       points.push({ tier, phase: 'prefill', ai: prefAi, perf: prefPerf, regime: p.prefill.regime })
-      points.push({ tier, phase: 'decode',  ai: decAi,  perf: decPerf,  regime: p.decode.regime })
+      points.push({ tier, phase: 'decode',  ai: decAi,  perf: decPerf,  regime: p.decode.regime, note: decNote })
 
       // Connector from achievable marker up to peak ceiling at the same AI.
       // The vertical span is the hardware-efficiency gap for this phase.
@@ -102,6 +111,22 @@
     if (v >= 1e12) return `${(v / 1e12).toFixed(0)} TFLOPS`
     if (v >= 1e9)  return `${(v / 1e9).toFixed(0)} GFLOPS`
     return `${v.toExponential(1)} F`
+  }
+
+  // Arithmetic intensity — 3 sig figs with K/M/G suffix. toPrecision(3) plus
+  // parseFloat→toString strips trailing zeros (12345 → "12.3K", 1.5 → "1.5").
+  function fmtAi(v: number): string {
+    const sig = (x: number) => parseFloat(x.toPrecision(3)).toString()
+    if (v >= 1e9) return `${sig(v / 1e9)}G`
+    if (v >= 1e6) return `${sig(v / 1e6)}M`
+    if (v >= 1e3) return `${sig(v / 1e3)}K`
+    return sig(v)
+  }
+
+  function fmtRegime(r: 'compute' | 'memory' | 'comms'): string {
+    if (r === 'memory')  return 'Memory-bound'
+    if (r === 'compute') return 'Compute-bound'
+    return 'Comms-bound'
   }
 
   const hasAchievable = $derived(data.points.some(p => p.tier === 'Achievable'))
@@ -190,7 +215,10 @@
               strokeDasharray: '4,2', clip: true }
           )
         ] : []),
-        Plot.dot(data.points, {
+        // Two dot marks share the same color/symbol scales but carry different
+        // tooltip channels: rows without an X-factor note skip the Note line so
+        // the tooltip doesn't render an empty "Note: " for them.
+        Plot.dot(data.points.filter(p => !p.note), {
           x: 'ai', y: 'perf',
           stroke: 'tier', fill: 'tier', fillOpacity: 0.7, symbol: 'phase',
           r: 7, strokeWidth: 1.5,
@@ -200,14 +228,38 @@
           channels: {
             Performance: { value: 'perf', label: 'Performance' },
             ' ': { value: () => '', label: ' ' },
-            'Arithmetic Intensity': { value: 'ai', label: 'Arithmetic Intensity' }
+            'Arithmetic Intensity': { value: 'ai', label: 'Arithmetic Intensity' },
+            Bottleneck: { value: 'regime', label: 'Bottleneck' }
           },
           tip: {
             format: {
               x: false, y: false,
               stroke: false, fill: false,
               Performance: (d: number) => fmtPerf(d) + '/s',
-              'Arithmetic Intensity': '.3~f'
+              'Arithmetic Intensity': fmtAi,
+              Bottleneck: fmtRegime
+            }
+          }
+        }),
+        Plot.dot(data.points.filter(p => p.note), {
+          x: 'ai', y: 'perf',
+          stroke: 'tier', fill: 'tier', fillOpacity: 0.7, symbol: 'phase',
+          r: 7, strokeWidth: 1.5,
+          channels: {
+            Performance: { value: 'perf', label: 'Performance' },
+            ' ': { value: () => '', label: ' ' },
+            'Arithmetic Intensity': { value: 'ai', label: 'Arithmetic Intensity' },
+            Bottleneck: { value: 'regime', label: 'Bottleneck' },
+            Note: { value: 'note', label: 'Note' }
+          },
+          tip: {
+            format: {
+              x: false, y: false,
+              stroke: false, fill: false,
+              Performance: (d: number) => fmtPerf(d) + '/s',
+              'Arithmetic Intensity': fmtAi,
+              Bottleneck: fmtRegime,
+              Note: (n: string) => n
             }
           }
         })
