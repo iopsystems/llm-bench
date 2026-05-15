@@ -6,6 +6,7 @@ export const testAccelerator: AcceleratorSpec = {
   id: 'test-accel',
   name: 'Test Accelerator',
   vendor: 'test',
+  releaseDate: '2025-01',
   variants: [{
     id: 'v',
     label: 'V',
@@ -26,6 +27,8 @@ export const testModel: ModelArch = {
   id: 'test-model',
   name: 'Test Model',
   family: 'test',
+  publisher: 'test',
+  releaseDate: '2025-01',
   layers: 2,
   hiddenDim: 4,
   intermediateDim: 8,

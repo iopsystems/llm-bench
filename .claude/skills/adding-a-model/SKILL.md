@@ -34,6 +34,11 @@ Schema in [`calc/src/engine/types.ts`](../../../calc/src/engine/types.ts) (`Mode
 
 `paramCount` — take from the model card, not derived. Vendors quote total parameters including embeddings and norms; recompute is unreliable.
 
+`publisher` and `releaseDate` are catalog metadata, not from `config.json`:
+
+- `publisher` — the releasing organization (Alibaba, Meta, Google, DeepSeek, Moonshot AI, Zhipu AI, Microsoft, Mistral AI, …). This is the primary grouping key in the model picker, so reuse the exact string an existing same-publisher entry uses — don't introduce "Alibaba" and "Alibaba (Qwen)" as two groups.
+- `releaseDate` — public release/announcement month as ISO `YYYY-MM`. Day granularity is noisy (announce vs. weights vs. paper); month is the contract. Source from the official launch post or paper date. For a forward-looking/speculative entry, use a projected month consistent with its version ordering and say so in the commit.
+
 ## Architecture (dense vs MoE)
 
 Detect MoE by presence of `num_experts` / `num_local_experts` in config:

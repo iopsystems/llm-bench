@@ -6,6 +6,7 @@
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
+  import { orderModels, orderSkus } from './catalogOrder'
 
   // Disagg fabric options — scale-out fabrics (IB, EFA) are the realistic ones.
   // Filter to those entries in INTERCONNECTS.
@@ -13,19 +14,11 @@
 
   const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
 
-  // Combined catalog entries — each is either a single accelerator or a named system.
-  type Entry =
-    | { kind: 'single'; id: string; vendor: string; name: string }
-    | { kind: 'system'; id: string; vendor: string; name: string; count: number }
-
-  const entries: Entry[] = [
-    ...ACCELERATORS.map(a => ({ kind: 'single' as const, id: a.id, vendor: a.vendor, name: a.name })),
-    ...SYSTEMS.map(s => ({
-      kind: 'system' as const, id: s.id, vendor: s.vendor,
-      name: s.name, count: s.accelerator.count
-    }))
-  ]
-  const vendors = Array.from(new Set(entries.map(e => e.vendor)))
+  // Picker ordering lives in catalogOrder.ts: publisher groups (newest-shipping
+  // publisher first), then within a group newer/larger first. SKU groups also
+  // put single accelerators ahead of multi-accelerator systems.
+  const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
+  const modelGroups = orderModels(MODELS)
 
   // Single combined value for the dropdown, prefixed to distinguish kind.
   $: comboValue = $systemId ? `sys:${$systemId}` : `chip:${$acceleratorId}`
@@ -87,9 +80,9 @@
       <label>
         Accelerator
         <select value={comboValue} on:change={onComboChange}>
-          {#each vendors as v}
-            <optgroup label={v}>
-              {#each entries.filter(e => e.vendor === v) as e}
+          {#each skuGroups as g}
+            <optgroup label={g.publisher}>
+              {#each g.entries as e}
                 {#if e.kind === 'single'}
                   <option value={`chip:${e.id}`}>{e.name}</option>
                 {:else}
@@ -137,8 +130,12 @@
       <label>
         Model
         <select bind:value={$modelId}>
-          {#each MODELS as m}
-            <option value={m.id}>{m.name}</option>
+          {#each modelGroups as g}
+            <optgroup label={g.publisher}>
+              {#each g.models as m}
+                <option value={m.id}>{m.name}</option>
+              {/each}
+            </optgroup>
           {/each}
         </select>
       </label>

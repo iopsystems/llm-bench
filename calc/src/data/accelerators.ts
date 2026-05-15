@@ -11,6 +11,7 @@ import type { AcceleratorSpec } from '../engine/types'
 export const ACCELERATORS: AcceleratorSpec[] = [
   {
     id: 'h100', name: 'NVIDIA H100', vendor: 'NVIDIA', family: 'Hopper',
+    releaseDate: '2022-09',
     variants: [
       {
         id: 'sxm-80', label: 'SXM 80GB', hbmCapacityGB: 80,
@@ -75,6 +76,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'h200', name: 'NVIDIA H200', vendor: 'NVIDIA', family: 'Hopper',
+    releaseDate: '2024-03',
     variants: [{
       id: 'sxm-141', label: 'SXM 141GB', hbmCapacityGB: 141,
       operatingPoints: [
@@ -99,6 +101,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'a100', name: 'NVIDIA A100', vendor: 'NVIDIA', family: 'Ampere',
+    releaseDate: '2020-05',
     variants: [
       {
         id: 'sxm-40', label: 'SXM 40GB', hbmCapacityGB: 40,
@@ -159,6 +162,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'l40s', name: 'NVIDIA L40S', vendor: 'NVIDIA', family: 'Ada Lovelace',
+    releaseDate: '2023-08',
     variants: [{
       id: 'pcie-48', label: 'PCIe 48GB', hbmCapacityGB: 48,
       operatingPoints: [{
@@ -170,6 +174,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'rtx-5090', name: 'NVIDIA RTX 5090', vendor: 'NVIDIA', family: 'Blackwell',
+    releaseDate: '2025-01',
     variants: [{
       id: 'sku', label: '32GB', hbmCapacityGB: 32,
       operatingPoints: [{
@@ -181,6 +186,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'rtx-5080', name: 'NVIDIA RTX 5080', vendor: 'NVIDIA', family: 'Blackwell',
+    releaseDate: '2025-01',
     variants: [{
       id: 'sku', label: '16GB', hbmCapacityGB: 16,
       operatingPoints: [{
@@ -192,6 +198,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'rtx-4090', name: 'NVIDIA RTX 4090', vendor: 'NVIDIA', family: 'Ada Lovelace',
+    releaseDate: '2022-10',
     variants: [{
       id: 'sku', label: '24GB', hbmCapacityGB: 24,
       operatingPoints: [{
@@ -203,6 +210,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'rtx-4080', name: 'NVIDIA RTX 4080', vendor: 'NVIDIA', family: 'Ada Lovelace',
+    releaseDate: '2022-11',
     variants: [{
       id: 'sku', label: '16GB', hbmCapacityGB: 16,
       operatingPoints: [{
@@ -214,7 +222,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'rtx-pro-6000', name: 'NVIDIA RTX PRO 6000 Blackwell',
-    vendor: 'NVIDIA', family: 'Blackwell',
+    vendor: 'NVIDIA', family: 'Blackwell', releaseDate: '2025-03',
     variants: [{
       id: 'workstation-96', label: 'Workstation 96GB', hbmCapacityGB: 96,
       operatingPoints: [{
@@ -226,6 +234,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'b100', name: 'NVIDIA B100', vendor: 'NVIDIA', family: 'Blackwell',
+    releaseDate: '2025-01',
     variants: [{
       id: 'sxm-192', label: 'SXM 192GB', hbmCapacityGB: 192,
       operatingPoints: [{
@@ -237,6 +246,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'b200', name: 'NVIDIA B200', vendor: 'NVIDIA', family: 'Blackwell',
+    releaseDate: '2025-01',
     // Per-GPU numbers derived from NVIDIA's HGX B200 spec table (8 GPUs):
     // 1.4 TB total memory ÷ 8 = 180 GB; FP16/BF16 36 PFLOPS sparse ÷ 8 ÷ 2 = 2250
     // TF dense; FP8 72 PFLOPS sparse ÷ 8 ÷ 2 = 4500 TF dense. FP4 dense (9000 TF
@@ -253,6 +263,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'gb200', name: 'NVIDIA GB200', vendor: 'NVIDIA', family: 'Blackwell',
+    releaseDate: '2025-03',
     // Per-GPU numbers derived from NVIDIA's GB200 Grace Blackwell Superchip
     // spec (1 Grace CPU + 2 Blackwell GPUs): 372 GB HBM3e ÷ 2 = 186 GB; 16 TB/s
     // ÷ 2 = 8 TB/s; 10 PFLOPS FP16/BF16 sparse ÷ 2 GPUs ÷ 2 (sparse→dense) =
@@ -270,6 +281,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'mi300x', name: 'AMD Instinct MI300X', vendor: 'AMD', family: 'CDNA3',
+    releaseDate: '2023-12',
     variants: [{
       id: 'oam-192', label: 'OAM 192GB', hbmCapacityGB: 192,
       operatingPoints: [
@@ -295,6 +307,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'mi325x', name: 'AMD Instinct MI325X', vendor: 'AMD', family: 'CDNA3',
+    releaseDate: '2024-10',
     // Same CDNA3 silicon as MI300X, refreshed with 256GB HBM3e at 6 TB/s.
     // Compute is unchanged from MI300X per AMD's product page; only memory
     // capacity/bandwidth differ. No verified achievable-FLOPS source for
@@ -319,6 +332,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   // cores). Cross-check before relying on absolute decode rates.
   {
     id: 'm3-pro', name: 'Apple M3 Pro', vendor: 'Apple', family: 'Apple Silicon',
+    releaseDate: '2023-10',
     variants: [
       { id: '18gb', label: '18GB', hbmCapacityGB: 18,
         operatingPoints: [{ id: 'peak', label: 'Peak',
@@ -330,6 +344,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'm3-ultra', name: 'Apple M3 Ultra', vendor: 'Apple', family: 'Apple Silicon',
+    releaseDate: '2025-03',
     variants: [
       { id: '96gb', label: '96GB', hbmCapacityGB: 96,
         operatingPoints: [{ id: 'peak', label: 'Peak',
@@ -344,6 +359,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'm4-pro', name: 'Apple M4 Pro', vendor: 'Apple', family: 'Apple Silicon',
+    releaseDate: '2024-10',
     variants: [
       { id: '24gb', label: '24GB', hbmCapacityGB: 24,
         operatingPoints: [{ id: 'peak', label: 'Peak',
@@ -355,6 +371,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'm4-max', name: 'Apple M4 Max', vendor: 'Apple', family: 'Apple Silicon',
+    releaseDate: '2024-10',
     variants: [
       { id: '36gb', label: '36GB', hbmCapacityGB: 36,
         operatingPoints: [{ id: 'peak', label: 'Peak',
@@ -369,6 +386,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'm5-pro', name: 'Apple M5 Pro', vendor: 'Apple', family: 'Apple Silicon',
+    releaseDate: '2026-01',
     variants: [
       { id: '24gb', label: '24GB', hbmCapacityGB: 24,
         operatingPoints: [{ id: 'peak', label: 'Peak',
@@ -380,6 +398,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'm5-max', name: 'Apple M5 Max', vendor: 'Apple', family: 'Apple Silicon',
+    releaseDate: '2026-01',
     variants: [
       { id: '64gb', label: '64GB', hbmCapacityGB: 64,
         operatingPoints: [{ id: 'peak', label: 'Peak',
@@ -398,6 +417,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   // ~30× slower than the MME, so we omit int8 rather than blend the figures.
   {
     id: 'gaudi-2', name: 'Intel Gaudi 2', vendor: 'Intel', family: 'Gaudi 2',
+    releaseDate: '2022-05',
     variants: [{
       id: 'oam-96', label: 'HL-225 OAM 96GB', hbmCapacityGB: 96,
       operatingPoints: [{
@@ -409,6 +429,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'gaudi-3', name: 'Intel Gaudi 3', vendor: 'Intel', family: 'Gaudi 3',
+    releaseDate: '2024-04',
     variants: [{
       id: 'oam-128', label: 'HL-325L OAM 128GB', hbmCapacityGB: 128,
       operatingPoints: [{
@@ -427,6 +448,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   // INT8 doubles BF16, indicating a true INT8 datapath.
   {
     id: 'tpu-v5p', name: 'Google TPU v5p', vendor: 'Google', family: 'TPU',
+    releaseDate: '2023-12',
     variants: [{
       id: 'chip', label: 'per chip 95GB', hbmCapacityGB: 95,
       operatingPoints: [{
@@ -438,6 +460,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'tpu-trillium', name: 'Google TPU v6e (Trillium)', vendor: 'Google', family: 'TPU',
+    releaseDate: '2024-12',
     variants: [{
       id: 'chip', label: 'per chip 32GB', hbmCapacityGB: 32,
       operatingPoints: [{
@@ -455,6 +478,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   // "peak" without sparsity, but treat with care.
   {
     id: 'trainium-2', name: 'AWS Trainium2', vendor: 'AWS', family: 'Neuron',
+    releaseDate: '2024-12',
     // Per-chip derived from Trn2.48xlarge aggregates: 16 chips, 1.5 TB HBM3,
     // 46 TB/s aggregate bandwidth, 20.8 PFLOPS FP8 (no sparsity qualifier
     // given by AWS). BF16 not separately published; omitted rather than
@@ -471,6 +495,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'inferentia-2', name: 'AWS Inferentia2', vendor: 'AWS', family: 'Neuron',
+    releaseDate: '2023-04',
     // Per chip: 32 GB HBM (explicit on AWS Inf2 page); 9.8 TB/s aggregate ÷ 12
     // chips = ~817 GB/s per chip; 190 TFLOPS FP16 explicit on the AWS Neuron/
     // Inferentia product page. AWS lists FP8 support but no TFLOPS figure;
@@ -496,6 +521,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   // the datasheet — treat the FP16/BF16 entries as a rough upper bound.
   {
     id: 'cerebras-wse3', name: 'Cerebras WSE-3', vendor: 'Cerebras', family: 'Wafer-Scale',
+    releaseDate: '2024-03',
     variants: [{
       id: 'cs3', label: 'CS-3', hbmCapacityGB: 44,
       operatingPoints: [{

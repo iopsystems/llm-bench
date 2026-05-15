@@ -17,6 +17,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === NVIDIA Hopper baseboards / nodes ===
   {
     id: 'hgx-h100-8',
+    releaseDate: '2022-09',
     name: 'NVIDIA HGX H100 (8-GPU)',
     vendor: 'NVIDIA',
     generation: 'Hopper',
@@ -37,6 +38,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   },
   {
     id: 'hgx-h200-8',
+    releaseDate: '2024-03',
     name: 'NVIDIA HGX H200 (8-GPU)',
     vendor: 'NVIDIA',
     generation: 'Hopper',
@@ -59,6 +61,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === NVIDIA Blackwell ===
   {
     id: 'hgx-b200-8',
+    releaseDate: '2025-01',
     name: 'NVIDIA HGX B200 (8-GPU)',
     vendor: 'NVIDIA',
     generation: 'Blackwell',
@@ -79,6 +82,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   },
   {
     id: 'gb200-nvl72',
+    releaseDate: '2025-03',
     name: 'NVIDIA GB200 NVL72',
     vendor: 'NVIDIA',
     generation: 'Blackwell',
@@ -101,6 +105,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === AMD ===
   {
     id: 'mi300x-8',
+    releaseDate: '2023-12',
     name: 'AMD MI300X 8-OAM platform',
     vendor: 'AMD',
     generation: 'CDNA3',
@@ -121,6 +126,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   },
   {
     id: 'mi325x-8',
+    releaseDate: '2024-10',
     name: 'AMD MI325X 8-OAM platform',
     vendor: 'AMD',
     generation: 'CDNA3',
@@ -143,6 +149,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === Intel ===
   {
     id: 'gaudi3-hls',
+    releaseDate: '2024-04',
     name: 'Intel Gaudi 3 HLS-3 (8-OAM)',
     vendor: 'Intel',
     generation: 'Gaudi 3',
@@ -163,6 +170,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === Google TPU ===
   {
     id: 'tpu-v5p-8',
+    releaseDate: '2023-12',
     name: 'Google TPU v5p single-host (8 chips)',
     vendor: 'Google',
     generation: 'v5p',
@@ -181,6 +189,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   },
   {
     id: 'tpu-trillium-8',
+    releaseDate: '2024-12',
     name: 'Google TPU v6e Trillium single-host (8 chips)',
     vendor: 'Google',
     generation: 'v6e',
@@ -201,6 +210,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   // === AWS Neuron ===
   {
     id: 'aws-trn2-48xl',
+    releaseDate: '2024-12',
     name: 'AWS Trn2.48xlarge',
     vendor: 'AWS',
     generation: 'Trainium2',
@@ -221,6 +231,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   },
   {
     id: 'aws-trn2-ultraserver',
+    releaseDate: '2024-12',
     name: 'AWS Trn2 UltraServer',
     vendor: 'AWS',
     generation: 'Trainium2',
@@ -240,6 +251,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
   },
   {
     id: 'aws-inf2-48xl',
+    releaseDate: '2023-04',
     name: 'AWS Inf2.48xlarge',
     vendor: 'AWS',
     generation: 'Inferentia2',

@@ -83,6 +83,7 @@ const FIELDS_NOT_IN_TABLE = new Set([
   'id', 'name', 'family',
   'attention', 'architecture',
   'paramCount',
+  'publisher', 'releaseDate',  // catalog metadata, not from HF config.json
 ])
 
 export function runCheck() {

@@ -25,6 +25,9 @@ export interface AcceleratorSpec {
   name: string
   vendor: string
   family?: string
+  // Public availability month, ISO `YYYY-MM` (general availability, not
+  // announcement teaser). Drives newer-first ordering in the SKU picker.
+  releaseDate: string
   variants: AcceleratorVariant[]
 }
 
@@ -189,6 +192,9 @@ export interface MultiAcceleratorSystem {
   name: string
   vendor: string
   generation?: string
+  // Public availability month, ISO `YYYY-MM`. Drives newer-first ordering
+  // in the SKU picker.
+  releaseDate: string
   formFactor: SystemFormFactor
 
   // Composition by reference to other registries. The data file should set
@@ -346,6 +352,14 @@ export interface ModelArch {
   id: string
   name: string
   family: string
+  // Organization that released the model (Alibaba, Meta, DeepSeek, …).
+  // Distinct from `family` (a version line within a publisher). Used as the
+  // primary grouping key in the model picker.
+  publisher: string
+  // Public release/announcement month, ISO `YYYY-MM`. Day granularity is
+  // noisy (announce vs. weights vs. paper), so month is the contract.
+  // Drives newer-first ordering in the picker.
+  releaseDate: string
   layers: number
   hiddenDim: number
   intermediateDim: number

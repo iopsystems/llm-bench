@@ -4,7 +4,7 @@ import type { ModelArch } from '../../src/engine/types'
 import { bytesOf } from '../../src/engine/dtypes'
 
 const dense: ModelArch = {
-  id: 'd', name: 'D', family: 't',
+  id: 'd', name: 'D', family: 't', publisher: 't', releaseDate: '2025-01',
   layers: 32, hiddenDim: 4096, intermediateDim: 14336,
   numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
   paramCount: 7_000_000_000,
@@ -138,7 +138,7 @@ import { defaultParallelism } from '../../src/engine/parallelism'
 import type { MultiAcceleratorSystem } from '../../src/engine/types'
 
 const hgxH100 = {
-  id: 'hgx-h100-8', name: 'HGX H100', vendor: 'NVIDIA',
+  id: 'hgx-h100-8', name: 'HGX H100', vendor: 'NVIDIA', releaseDate: '2022-09',
   formFactor: 'baseboard' as const,
   accelerator: { id: 'h100', variantId: 'sxm-80', count: 8 },
   interconnectId: 'nvlink-4',
