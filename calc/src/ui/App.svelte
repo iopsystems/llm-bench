@@ -4,8 +4,15 @@
   import PerfPanel from './PerfPanel.svelte'
   import RooflinePanel from './RooflinePanel.svelte'
   import DerivationDrawer from './DerivationDrawer.svelte'
-  import { error } from './stores'
+  import { error, showMath } from './stores'
   import { buildShareUrl } from './share'
+
+  // Reflow the page out from under the fixed derivation drawer by shrinking
+  // body's content box while it's open. Fixed positioning is viewport-relative
+  // so the drawer itself stays put; only the centered <main> reflows.
+  $: if (typeof document !== 'undefined') {
+    document.body.classList.toggle('math-open', $showMath)
+  }
 
   let copied = false
   let copyTimer: ReturnType<typeof setTimeout> | null = null
@@ -53,6 +60,14 @@
   :global(body) {
     margin: 0; font-family: system-ui, -apple-system, sans-serif;
     background: #fafafa; color: #222;
+    transition: padding-right 0.2s ease;
+  }
+  /* When the derivation drawer is open, give it room: shrink body's content
+     box by the drawer width so the centered <main> reflows clear. Only above
+     a width where there's still usable content space — on narrow screens the
+     drawer overlays (expected) and the toggle has already flowed inline. */
+  @media (min-width: 900px) {
+    :global(body.math-open) { padding-right: 420px; }
   }
   main { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
   @media (max-width: 640px) {

@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { result } from './stores'
-  let open = $state(false)
+  import { result, showMath } from './stores'
 
   function fmt(value: number, unit: string): string {
     if (unit === 'bytes' && value >= 1024 ** 3) return (value / 1024 ** 3).toFixed(2) + ' GB'
@@ -12,11 +11,12 @@
   }
 </script>
 
-<button class="toggle" class:open onclick={() => open = !open}>
-  {open ? '✕ Hide' : '☰ Show'} math
+<button class="toggle" class:open={$showMath} onclick={() => showMath.update(v => !v)}>
+  <span class="icon" aria-hidden="true">{$showMath ? '✕' : '☰'}</span>
+  <span>{$showMath ? 'Hide' : 'Show'} math</span>
 </button>
 
-{#if open && $result}
+{#if $showMath && $result}
   <aside class="drawer">
     <h3>Derivation</h3>
     <ol>
@@ -38,7 +38,10 @@
     cursor: pointer; font-family: inherit;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     border-radius: 4px;
+    display: inline-flex; align-items: center; gap: 0.4rem;
   }
+  /* The ☰/✕ glyphs sit slightly above the text baseline; nudge to center. */
+  .toggle .icon { display: inline-flex; align-items: center; line-height: 1; }
   .drawer {
     position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 90vw);
     background: #fff; border-left: 1px solid #888;

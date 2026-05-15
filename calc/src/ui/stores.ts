@@ -8,6 +8,10 @@ import type { CalcInput, CalcResult, MultiDeviceConfig, Quantization, Workload }
 const defaultAccelerator = ACCELERATORS[0]
 const defaultModel = MODELS[0]
 
+// Derivation drawer open state — shared so App can reflow the main content
+// out from under the fixed drawer instead of letting it overlap.
+export const showMath = writable(false)
+
 // `systemId` is empty string when user picks a single accelerator (no multi-device).
 // Non-empty when a MultiAcceleratorSystem is selected.
 export const acceleratorId = writable(defaultAccelerator.id)
