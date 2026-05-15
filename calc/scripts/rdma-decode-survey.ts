@@ -15,14 +15,23 @@ import { INTERCONNECTS } from '../src/data/interconnects'
 import { defaultParallelism } from '../src/engine/parallelism'
 import { calculate } from '../src/engine/calc'
 import type { CalcInput, MultiAcceleratorSystem, Quantization, Workload } from '../src/engine/types'
+import { formatTokenCount } from '../src/ui/parseTokens'
 
 const QUANT: Quantization = { weights: 'fp16', kv: 'fp16', activations: 'fp16' }
 
+// Vary both concurrency and prompt length. Decode comms is independent of
+// seqlen (TP all-reduce scales with B × hidden), but decode bytes-per-step
+// grows with KV reads — so longer prompts tip the math toward memory-bound,
+// not comms-bound. Probing both axes shows that fabric stays adequate even
+// when context is extreme.
 const WORKLOADS: Workload[] = [
-  { promptTokens: 1024, outputTokens: 256, concurrency: 1   },
-  { promptTokens: 1024, outputTokens: 256, concurrency: 32  },
-  { promptTokens: 1024, outputTokens: 256, concurrency: 256 },
-  { promptTokens: 1024, outputTokens: 256, concurrency: 1024 },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 1    },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 32   },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 256  },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 1024 },
+  { promptTokens: 131072,  outputTokens: 256, concurrency: 256  },
+  { promptTokens: 1048576, outputTokens: 256, concurrency: 1    },
+  { promptTokens: 1048576, outputTokens: 256, concurrency: 32   },
 ]
 
 // Fabrics to test — order from slow to fast, finishing with the original scale-up.
@@ -35,6 +44,7 @@ interface Row {
   fabric: string
   fabricGBs: number
   model: string
+  promptTokens: number
   concurrency: number
   prefillRegime: string
   decodeRegime: string
@@ -59,6 +69,8 @@ for (const fabricId of FABRICS) {
 
   for (const model of MODELS) {
     for (const workload of WORKLOADS) {
+      if (workload.promptTokens > model.maxContext) continue
+
       const pc = defaultParallelism(hypoSystem, model)
       const input: CalcInput = {
         accelerator: h100,
@@ -90,6 +102,7 @@ for (const fabricId of FABRICS) {
         fabric: fabric.name,
         fabricGBs: fabricBW,
         model: model.name,
+        promptTokens: workload.promptTokens,
         concurrency: workload.concurrency,
         prefillRegime: peak.prefill.regime,
         decodeRegime: peak.decode.regime,
@@ -109,41 +122,75 @@ for (const id of FABRICS) {
   console.log(`  ${f.name.padEnd(22)} ${(f.perDirectionGBs ?? f.perGpuBandwidthGBs / 2).toString().padStart(5)} GB/s per direction`)
 }
 
-// === Decode comms-bound rate by fabric ===
-console.log('\nDecode comms-bound rate (of all models tested, by fabric × concurrency):')
+// Each workload is a (prompt, concurrency) tuple — present as one column.
+type WkKey = { promptTokens: number; concurrency: number; label: string }
+const wkSet = new Map<string, WkKey>()
+for (const r of rows) {
+  const key = `${r.promptTokens}:${r.concurrency}`
+  if (!wkSet.has(key)) {
+    wkSet.set(key, {
+      promptTokens: r.promptTokens,
+      concurrency: r.concurrency,
+      label: `${formatTokenCount(r.promptTokens)}/c=${r.concurrency}`,
+    })
+  }
+}
+const workloads = Array.from(wkSet.values()).sort((a, b) =>
+  a.promptTokens - b.promptTokens || a.concurrency - b.concurrency
+)
 const fabrics = Array.from(new Set(rows.map(r => r.fabric)))
-const concurrencies = Array.from(new Set(rows.map(r => r.concurrency))).sort((a, b) => a - b)
-console.log('Fabric'.padEnd(22) + concurrencies.map(c => `c=${c}`.padStart(10)).join(''))
+
+// === Decode comms-bound rate by fabric × workload ===
+console.log('\nDecode comms-bound rate (of models supporting the prompt length, by fabric × workload):')
+const colWidth = 14
+console.log('Fabric'.padEnd(22) + workloads.map(w => w.label.padStart(colWidth)).join(''))
 for (const f of fabrics) {
-  const cells = concurrencies.map(c => {
-    const subset = rows.filter(r => r.fabric === f && r.concurrency === c)
+  const cells = workloads.map(w => {
+    const subset = rows.filter(r => r.fabric === f && r.promptTokens === w.promptTokens && r.concurrency === w.concurrency)
     const commsBound = subset.filter(r => r.decodeRegime === 'comms').length
-    return `${commsBound}/${subset.length}`.padStart(10)
+    return `${commsBound}/${subset.length}`.padStart(colWidth)
   })
   console.log(f.padEnd(22) + cells.join(''))
 }
 
-// === First decode-comms-bound case per fabric (smallest concurrency) ===
-console.log('\nFirst decode-comms-bound model (lowest concurrency that flips):')
+// === First decode-comms-bound case per fabric (smallest workload that flips) ===
+console.log('\nFirst decode-comms-bound model (smallest workload that flips):')
 for (const f of fabrics) {
-  for (const c of concurrencies) {
-    const hits = rows.filter(r => r.fabric === f && r.concurrency === c && r.decodeRegime === 'comms')
+  for (const w of workloads) {
+    const hits = rows.filter(r => r.fabric === f && r.promptTokens === w.promptTokens && r.concurrency === w.concurrency && r.decodeRegime === 'comms')
     if (hits.length > 0) {
       const first = hits[0]
-      console.log(`  ${f.padEnd(22)} c=${c}: ${first.model} (decode bytes ${first.decodeBytesGB.toFixed(2)} GB, comms ${first.decodeCommsGB.toFixed(2)} GB)`)
+      console.log(`  ${f.padEnd(22)} ${w.label.padEnd(14)}: ${first.model} (decode bytes ${first.decodeBytesGB.toFixed(2)} GB, comms ${first.decodeCommsGB.toFixed(2)} GB)`)
       break
     }
   }
 }
 
-// === Specific examples: Llama 70B + DeepSeek V3 + Qwen3 32B across fabrics ===
-console.log('\nTracking specific models across fabrics (decode regime @ c=256):')
+// === Specific examples across fabrics ===
+// @ short prompt c=256: stresses TP all-reduce relative to per-step KV reads
+// @ long prompt c=1:    shows long-context KV reads dominate, fabric becomes irrelevant
+console.log('\nTracking specific models across fabrics (decode regime @ p=1k c=256):')
 const examples = ['Llama 3.3 70B', 'DeepSeek-V3', 'Qwen3 32B', 'Qwen3-30B-A3B', 'Mixtral 8x7B v0.1']
 console.log('Model'.padEnd(28) + fabrics.map(f => f.padStart(18)).join(''))
 for (const m of examples) {
   const cells = fabrics.map(f => {
-    const row = rows.find(r => r.model === m && r.fabric === f && r.concurrency === 256)
+    const row = rows.find(r => r.model === m && r.fabric === f && r.promptTokens === 1024 && r.concurrency === 256)
     return (row?.decodeRegime ?? '?').padStart(18)
   })
   console.log(m.padEnd(28) + cells.join(''))
+}
+
+console.log('\nLong-context decode (p=1M c=1) — models that declare 1M support:')
+const longExamples = MODELS.filter(m => m.maxContext >= 1_048_576).map(m => m.name)
+if (longExamples.length === 0) {
+  console.log('  (no 1M-context models in catalog)')
+} else {
+  console.log('Model'.padEnd(28) + fabrics.map(f => f.padStart(18)).join(''))
+  for (const m of longExamples) {
+    const cells = fabrics.map(f => {
+      const row = rows.find(r => r.model === m && r.fabric === f && r.promptTokens === 1_048_576 && r.concurrency === 1)
+      return (row?.decodeRegime ?? '?').padStart(18)
+    })
+    console.log(m.padEnd(28) + cells.join(''))
+  }
 }

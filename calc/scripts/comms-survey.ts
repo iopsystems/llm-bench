@@ -15,24 +15,32 @@ import { SYSTEMS } from '../src/data/systems'
 import { defaultParallelism } from '../src/engine/parallelism'
 import { calculate } from '../src/engine/calc'
 import type { CalcInput, Quantization, Workload } from '../src/engine/types'
+import { formatTokenCount } from '../src/ui/parseTokens'
 
 const QUANT: Quantization = { weights: 'fp16', kv: 'fp16', activations: 'fp16' }
 
 // A spread of workloads that exercise different regimes:
-//   short prompt + low concurrency: decode-dominated, comms is per-token small
-//   long prompt + low concurrency:  prefill comms scales with prompt × concurrency
+//   short prompt + low concurrency:  decode-dominated, comms is per-token small
+//   long prompt + low concurrency:   prefill comms scales with prompt × concurrency
 //   short prompt + high concurrency: decode comms scales with concurrency
-//   very long prompt: stress the long-context regime
+//   very long prompt:                stress the long-context regime
+//   long prompt + moderate conc:     extreme-context cases now that models
+//                                    declare 1M maxContext (V4-Flash/Pro, Kimi
+//                                    Linear, etc.)
 const WORKLOADS: Workload[] = [
-  { promptTokens: 1024,   outputTokens: 256, concurrency: 1    },
-  { promptTokens: 8192,   outputTokens: 512, concurrency: 1    },
-  { promptTokens: 32768,  outputTokens: 512, concurrency: 1    },
-  { promptTokens: 131072, outputTokens: 512, concurrency: 1    },
-  { promptTokens: 1024,   outputTokens: 256, concurrency: 32   },
-  { promptTokens: 8192,   outputTokens: 512, concurrency: 32   },
-  { promptTokens: 1024,   outputTokens: 256, concurrency: 256  },
-  { promptTokens: 1024,   outputTokens: 256, concurrency: 1024 },
-  { promptTokens: 8192,   outputTokens: 512, concurrency: 1024 },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 1    },
+  { promptTokens: 8192,    outputTokens: 512, concurrency: 1    },
+  { promptTokens: 32768,   outputTokens: 512, concurrency: 1    },
+  { promptTokens: 131072,  outputTokens: 512, concurrency: 1    },
+  { promptTokens: 262144,  outputTokens: 512, concurrency: 1    },
+  { promptTokens: 1048576, outputTokens: 512, concurrency: 1    },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 32   },
+  { promptTokens: 8192,    outputTokens: 512, concurrency: 32   },
+  { promptTokens: 131072,  outputTokens: 512, concurrency: 32   },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 256  },
+  { promptTokens: 32768,   outputTokens: 256, concurrency: 256  },
+  { promptTokens: 1024,    outputTokens: 256, concurrency: 1024 },
+  { promptTokens: 8192,    outputTokens: 512, concurrency: 1024 },
 ]
 
 interface Hit {
@@ -58,6 +66,11 @@ for (const system of SYSTEMS) {
     const pc = defaultParallelism(system, model)
 
     for (const workload of WORKLOADS) {
+      // Skip combos beyond the model's declared trained context. The calc
+      // will happily extrapolate, but counting those rows in the regime
+      // distribution would advertise behavior the model doesn't support.
+      if (workload.promptTokens > model.maxContext) continue
+
       const input: CalcInput = {
         accelerator,
         acceleratorVariantId: system.accelerator.variantId,
@@ -81,7 +94,7 @@ for (const system of SYSTEMS) {
       const peak = result.perf['peak']
       if (!peak) continue
 
-      const wkLabel = `p=${workload.promptTokens / 1024 < 1 ? workload.promptTokens : (workload.promptTokens / 1024 + 'k')} c=${workload.concurrency}`
+      const wkLabel = `p=${formatTokenCount(workload.promptTokens)} c=${workload.concurrency}`
       const parallelismLabel = Object.entries(pc.parallelismDegrees)
         .map(([k, v]) => `${k.toUpperCase()}=${v}`).join('×')
 
@@ -120,14 +133,26 @@ for (const [k, v] of Object.entries(dist)) {
 }
 
 // === Comms-bound by workload bucket ===
+// Enumerate every surveyed workload (including 0-hit buckets) so the long-context
+// c=1 columns can be seen to confirm "decode stays memory-bound even at 1M".
 console.log('\nComms-bound by workload (any phase):')
-const byWorkload = new Map<string, number>()
-for (const h of hits) {
-  byWorkload.set(h.workload, (byWorkload.get(h.workload) ?? 0) + 1)
+type WkTotals = { hits: number; total: number; promptTokens: number; concurrency: number }
+const byWorkload = new Map<string, WkTotals>()
+for (const r of allRows) {
+  const slot = byWorkload.get(r.workload) ?? { hits: 0, total: 0, promptTokens: 0, concurrency: 0 }
+  slot.total++
+  byWorkload.set(r.workload, slot)
 }
-for (const [k, v] of Array.from(byWorkload.entries()).sort()) {
-  const totalForWorkload = allRows.filter(r => r.workload === k).length
-  console.log(`  ${k.padEnd(15)} ${String(v).padStart(4)} / ${totalForWorkload}`)
+for (const h of hits) {
+  const slot = byWorkload.get(h.workload)
+  if (slot) slot.hits++
+}
+// Use the source WORKLOADS order so output reads "short → long, low conc → high conc".
+for (const w of WORKLOADS) {
+  const label = `p=${formatTokenCount(w.promptTokens)} c=${w.concurrency}`
+  const slot = byWorkload.get(label)
+  if (!slot) continue  // no model supported this prompt length
+  console.log(`  ${label.padEnd(15)} ${String(slot.hits).padStart(4)} / ${slot.total}`)
 }
 
 // === Comms-bound by system ===
