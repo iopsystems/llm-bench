@@ -283,42 +283,48 @@
       Markers are the workload's prefill and decode; the gap between the achievable marker
       and the roof above it is the hardware-efficiency loss.
     </p>
+    <div class="chart-row">
     <div bind:this={container} class="plot"></div>
     <div class="legend">
-      {#if hasAchievable}
+      <div class="legend-group">
+        {#if hasAchievable}
+          <span class="entry">
+            <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
+              <line x1="1" y1="5" x2="21" y2="5" stroke="#888" stroke-width="2"/>
+            </svg>
+            <span>Theoretical</span>
+          </span>
+          <span class="entry">
+            <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
+              <line x1="1" y1="5" x2="21" y2="5" stroke="#21a87a" stroke-width="2" stroke-dasharray="6 4"/>
+            </svg>
+            <span>Achievable</span>
+          </span>
+        {/if}
+        {#if interconnectBwGBs}
+          <span class="entry">
+            <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
+              <line x1="1" y1="5" x2="21" y2="5" stroke="#9b59b6" stroke-width="2" stroke-dasharray="4 2"/>
+            </svg>
+            <span>Interconnect BW</span>
+          </span>
+        {/if}
+      </div>
+      <div class="legend-group">
         <span class="entry">
-          <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
-            <line x1="1" y1="5" x2="21" y2="5" stroke="#888" stroke-width="2"/>
+          <svg class="shape-swatch" viewBox="0 0 12 12" aria-hidden="true">
+            <rect x="1" y="1" width="10" height="10" fill="#888" stroke="#fff" stroke-width="1"/>
           </svg>
-          <span>Theoretical</span>
+          <span>prefill</span>
         </span>
         <span class="entry">
-          <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
-            <line x1="1" y1="5" x2="21" y2="5" stroke="#21a87a" stroke-width="2" stroke-dasharray="6 4"/>
+          <svg class="shape-swatch" viewBox="0 0 12 12" aria-hidden="true">
+            <circle cx="6" cy="6" r="5" fill="#888" stroke="#fff" stroke-width="1"/>
           </svg>
-          <span>Achievable</span>
+          <span>decode</span>
         </span>
-      {/if}
-      {#if interconnectBwGBs}
-        <span class="entry">
-          <svg class="line-swatch" viewBox="0 0 22 10" aria-hidden="true">
-            <line x1="1" y1="5" x2="21" y2="5" stroke="#9b59b6" stroke-width="2" stroke-dasharray="4 2"/>
-          </svg>
-          <span>Interconnect BW</span>
-        </span>
-      {/if}
-      <span class="entry">
-        <svg class="shape-swatch" viewBox="0 0 12 12" aria-hidden="true">
-          <rect x="1" y="1" width="10" height="10" fill="#888" stroke="#fff" stroke-width="1"/>
-        </svg>
-        <span>prefill</span>
-      </span>
-      <span class="entry">
-        <svg class="shape-swatch" viewBox="0 0 12 12" aria-hidden="true">
-          <circle cx="6" cy="6" r="5" fill="#888" stroke="#fff" stroke-width="1"/>
-        </svg>
-        <span>decode</span>
-      </span>
+      </div>
+    </div>
     </div>
   </section>
 {/if}
@@ -329,14 +335,43 @@
   .caption {
     font-size: 0.85rem; color: #555; margin: 0 0 0.5rem; font-style: italic;
   }
-  .plot { max-width: 100%; overflow-x: auto; text-align: center; }
+  .chart-row {
+    display: flex; flex-direction: row; align-items: center;
+    gap: 1rem;
+    /* Shrink to chart + legend natural width and center as a unit
+       within the section, aligning with the surrounding text. */
+    width: fit-content; max-width: 100%; margin: 0 auto;
+  }
+  .plot {
+    flex: 0 0 auto; min-width: 0;
+    max-width: 100%; overflow-x: auto;
+  }
   .plot :global(svg) { max-width: 100%; height: auto; display: inline-block; }
+  /* Legend default = vertical column to the right of the chart, split into
+     two sub-groups (line legends ↑, marker legends ↓) so readers don't
+     confuse line styles with marker shapes. */
   .legend {
-    display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
-    margin-top: 0.4rem; padding-left: 100px;
+    display: flex; flex-direction: column; gap: 2.4rem;
+    flex: 0 0 auto;
     font-size: 0.85rem; color: #333;
+  }
+  .legend-group {
+    display: flex; flex-direction: column; gap: 0.4rem;
   }
   .entry { display: inline-flex; align-items: center; gap: 0.35rem; }
   .line-swatch { width: 22px; height: 10px; }
   .shape-swatch { width: 12px; height: 12px; }
+  /* Below ~720px viewport, drop the legend under the chart and lay it out
+     horizontally so it occupies less vertical real estate. The two
+     sub-groups stay visually separated via a generous inter-group gap. */
+  @media (max-width: 720px) {
+    .chart-row { flex-direction: column; }
+    .legend {
+      flex-direction: row; flex-wrap: wrap; gap: 0.4rem 3.5rem;
+      margin: 0.4rem 0 0; padding-left: 100px;
+    }
+    .legend-group {
+      flex-direction: row; flex-wrap: wrap; gap: 0.4rem 1.1rem;
+    }
+  }
 </style>

@@ -12,8 +12,8 @@
   }
 </script>
 
-<button class="toggle" onclick={() => open = !open}>
-  {open ? '✕' : '☰'} Show math
+<button class="toggle" class:open onclick={() => open = !open}>
+  {open ? '✕ Hide' : '☰ Show'} math
 </button>
 
 {#if open && $result}
@@ -33,15 +33,33 @@
 
 <style>
   .toggle {
-    position: fixed; top: 1rem; right: 1rem; z-index: 11;
+    position: fixed; bottom: 1rem; right: 1rem; z-index: 11;
     background: #333; color: #fff; border: none; padding: 0.5rem 1rem;
     cursor: pointer; font-family: inherit;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    border-radius: 4px;
   }
   .drawer {
     position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 90vw);
     background: #fff; border-left: 1px solid #888;
-    overflow-y: auto; padding: 3rem 1rem 1rem; z-index: 10;
+    overflow-y: auto; padding: 1rem 1rem 4rem; z-index: 10;
     box-shadow: -4px 0 12px rgba(0,0,0,0.1);
+  }
+  /* On narrow viewports the chart hugs the bottom-right corner, so the
+     floating button covers the data when closed. Flow it inline below
+     the roofline (preceding sibling in App.svelte). But when the drawer
+     is open, re-float it at top-right above the drawer so it remains
+     reachable as the close affordance. */
+  @media (max-width: 720px) {
+    .toggle:not(.open) {
+      position: static;
+      display: block;
+      margin: 1rem auto 0;
+    }
+    .toggle.open {
+      top: 1rem; bottom: auto;
+      z-index: 12;
+    }
   }
   ol { list-style: decimal inside; padding-left: 0; }
   li { margin-bottom: 0.75rem; }

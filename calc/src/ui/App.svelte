@@ -33,7 +33,7 @@
         {copied ? 'Copied' : 'Copy link'}
       </button>
     </div>
-    <p>Roofline estimates for modern decoder-only LLMs.</p>
+    <p>How slow should it be? Memory and roofline performance estimates for modern decoder-only LLMs.</p>
   </header>
   <InputPanel />
   {#if $error}
