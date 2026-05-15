@@ -5,3 +5,6 @@ dist
 # Wrangler local state (build cache, secrets, dev session)
 .wrangler
 .dev.vars
+
+# Claude Code session runtime (lockfiles etc.)
+.claude/

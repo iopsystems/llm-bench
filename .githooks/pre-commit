@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Pre-commit: if the commit touches the ModelArch schema or the
+# adding-a-model SKILL.md, verify the two are still in sync.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+NEEDS_CHECK=0
+while IFS= read -r f; do
+  case "$f" in
+    calc/src/engine/types.ts|.claude/skills/adding-a-model/SKILL.md)
+      NEEDS_CHECK=1
+      ;;
+  esac
+done <<< "$STAGED"
+
+if [ "$NEEDS_CHECK" -eq 0 ]; then
+  exit 0
+fi
+
+exec node "$REPO_ROOT/.claude/hooks/check-skill-sync.mjs"
