@@ -214,13 +214,24 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
 }
 
+// Extract the calculator payload from a raw location.hash. Supports the
+// current `#calc?<payload>` form and the legacy bare `#<payload>` form so
+// old shared links keep working. Info routes carry no payload.
+export function calcPayloadFromHash(hash: string): string {
+  const h = hash.replace(/^#/, '')
+  if (h === '' || h === 'calc') return ''
+  if (h.startsWith('calc?')) return h.slice('calc?'.length)
+  if (h.startsWith('info')) return ''
+  return h // legacy: bare payload directly after '#'
+}
+
 // Read `window.location.hash` and apply any encoded state to the stores.
 // Call once at startup, before mounting the app.
 export function readUrlIntoStores(): void {
   if (typeof window === 'undefined') return
-  const hash = window.location.hash.replace(/^#/, '')
-  if (!hash) return
-  applyToStores(decodeState(hash))
+  const payload = calcPayloadFromHash(window.location.hash)
+  if (!payload) return
+  applyToStores(decodeState(payload))
 }
 
 // Subscribe to the input stores and mirror state back to the URL hash on any
@@ -233,7 +244,7 @@ export function startUrlSync(): () => void {
   const write = () => {
     if (!ready) return
     const encoded = encodeState(readStoreState())
-    const next = `${window.location.pathname}${window.location.search}#${encoded}`
+    const next = `${window.location.pathname}${window.location.search}#calc?${encoded}`
     // replaceState keeps the back button uncluttered; the URL still updates.
     window.history.replaceState(window.history.state, '', next)
   }
@@ -262,7 +273,7 @@ export function startUrlSync(): () => void {
 // "Copy link" button.
 export function buildShareUrl(): string {
   const encoded = encodeState(readStoreState())
-  if (typeof window === 'undefined') return `#${encoded}`
+  if (typeof window === 'undefined') return `#calc?${encoded}`
   const { origin, pathname, search } = window.location
-  return `${origin}${pathname}${search}#${encoded}`
+  return `${origin}${pathname}${search}#calc?${encoded}`
 }
