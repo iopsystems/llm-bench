@@ -9,15 +9,18 @@ describe('modelMetrics', () => {
     const r = modelMetrics(m)
     expect(r.kvBytesPerTokenPerLayer).toBe(2 * m.numKvHeads * m.headDim * 2)
     expect(r.kvBytesPerToken).toBe(r.kvBytesPerTokenPerLayer * m.layers)
-    expect(r.gqaRatio).toBeCloseTo(m.numHeads / m.numKvHeads)
+    expect(r.gqaRatio).toBe(m.numHeads / m.numKvHeads)
     expect(r.attentionLabel).toMatch(/grouped-query|full/i)
   })
   it('MoE model exposes active/total ratio', () => {
     const m = MODELS.find(x => x.id === 'deepseek-v3')!
     const r = modelMetrics(m)
-    expect(r.moeActiveRatio).toBeCloseTo(
-      (m.architecture as { activeParamCount: number }).activeParamCount / m.paramCount
-    )
+    const arch = m.architecture as { type: 'moe'; activeParamCount: number }
+    // Concrete ratio so a misrouted paramCount/active field is caught, not
+    // masked by both sides moving together.
+    expect(r.moeActiveRatio).toBeCloseTo(arch.activeParamCount / m.paramCount, 6)
+    expect(r.moeActiveRatio).toBeGreaterThan(0)
+    expect(r.moeActiveRatio).toBeLessThan(1)
   })
   it('dense model has no moeActiveRatio', () => {
     const m = MODELS.find(x => x.id === 'llama-3.3-70b')!
