@@ -4,6 +4,9 @@
   import PerfPanel from './PerfPanel.svelte'
   import RooflinePanel from './RooflinePanel.svelte'
   import DerivationDrawer from './DerivationDrawer.svelte'
+  import TabBar from './TabBar.svelte'
+  import InfoPanel from './InfoPanel.svelte'
+  import { route } from './route'
   import { error, showMath } from './stores'
   import { buildShareUrl } from './share'
 
@@ -42,14 +45,19 @@
     </div>
     <p>How slow should it be? Memory and roofline performance estimates for modern decoder-only LLMs.</p>
   </header>
-  <InputPanel />
-  {#if $error}
-    <div class="error">⚠ {$error}</div>
+  <TabBar />
+  {#if $route.tab === 'info'}
+    <InfoPanel />
+  {:else}
+    <InputPanel />
+    {#if $error}
+      <div class="error">⚠ {$error}</div>
+    {/if}
+    <MemoryPanel />
+    <PerfPanel />
+    <RooflinePanel />
+    <DerivationDrawer />
   {/if}
-  <MemoryPanel />
-  <PerfPanel />
-  <RooflinePanel />
-  <DerivationDrawer />
 </main>
 
 <style>
