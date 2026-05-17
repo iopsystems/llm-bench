@@ -15,6 +15,7 @@
 
 <article class="sheet">
   <h2>{model.name}</h2>
+  <div class="rule-thick"></div>
   <dl>
     <dt>Publisher</dt><dd>{model.publisher}</dd>
     <dt>Family</dt><dd>{model.family}</dd>
@@ -41,6 +42,7 @@
       <dt>MTP depth</dt><dd>{model.numNextnLayers}</dd>
     {/if}
   </dl>
+  <div class="rule"></div>
   <h3>Derived <span class="ref">(fp16 KV reference)</span></h3>
   <dl>
     <dt>KV / token / layer</dt><dd>{kb(m.kvBytesPerTokenPerLayer)}</dd>
@@ -49,11 +51,20 @@
 </article>
 
 <style>
-  .sheet { max-width: 640px; }
-  h2 { margin: 0 0 0.75rem; }
-  h3 { margin: 1.25rem 0 0.4rem; font-size: 0.95rem; }
+  /* Nutrition-label aesthetic — matches SkuSpecSheet. */
+  .sheet {
+    max-width: 640px; border: 2px solid #111; border-radius: 4px;
+    padding: 0.9rem 1.1rem; background: #fff;
+  }
+  h2 { margin: 0 0 0.4rem; font-size: 1.25rem; }
+  h3 {
+    margin: 0.6rem 0 0.4rem; font-size: 0.78rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #333;
+  }
+  .rule-thick { border-bottom: 6px solid #111; margin: 0.3rem 0 0.6rem; }
+  .rule { border-bottom: 1px solid #111; margin: 0.7rem 0 0; }
   .ref { font-weight: 400; color: #888; font-size: 0.8rem; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
-  dt { color: #666; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0; }
+  dt { color: #555; }
   dd { margin: 0; font-variant-numeric: tabular-nums; }
 </style>

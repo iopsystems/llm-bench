@@ -58,6 +58,24 @@ describe('skuMetrics', () => {
     expect(eff['bf16']).toBeCloseTo(ach.tflops['bf16']! / peak.tflops['bf16']!)
   })
 
+  it('peakTable has one row per variant × peak dtype with correct TFLOPS and ridge', () => {
+    const a = ACCELERATORS.find(x => x.id === 'h100')!
+    const r = skuMetrics(a)
+    if (r.kind !== 'accelerator') throw new Error('expected accelerator')
+    // Row count = sum over variants of (# dtypes in that variant's peak op).
+    const expectedRows = a.variants.reduce((n, v) => {
+      const peak = v.operatingPoints.find(o => o.id === 'peak')!
+      return n + Object.values(peak.tflops).filter(t => t !== undefined).length
+    }, 0)
+    expect(r.peakTable.length).toBe(expectedRows)
+    const sxm = a.variants.find(v => v.id === 'sxm-80')!
+    const sxmPeak = sxm.operatingPoints.find(o => o.id === 'peak')!
+    const row = r.peakTable.find(p => p.variantId === 'sxm-80' && p.dtype === 'bf16')!
+    expect(row.variantLabel).toBe(sxm.label)
+    expect(row.tflops).toBe(sxmPeak.tflops['bf16'])
+    expect(row.ridge).toBeCloseTo((sxmPeak.tflops['bf16']! * 1e12) / (sxmPeak.hbmBandwidthGBs * 1e9))
+  })
+
   it('accelerator operating point carries resolved provenance', () => {
     const a = ACCELERATORS.find(x => x.id === 'h100')!
     const r = skuMetrics(a)

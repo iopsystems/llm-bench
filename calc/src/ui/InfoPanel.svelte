@@ -42,12 +42,9 @@
 
     {#if section === 'models'}
       {#if pinnedModel}
-        <div class="pinrow">
-          <span class="pinlabel">Selected</span>
-          <button class="entry pinned"
-            on:click={() => navigate({ tab: 'info', detail: { kind: 'model', id: pinnedModel.id } })}>
-            {pinnedModel.name} <span class="badge">selected</span>
-          </button>
+        <div class="selected">
+          <span class="pinlabel">Selected in calculator</span>
+          <ModelSpecSheet model={pinnedModel} />
         </div>
       {/if}
       {#each modelGroups as g}
@@ -65,12 +62,9 @@
       {/each}
     {:else}
       {#if pinnedSku}
-        <div class="pinrow">
-          <span class="pinlabel">Selected</span>
-          <button class="entry pinned"
-            on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: pinnedSku.id } })}>
-            {pinnedSku.name} <span class="badge">selected</span>
-          </button>
+        <div class="selected">
+          <span class="pinlabel">Selected in calculator</span>
+          <SkuSpecSheet sku={pinnedSku} />
         </div>
       {/if}
       {#each skuGroups as g}
@@ -121,9 +115,9 @@
     font: inherit; font-size: 0.85rem; background: none; border: none;
     color: #1a4f8a; cursor: pointer; padding: 0 0 0.75rem; display: block;
   }
-  .pinrow {
-    display: flex; align-items: center; gap: 0.5rem;
-    margin-bottom: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e2e2;
+  .selected { margin-bottom: 1.25rem; }
+  .pinlabel {
+    display: block; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.04em; color: #888; margin-bottom: 0.35rem;
   }
-  .pinlabel { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
 </style>

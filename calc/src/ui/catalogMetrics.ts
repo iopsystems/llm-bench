@@ -69,8 +69,20 @@ export interface VariantMetrics {
   efficiencyByDtype?: Partial<Record<string, number>>
 }
 
+// One flat row per (variant × peak dtype). Variants share an ISA but differ
+// in clock/power and HBM, so TFLOPS and ridge are reported per variant rather
+// than once for the chip.
+export interface PeakRow {
+  variantId: string
+  variantLabel: string
+  hbmCapacityGB: number
+  dtype: string
+  tflops: number
+  ridge: number   // peak FLOP / byte = tflops·1e12 / (hbmBW·1e9)
+}
+
 export type SkuMetrics =
-  | { kind: 'accelerator'; variants: VariantMetrics[] }
+  | { kind: 'accelerator'; variants: VariantMetrics[]; peakTable: PeakRow[] }
   | {
       kind: 'system'
       totalHbmGB: number
@@ -91,8 +103,26 @@ export function skuMetrics(s: AcceleratorSpec | MultiAcceleratorSystem): SkuMetr
       acceleratorCount: s.accelerator.count,
     }
   }
+  const peakTable: PeakRow[] = []
+  for (const v of s.variants) {
+    const peak = v.operatingPoints.find(o => o.id === 'peak')
+    if (!peak) continue
+    for (const [dt, tf] of Object.entries(peak.tflops)) {
+      if (tf === undefined) continue
+      peakTable.push({
+        variantId: v.id,
+        variantLabel: v.label,
+        hbmCapacityGB: v.hbmCapacityGB,
+        dtype: dt,
+        tflops: tf,
+        ridge: (tf * 1e12) / (peak.hbmBandwidthGBs * 1e9),
+      })
+    }
+  }
+
   return {
     kind: 'accelerator',
+    peakTable,
     variants: s.variants.map(v => {
       const opMetrics: OperatingPointMetrics[] = v.operatingPoints.map(op => {
         const ridgeByDtype: Partial<Record<string, number>> = {}
