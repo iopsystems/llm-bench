@@ -9,6 +9,9 @@
   import SkuSpecSheet from './SkuSpecSheet.svelte'
 
   let section: 'models' | 'skus' = 'models'
+  // The selected card is shown by default but collapsible so the browse
+  // list below isn't pushed off-screen.
+  let cardOpen = true
 
   const modelGroups = orderModels(MODELS)
   const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
@@ -43,59 +46,87 @@
     {#if section === 'models'}
       {#if pinnedModel}
         <div class="selected">
-          <span class="pinlabel">Selected in calculator</span>
-          <ModelSpecSheet model={pinnedModel} />
+          <div class="selhead">
+            <span class="pinlabel">Selected in calculator</span>
+            <button class="collapse" on:click={() => cardOpen = !cardOpen}
+              aria-expanded={cardOpen}>
+              {cardOpen ? '▾ Collapse' : `▸ ${pinnedModel.name}`}
+            </button>
+          </div>
+          {#if cardOpen}<ModelSpecSheet model={pinnedModel} />{/if}
         </div>
       {/if}
-      {#each modelGroups as g}
-        <h3>{g.publisher}</h3>
-        <ul>
-          {#each g.models as m}
-            <li>
-              <button class="entry" class:pinned={m.id === pinnedModelId}
-                on:click={() => navigate({ tab: 'info', detail: { kind: 'model', id: m.id } })}>
-                {m.name}{#if m.id === pinnedModelId} <span class="badge">selected</span>{/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/each}
+      <div class="groups">
+        {#each modelGroups as g}
+          <div class="group">
+            <h3>{g.publisher}</h3>
+            <ul>
+              {#each g.models as m}
+                <li>
+                  <button class="entry" class:pinned={m.id === pinnedModelId}
+                    on:click={() => navigate({ tab: 'info', detail: { kind: 'model', id: m.id } })}>
+                    {m.name}{#if m.id === pinnedModelId} <span class="badge">selected</span>{/if}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/each}
+      </div>
     {:else}
       {#if pinnedSku}
         <div class="selected">
-          <span class="pinlabel">Selected in calculator</span>
-          <SkuSpecSheet sku={pinnedSku} />
+          <div class="selhead">
+            <span class="pinlabel">Selected in calculator</span>
+            <button class="collapse" on:click={() => cardOpen = !cardOpen}
+              aria-expanded={cardOpen}>
+              {cardOpen ? '▾ Collapse' : `▸ ${pinnedSku.name}`}
+            </button>
+          </div>
+          {#if cardOpen}<SkuSpecSheet sku={pinnedSku} />{/if}
         </div>
       {/if}
-      {#each skuGroups as g}
-        <h3>{g.publisher}</h3>
-        <ul>
-          {#each g.entries as e}
-            <li>
-              <button class="entry" class:pinned={e.id === pinnedSkuId}
-                on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: e.id } })}>
-                {e.name}{#if e.kind === 'system'} ({e.count}×){/if}
-                {#if e.id === pinnedSkuId} <span class="badge">selected</span>{/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/each}
+      <div class="groups">
+        {#each skuGroups as g}
+          <div class="group">
+            <h3>{g.publisher}</h3>
+            <ul>
+              {#each g.entries as e}
+                <li>
+                  <button class="entry" class:pinned={e.id === pinnedSkuId}
+                    on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: e.id } })}>
+                    {e.name}{#if e.kind === 'system'} ({e.count}×){/if}
+                    {#if e.id === pinnedSkuId} <span class="badge">selected</span>{/if}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/each}
+      </div>
     {/if}
   {/if}
 </section>
 
 <style>
-  .info { max-width: 760px; }
-  .subtabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; }
+  .info { max-width: 1100px; }
+  .subtabs { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; }
   .subtabs button {
-    font: inherit; font-size: 0.85rem; padding: 0.3rem 0.8rem;
-    border: 1px solid #d4d4d4; background: #fff; color: #555;
-    cursor: pointer; border-radius: 0.3rem;
+    font: inherit; font-size: 0.95rem; font-weight: 600; padding: 0.45rem 1.1rem;
+    border: 1px solid #c4c4c4; background: #fff; color: #444;
+    cursor: pointer; border-radius: 0.35rem;
   }
+  .subtabs button:hover { background: #f1f1f1; }
   .subtabs button.active { background: #333; color: #fff; border-color: #333; }
+  /* Newspaper-style flow: variable-height publisher groups fill the screen
+     width in columns, collapsing to one column on narrow viewports. */
+  .groups { columns: 240px; column-gap: 2rem; }
+  .group {
+    break-inside: avoid; -webkit-column-break-inside: avoid;
+    padding-bottom: 0.9rem;
+  }
   h3 {
-    margin: 1rem 0 0.3rem; font-size: 0.8rem; text-transform: uppercase;
+    margin: 0 0 0.3rem; font-size: 0.8rem; text-transform: uppercase;
     letter-spacing: 0.04em; color: #888;
   }
   ul { list-style: none; margin: 0; padding: 0; }
@@ -115,9 +146,19 @@
     font: inherit; font-size: 0.85rem; background: none; border: none;
     color: #1a4f8a; cursor: pointer; padding: 0 0 0.75rem; display: block;
   }
-  .selected { margin-bottom: 1.25rem; }
-  .pinlabel {
-    display: block; font-size: 0.7rem; text-transform: uppercase;
-    letter-spacing: 0.04em; color: #888; margin-bottom: 0.35rem;
+  .selected { margin-bottom: 1.5rem; }
+  .selhead {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem; margin-bottom: 0.35rem;
   }
+  .pinlabel {
+    font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.04em; color: #888;
+  }
+  .collapse {
+    font: inherit; font-size: 0.8rem; background: #f1f1f1; color: #333;
+    border: 1px solid #c8c8c8; border-radius: 0.3rem;
+    padding: 0.2rem 0.6rem; cursor: pointer;
+  }
+  .collapse:hover { background: #e7e7e7; }
 </style>
