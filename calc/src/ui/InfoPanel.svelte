@@ -13,6 +13,22 @@
   // list below isn't pushed off-screen.
   let cardOpen = true
 
+  // SKU browse columns are explicitly bucketed by vendor (per product
+  // decision), not auto-flowed: NVIDIA | cloud-only (Google·AWS·Cerebras) |
+  // Intel·rest.
+  $: skuByPublisher = new Map(skuGroups.map(g => [g.publisher, g]))
+  const pick = (m: typeof skuByPublisher, names: string[]) =>
+    names.map(n => m.get(n)).filter((g): g is NonNullable<typeof g> => !!g)
+  $: skuColumns = [
+    pick(skuByPublisher, ['NVIDIA']),
+    pick(skuByPublisher, ['Google', 'AWS', 'Cerebras']),
+    [
+      ...pick(skuByPublisher, ['Intel']),
+      ...skuGroups.filter(g =>
+        !['NVIDIA', 'Google', 'AWS', 'Cerebras', 'Intel'].includes(g.publisher)),
+    ],
+  ]
+
   const modelGroups = orderModels(MODELS)
   const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
 
@@ -86,21 +102,25 @@
           {#if cardOpen}<SkuSpecSheet sku={pinnedSku} />{/if}
         </div>
       {/if}
-      <div class="groups">
-        {#each skuGroups as g}
-          <div class="group">
-            <h3>{g.publisher}</h3>
-            <ul>
-              {#each g.entries as e}
-                <li>
-                  <button class="entry" class:pinned={e.id === pinnedSkuId}
-                    on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: e.id } })}>
-                    {e.name}{#if e.kind === 'system'} ({e.count}×){/if}
-                    {#if e.id === pinnedSkuId} <span class="badge">selected</span>{/if}
-                  </button>
-                </li>
-              {/each}
-            </ul>
+      <div class="skucols">
+        {#each skuColumns as col}
+          <div class="skucol">
+            {#each col as g}
+              <div class="group">
+                <h3>{g.publisher}</h3>
+                <ul>
+                  {#each g.entries as e}
+                    <li>
+                      <button class="entry" class:pinned={e.id === pinnedSkuId}
+                        on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: e.id } })}>
+                        {e.name}{#if e.kind === 'system'} ({e.count}×){/if}
+                        {#if e.id === pinnedSkuId} <span class="badge">selected</span>{/if}
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/each}
           </div>
         {/each}
       </div>
@@ -121,6 +141,9 @@
   /* Newspaper-style flow: variable-height publisher groups fill the screen
      width in columns, collapsing to one column on narrow viewports. */
   .groups { columns: 240px; column-gap: 2rem; }
+  /* SKU section: fixed vendor-bucketed columns (stack on narrow screens). */
+  .skucols { display: flex; flex-wrap: wrap; gap: 2rem; align-items: flex-start; }
+  .skucol { flex: 1 1 220px; min-width: 0; }
   .group {
     break-inside: avoid; -webkit-column-break-inside: avoid;
     padding-bottom: 0.9rem;
