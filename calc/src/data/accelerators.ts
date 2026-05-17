@@ -331,7 +331,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   // TFLOPS figures are best-effort estimates of GPU shader-core throughput (no tensor
   // cores). Cross-check before relying on absolute decode rates.
   {
-    id: 'm3-pro', name: 'Apple M3 Pro', vendor: 'Apple', family: 'Apple Silicon',
+    id: 'm3-pro', name: 'Apple M3 Pro', vendor: 'Apple', family: 'M3',
     releaseDate: '2023-10',
     variants: [
       { id: '18gb', label: '18GB', hbmCapacityGB: 18,
@@ -343,7 +343,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     ]
   },
   {
-    id: 'm3-ultra', name: 'Apple M3 Ultra', vendor: 'Apple', family: 'Apple Silicon',
+    id: 'm3-ultra', name: 'Apple M3 Ultra', vendor: 'Apple', family: 'M3',
     releaseDate: '2025-03',
     variants: [
       { id: '96gb', label: '96GB', hbmCapacityGB: 96,
@@ -358,7 +358,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     ]
   },
   {
-    id: 'm4-pro', name: 'Apple M4 Pro', vendor: 'Apple', family: 'Apple Silicon',
+    id: 'm4-pro', name: 'Apple M4 Pro', vendor: 'Apple', family: 'M4',
     releaseDate: '2024-10',
     variants: [
       { id: '24gb', label: '24GB', hbmCapacityGB: 24,
@@ -370,7 +370,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     ]
   },
   {
-    id: 'm4-max', name: 'Apple M4 Max', vendor: 'Apple', family: 'Apple Silicon',
+    id: 'm4-max', name: 'Apple M4 Max', vendor: 'Apple', family: 'M4',
     releaseDate: '2024-10',
     variants: [
       { id: '36gb', label: '36GB', hbmCapacityGB: 36,
@@ -385,7 +385,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     ]
   },
   {
-    id: 'm5-pro', name: 'Apple M5 Pro', vendor: 'Apple', family: 'Apple Silicon',
+    id: 'm5-pro', name: 'Apple M5 Pro', vendor: 'Apple', family: 'M5',
     releaseDate: '2026-01',
     variants: [
       { id: '24gb', label: '24GB', hbmCapacityGB: 24,
@@ -397,7 +397,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     ]
   },
   {
-    id: 'm5-max', name: 'Apple M5 Max', vendor: 'Apple', family: 'Apple Silicon',
+    id: 'm5-max', name: 'Apple M5 Max', vendor: 'Apple', family: 'M5',
     releaseDate: '2026-01',
     variants: [
       { id: '64gb', label: '64GB', hbmCapacityGB: 64,
