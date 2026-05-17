@@ -23,6 +23,8 @@
   // Pin the calculator's current selection at the top of the relevant list.
   $: pinnedModelId = $modelId
   $: pinnedSkuId = $systemId || $acceleratorId
+  $: pinnedModel = MODELS.find(m => m.id === pinnedModelId)
+  $: pinnedSku = ACCELERATORS.find(a => a.id === pinnedSkuId) ?? SYSTEMS.find(s => s.id === pinnedSkuId)
 </script>
 
 <section class="info">
@@ -39,6 +41,15 @@
     </div>
 
     {#if section === 'models'}
+      {#if pinnedModel}
+        <div class="pinrow">
+          <span class="pinlabel">Selected</span>
+          <button class="entry pinned"
+            on:click={() => navigate({ tab: 'info', detail: { kind: 'model', id: pinnedModel.id } })}>
+            {pinnedModel.name} <span class="badge">selected</span>
+          </button>
+        </div>
+      {/if}
       {#each modelGroups as g}
         <h3>{g.publisher}</h3>
         <ul>
@@ -53,6 +64,15 @@
         </ul>
       {/each}
     {:else}
+      {#if pinnedSku}
+        <div class="pinrow">
+          <span class="pinlabel">Selected</span>
+          <button class="entry pinned"
+            on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: pinnedSku.id } })}>
+            {pinnedSku.name} <span class="badge">selected</span>
+          </button>
+        </div>
+      {/if}
       {#each skuGroups as g}
         <h3>{g.publisher}</h3>
         <ul>
@@ -101,4 +121,9 @@
     font: inherit; font-size: 0.85rem; background: none; border: none;
     color: #1a4f8a; cursor: pointer; padding: 0 0 0.75rem; display: block;
   }
+  .pinrow {
+    display: flex; align-items: center; gap: 0.5rem;
+    margin-bottom: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e2e2;
+  }
+  .pinlabel { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
 </style>

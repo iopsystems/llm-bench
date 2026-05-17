@@ -16,6 +16,7 @@ import {
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
   quant, workload
 } from './stores'
+import { parseRoute } from './route'
 import { ACCELERATORS, MODELS } from '../data'
 import { SYSTEMS } from '../data/systems'
 import { INTERCONNECTS } from '../data/interconnects'
@@ -243,6 +244,8 @@ export function startUrlSync(): () => void {
   let ready = false
   const write = () => {
     if (!ready) return
+    // Don't clobber info deep-links with calc hash — only sync when on calc.
+    if (parseRoute(window.location.hash).tab !== 'calc') return
     const encoded = encodeState(readStoreState())
     const next = `${window.location.pathname}${window.location.search}#calc?${encoded}`
     // replaceState keeps the back button uncluttered; the URL still updates.

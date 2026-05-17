@@ -4,6 +4,7 @@ import type {
   ModelArch, AcceleratorSpec, MultiAcceleratorSystem,
 } from '../engine/types'
 import { kvBytesPerTokenPerLayer, activeParams } from '../engine/memory'
+import { SOURCES } from '../data/sources'
 
 const KV_REF_DTYPE = 'fp16' as const
 
@@ -18,6 +19,10 @@ function attentionLabel(m: ModelArch): string {
     case 'linear-mla-hybrid': return 'Linear-attention / MLA hybrid'
     case 'csa-hca-hybrid': return 'Compressed sparse + heavily-compressed attention'
     case 'delta-hybrid': return 'Gated DeltaNet + gated attention hybrid'
+    default: {
+      const _exhaustive: never = m.attention
+      return (_exhaustive as { type: string }).type
+    }
   }
 }
 
@@ -47,6 +52,11 @@ export interface OperatingPointMetrics {
   id: string
   label: string
   ridgeByDtype: Partial<Record<string, number>>
+  asOf?: string
+  notes?: string
+  // Resolved human titles, deduped, from tflopsSources+bandwidthSources via SOURCES.
+  // Omitted when empty.
+  sources?: string[]
 }
 
 export interface VariantMetrics {
@@ -54,6 +64,9 @@ export interface VariantMetrics {
   label: string
   hbmCapacityGB: number
   operatingPoints: OperatingPointMetrics[]
+  // achievable ÷ peak TFLOPS per dtype, only for dtypes present in BOTH the
+  // 'peak' and 'achievable' operating points. Omitted if either op is absent.
+  efficiencyByDtype?: Partial<Record<string, number>>
 }
 
 export type SkuMetrics =
@@ -80,19 +93,48 @@ export function skuMetrics(s: AcceleratorSpec | MultiAcceleratorSystem): SkuMetr
   }
   return {
     kind: 'accelerator',
-    variants: s.variants.map(v => ({
-      id: v.id,
-      label: v.label,
-      hbmCapacityGB: v.hbmCapacityGB,
-      operatingPoints: v.operatingPoints.map(op => {
+    variants: s.variants.map(v => {
+      const opMetrics: OperatingPointMetrics[] = v.operatingPoints.map(op => {
         const ridgeByDtype: Partial<Record<string, number>> = {}
         for (const [dt, tf] of Object.entries(op.tflops)) {
           if (tf !== undefined) {
             ridgeByDtype[dt] = (tf * 1e12) / (op.hbmBandwidthGBs * 1e9)
           }
         }
-        return { id: op.id, label: op.label, ridgeByDtype }
-      }),
-    })),
+        const sourceKeys = [...(op.tflopsSources ?? []), ...(op.bandwidthSources ?? [])]
+        const seen = new Set<string>()
+        const titles: string[] = []
+        for (const k of sourceKeys) {
+          const title = SOURCES[k as keyof typeof SOURCES]?.title ?? k
+          if (!seen.has(title)) { seen.add(title); titles.push(title) }
+        }
+        const m: OperatingPointMetrics = { id: op.id, label: op.label, ridgeByDtype }
+        if (op.asOf) m.asOf = op.asOf
+        if (op.notes) m.notes = op.notes
+        if (titles.length > 0) m.sources = titles
+        return m
+      })
+
+      const peakOp = v.operatingPoints.find(o => o.id === 'peak')
+      const achOp = v.operatingPoints.find(o => o.id === 'achievable')
+      let efficiencyByDtype: Partial<Record<string, number>> | undefined
+      if (peakOp && achOp) {
+        efficiencyByDtype = {}
+        for (const dt of Object.keys(peakOp.tflops)) {
+          const p = peakOp.tflops[dt as keyof typeof peakOp.tflops]
+          const a = achOp.tflops[dt as keyof typeof achOp.tflops]
+          if (p !== undefined && a !== undefined) {
+            efficiencyByDtype[dt] = a / p
+          }
+        }
+      }
+
+      const variant: VariantMetrics = {
+        id: v.id, label: v.label, hbmCapacityGB: v.hbmCapacityGB,
+        operatingPoints: opMetrics,
+      }
+      if (efficiencyByDtype) variant.efficiencyByDtype = efficiencyByDtype
+      return variant
+    }),
   }
 }

@@ -41,11 +41,21 @@
                 {#each Object.entries(op.ridgeByDtype) as [dt, r]}
                   <span class="chip">{dt}: {r!.toFixed(0)}</span>
                 {/each}
+                {#if op.asOf || op.notes || op.sources}
+                  <div class="prov">{[op.asOf, op.sources?.join(', '), op.notes].filter(Boolean).join(' · ')}</div>
+                {/if}
               </td>
             </tr>
           {/each}
         </tbody>
       </table>
+      {#if v.efficiencyByDtype}
+        <p class="eff">Achievable vs peak:
+          {#each Object.entries(v.efficiencyByDtype) as [dt, e]}
+            <span class="chip">{dt}: {(e! * 100).toFixed(0)}%</span>
+          {/each}
+        </p>
+      {/if}
     {/each}
   {/if}
 </article>
@@ -61,4 +71,6 @@
   table { border-collapse: collapse; font-size: 0.85rem; margin-top: 0.25rem; }
   th, td { text-align: left; padding: 0.25rem 0.6rem; border-bottom: 1px solid #eee; }
   .chip { display: inline-block; margin-right: 0.5rem; color: #444; }
+  .prov { font-size: 0.75rem; color: #888; margin-top: 0.15rem; }
+  .eff { font-size: 0.8rem; color: #555; margin: 0.25rem 0 0; }
 </style>

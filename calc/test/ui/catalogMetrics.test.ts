@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { modelMetrics, skuMetrics } from '../../src/ui/catalogMetrics'
 import { MODELS, ACCELERATORS } from '../../src/data'
 import { SYSTEMS } from '../../src/data/systems'
+import { SOURCES } from '../../src/data/sources'
 
 describe('modelMetrics', () => {
   it('full-attention model: KV per token per layer = 2·kvHeads·headDim·2 bytes (fp16)', () => {
@@ -44,5 +45,26 @@ describe('skuMetrics', () => {
     const r = skuMetrics(s)
     expect(r.kind).toBe('system')
     if (r.kind === 'system') expect(r.totalHbmGB).toBe(s.aggregate.totalHbmGB)
+  })
+
+  it('accelerator efficiency = achievable/peak TFLOPS per shared dtype', () => {
+    const a = ACCELERATORS.find(x => x.id === 'h100')!
+    const r = skuMetrics(a)
+    if (r.kind !== 'accelerator') throw new Error('expected accelerator')
+    const v = a.variants[0]
+    const peak = v.operatingPoints.find(o => o.id === 'peak')!
+    const ach = v.operatingPoints.find(o => o.id === 'achievable')!
+    const eff = r.variants[0].efficiencyByDtype!
+    expect(eff['bf16']).toBeCloseTo(ach.tflops['bf16']! / peak.tflops['bf16']!)
+  })
+
+  it('accelerator operating point carries resolved provenance', () => {
+    const a = ACCELERATORS.find(x => x.id === 'h100')!
+    const r = skuMetrics(a)
+    if (r.kind !== 'accelerator') throw new Error('expected accelerator')
+    const ach = r.variants[0].operatingPoints.find(o => o.id === 'achievable')!
+    expect(ach.sources && ach.sources.length).toBeGreaterThan(0)
+    // resolved title, not raw key
+    expect(ach.sources![0]).toBe(SOURCES['mamf-finder'].title)
   })
 })
