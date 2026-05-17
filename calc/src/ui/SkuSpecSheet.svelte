@@ -5,6 +5,23 @@
   export let sku: AcceleratorSpec | MultiAcceleratorSystem
   $: isSystem = 'aggregate' in sku
   $: metrics = skuMetrics(sku)
+
+  // Pivot the flat peakTable into dtype-rows × variant-columns.
+  const DTYPE_ORDER = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
+  $: pivotVariants = metrics.kind === 'accelerator'
+    ? metrics.peakTable.reduce<{ id: string; label: string; hbmCapacityGB: number }[]>(
+        (acc, r) => acc.some(v => v.id === r.variantId)
+          ? acc
+          : [...acc, { id: r.variantId, label: r.variantLabel, hbmCapacityGB: r.hbmCapacityGB }],
+        [])
+    : []
+  $: pivotDtypes = metrics.kind === 'accelerator'
+    ? DTYPE_ORDER.filter(dt => metrics.peakTable.some(r => r.dtype === dt))
+    : []
+  function cell(dt: string, variantId: string) {
+    if (metrics.kind !== 'accelerator') return undefined
+    return metrics.peakTable.find(r => r.dtype === dt && r.variantId === variantId)
+  }
 </script>
 
 <article class="sheet">
@@ -35,15 +52,27 @@
     <h3>Peak arithmetic</h3>
     <table>
       <thead>
-        <tr><th>Variant</th><th>dtype</th><th class="num">peak TFLOPS</th><th class="num">peak FLOP/byte</th></tr>
+        <tr>
+          <th rowspan="2">dtype</th>
+          {#each pivotVariants as v}
+            <th colspan="2" class="vhead">{v.label} <span class="ref">{v.hbmCapacityGB} GB</span></th>
+          {/each}
+        </tr>
+        <tr>
+          {#each pivotVariants as _v}
+            <th class="num sub2">TFLOPS</th><th class="num sub2">FLOP/byte</th>
+          {/each}
+        </tr>
       </thead>
       <tbody>
-        {#each metrics.peakTable as row}
+        {#each pivotDtypes as dt}
           <tr>
-            <td>{row.variantLabel} <span class="ref">{row.hbmCapacityGB} GB</span></td>
-            <td>{row.dtype}</td>
-            <td class="num">{row.tflops.toLocaleString()}</td>
-            <td class="num">{row.ridge.toFixed(0)}</td>
+            <td>{dt}</td>
+            {#each pivotVariants as v}
+              {@const c = cell(dt, v.id)}
+              <td class="num">{c ? c.tflops.toLocaleString() : '—'}</td>
+              <td class="num">{c ? c.ridge.toFixed(0) : '—'}</td>
+            {/each}
           </tr>
         {/each}
       </tbody>
@@ -97,6 +126,8 @@
     border-bottom: 1px solid #e2e2e2;
   }
   th { border-bottom: 1px solid #111; font-size: 0.78rem; }
+  .vhead { text-align: center; border-left: 1px solid #e2e2e2; }
+  .sub2 { font-weight: 400; color: #666; border-bottom: 1px solid #111; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .chip { display: inline-block; margin-right: 0.5rem; color: #444; }
   .vnote { margin: 0.5rem 0 0.15rem; font-size: 0.85rem; }
