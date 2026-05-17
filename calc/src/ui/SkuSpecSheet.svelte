@@ -46,9 +46,9 @@
     </dl>
     {#if s.availability?.onPrem || s.availability?.clouds?.length}
       <div class="rule"></div>
-      <h3>Cloud availability</h3>
+      <h3>Availability</h3>
       <dl>
-        {#if s.availability?.onPrem}<dt>On-prem</dt><dd>Yes</dd>{/if}
+        <dt>On-prem</dt><dd>{s.availability?.onPrem ? 'Yes' : '—'}</dd>
         {#if s.availability?.clouds?.length}
           <dt>Clouds</dt><dd>{s.availability.clouds.join(', ')}</dd>
         {/if}
@@ -62,7 +62,7 @@
         <tr>
           <th rowspan="2">dtype</th>
           {#each pivotVariants as v}
-            <th colspan="2" class="vhead">{v.label} <span class="ref">{v.hbmCapacityGB} GB</span></th>
+            <th colspan="2" class="vhead">{v.label}</th>
           {/each}
         </tr>
         <tr>
@@ -80,6 +80,23 @@
               <td class="num">{c ? c.tflops.toLocaleString() : '—'}</td>
               <td class="num">{c ? c.ridge.toFixed(0) : '—'}</td>
             {/each}
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+
+    <div class="rule"></div>
+    <h3>dtype support</h3>
+    <table>
+      <thead>
+        <tr><th>dtype</th><th>support</th><th>throughput implication</th></tr>
+      </thead>
+      <tbody>
+        {#each metrics.dtypeSupport as d}
+          <tr>
+            <td>{d.dtype}</td>
+            <td><span class="sup {d.support}">{d.support}</span></td>
+            <td class="impl">{d.note}</td>
           </tr>
         {/each}
       </tbody>
@@ -139,4 +156,12 @@
   .chip { display: inline-block; margin-right: 0.5rem; color: #444; }
   .vnote { margin: 0.5rem 0 0.15rem; font-size: 0.85rem; }
   .sub { font-size: 0.75rem; color: #777; margin: 0.1rem 0 0; }
+  .impl { color: #555; }
+  .sup {
+    display: inline-block; font-size: 0.72rem; padding: 0.05rem 0.4rem;
+    border-radius: 0.25rem; text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .sup.native { background: #d8f0e4; color: #1b6b4a; }
+  .sup.conversion { background: #fbeccd; color: #8a5a12; }
+  .sup.software { background: #ececec; color: #777; }
 </style>

@@ -81,8 +81,62 @@ export interface PeakRow {
   ridge: number   // peak FLOP / byte = tflops·1e12 / (hbmBW·1e9)
 }
 
+// dtype hardware-support classification, derived from the union of dtypes the
+// chip's peak operating points accelerate (ISA-level — independent of the
+// memory variant). `via` is the upconvert target for the conversion class.
+export interface DtypeSupportRow {
+  dtype: string
+  support: 'native' | 'conversion' | 'software'
+  via?: string
+  note: string
+}
+
+const DTYPE_WIDTH: Record<string, number> = {
+  fp32: 32, fp16: 16, bf16: 16, fp8: 8, int8: 8, fp4: 4, int4: 4,
+}
+const DTYPE_FAMILY: Record<string, 'float' | 'int'> = {
+  fp32: 'float', fp16: 'float', bf16: 'float', fp8: 'float', fp4: 'float',
+  int8: 'int', int4: 'int',
+}
+const DTYPE_LIST = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
+
+function classifyDtypes(supported: Set<string>): DtypeSupportRow[] {
+  return DTYPE_LIST.map(dt => {
+    if (supported.has(dt)) {
+      return { dtype: dt, support: 'native', note: 'Hardware-native — full rate' }
+    }
+    const w = DTYPE_WIDTH[dt]
+    // Candidates that can absorb dt by upconvert: supported, width >= dt width.
+    const wider = [...supported]
+      .filter(s => DTYPE_WIDTH[s] >= w)
+      .sort((a, b) => {
+        if (DTYPE_WIDTH[a] !== DTYPE_WIDTH[b]) return DTYPE_WIDTH[a] - DTYPE_WIDTH[b]
+        const af = DTYPE_FAMILY[a] === DTYPE_FAMILY[dt] ? 0 : 1
+        const bf = DTYPE_FAMILY[b] === DTYPE_FAMILY[dt] ? 0 : 1
+        if (af !== bf) return af - bf
+        return DTYPE_LIST.indexOf(a) - DTYPE_LIST.indexOf(b)
+      })
+    if (wider.length === 0) {
+      return {
+        dtype: dt, support: 'software',
+        note: 'No hardware path — software-emulated, impractical for serving',
+      }
+    }
+    const via = wider[0]
+    return {
+      dtype: dt, support: 'conversion', via,
+      note: `Upconvert to ${via} — compute at ${via} rate, ${dt} memory footprint`,
+    }
+  })
+}
+
 export type SkuMetrics =
-  | { kind: 'accelerator'; variants: VariantMetrics[]; peakTable: PeakRow[] }
+  | {
+      kind: 'accelerator'
+      variants: VariantMetrics[]
+      peakTable: PeakRow[]
+      dtypeSupport: DtypeSupportRow[]
+    }
   | {
       kind: 'system'
       totalHbmGB: number
@@ -120,9 +174,19 @@ export function skuMetrics(s: AcceleratorSpec | MultiAcceleratorSystem): SkuMetr
     }
   }
 
+  const supportedDtypes = new Set<string>()
+  for (const v of s.variants) {
+    const peak = v.operatingPoints.find(o => o.id === 'peak')
+    if (!peak) continue
+    for (const [dt, tf] of Object.entries(peak.tflops)) {
+      if (tf !== undefined) supportedDtypes.add(dt)
+    }
+  }
+
   return {
     kind: 'accelerator',
     peakTable,
+    dtypeSupport: classifyDtypes(supportedDtypes),
     variants: s.variants.map(v => {
       const opMetrics: OperatingPointMetrics[] = v.operatingPoints.map(op => {
         const ridgeByDtype: Partial<Record<string, number>> = {}

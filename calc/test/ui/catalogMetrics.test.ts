@@ -76,6 +76,25 @@ describe('skuMetrics', () => {
     expect(row.ridge).toBeCloseTo((sxmPeak.tflops['bf16']! * 1e12) / (sxmPeak.hbmBandwidthGBs * 1e9))
   })
 
+  it('dtypeSupport classifies native / conversion / software from the tflops set', () => {
+    const a = ACCELERATORS.find(x => x.id === 'h100')!
+    const r = skuMetrics(a)
+    if (r.kind !== 'accelerator') throw new Error('expected accelerator')
+    const by = Object.fromEntries(r.dtypeSupport.map(d => [d.dtype, d]))
+    // h100 peak tflops cover fp16/bf16/fp8/int8.
+    expect(by['bf16'].support).toBe('native')
+    expect(by['fp8'].support).toBe('native')
+    // fp4 not native; nearest wider supported float is fp8.
+    expect(by['fp4'].support).toBe('conversion')
+    expect(by['fp4'].via).toBe('fp8')
+    // int4 not native; nearest wider supported int is int8.
+    expect(by['int4'].support).toBe('conversion')
+    expect(by['int4'].via).toBe('int8')
+    // fp32 wider than anything supported (max width 16) → software.
+    expect(by['fp32'].support).toBe('software')
+    expect(by['fp32'].via).toBeUndefined()
+  })
+
   it('accelerator operating point carries resolved provenance', () => {
     const a = ACCELERATORS.find(x => x.id === 'h100')!
     const r = skuMetrics(a)
