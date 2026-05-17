@@ -43,10 +43,17 @@
       <dt>Form factor</dt><dd>{s.formFactor}</dd>
       <dt>Total HBM</dt><dd>{metrics.totalHbmGB} GB</dd>
       <dt>Fabric (bidir)</dt><dd>{metrics.fabricBidirectionalTBs} TB/s</dd>
-      {#if s.availability?.clouds?.length}
-        <dt>Clouds</dt><dd>{s.availability.clouds.join(', ')}</dd>
-      {/if}
     </dl>
+    {#if s.availability?.onPrem || s.availability?.clouds?.length}
+      <div class="rule"></div>
+      <h3>Cloud availability</h3>
+      <dl>
+        {#if s.availability?.onPrem}<dt>On-prem</dt><dd>Yes</dd>{/if}
+        {#if s.availability?.clouds?.length}
+          <dt>Clouds</dt><dd>{s.availability.clouds.join(', ')}</dd>
+        {/if}
+      </dl>
+    {/if}
   {:else if metrics.kind === 'accelerator'}
     <div class="rule"></div>
     <h3>Peak arithmetic</h3>
