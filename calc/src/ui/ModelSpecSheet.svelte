@@ -52,12 +52,12 @@
     <dt>Hidden / Intermediate</dt><dd>{model.hiddenDim} / {model.intermediateDim}</dd>
     <dt>Heads (Q / KV)</dt>
     <dd>{model.numHeads} / {model.numKvHeads} · head dim {model.headDim} · GQA {m.gqaRatio.toFixed(1)}×</dd>
-    <dt>Vocab</dt><dd>{model.vocabSize.toLocaleString()}</dd>
   </dl>
 
   <div class="rule"></div>
-  <h3>Context &amp; decoding</h3>
+  <h3>Tokenizer &amp; context</h3>
   <dl>
+    <dt>Vocab</dt><dd>{model.vocabSize.toLocaleString()}</dd>
     <dt>Max context</dt><dd>{model.maxContext.toLocaleString()} tokens</dd>
     {#if model.numNextnLayers > 0}
       <dt>MTP depth</dt><dd>{model.numNextnLayers}</dd>
