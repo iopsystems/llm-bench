@@ -8,14 +8,33 @@
   import ModelSpecSheet from './ModelSpecSheet.svelte'
   import SkuSpecSheet from './SkuSpecSheet.svelte'
 
+  const modelGroups = orderModels(MODELS)
+  const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
+
   let section: 'models' | 'skus' = 'models'
-  // The selected card is shown by default but collapsible so the browse
-  // list below isn't pushed off-screen.
   let cardOpen = true
 
+  // Route detail (deep link / click) takes precedence; otherwise the card
+  // shows whatever the calculator currently has selected.
+  $: routeDetail = $route.tab === 'info' && 'detail' in $route ? $route.detail : null
+  $: pinnedModel = MODELS.find(m => m.id === $modelId)
+  $: pinnedSku = ACCELERATORS.find(a => a.id === ($systemId || $acceleratorId))
+    ?? SYSTEMS.find(s => s.id === ($systemId || $acceleratorId))
+  $: activeModel = (routeDetail?.kind === 'model'
+    ? MODELS.find(m => m.id === routeDetail.id) : undefined) ?? pinnedModel
+  $: activeSku = (routeDetail?.kind === 'sku'
+    ? (ACCELERATORS.find(a => a.id === routeDetail.id) ?? SYSTEMS.find(s => s.id === routeDetail.id))
+    : undefined) ?? pinnedSku
+  // A detail route forces its section; otherwise the manual toggle wins.
+  $: effSection = routeDetail ? (routeDetail.kind === 'model' ? 'models' : 'skus') : section
+
+  function selectSection(s: 'models' | 'skus') {
+    section = s
+    navigate({ tab: 'info' })  // clear any detail so the toggle takes effect
+  }
+
   // SKU browse columns are explicitly bucketed by vendor (per product
-  // decision), not auto-flowed: NVIDIA | cloud-only (Google·AWS·Cerebras) |
-  // Intel·rest.
+  // decision): NVIDIA | cloud-only (Google·AWS·Cerebras) | Intel·rest.
   $: skuByPublisher = new Map(skuGroups.map(g => [g.publisher, g]))
   const pick = (m: typeof skuByPublisher, names: string[]) =>
     names.map(n => m.get(n)).filter((g): g is NonNullable<typeof g> => !!g)
@@ -28,103 +47,78 @@
         !['NVIDIA', 'Google', 'AWS', 'Cerebras', 'Intel'].includes(g.publisher)),
     ],
   ]
-
-  const modelGroups = orderModels(MODELS)
-  const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
-
-  // Resolve the detail target from the route, if any.
-  $: detail = $route.tab === 'info' && 'detail' in $route ? $route.detail : null
-  $: detailModel = detail?.kind === 'model' ? MODELS.find(m => m.id === detail.id) : undefined
-  $: detailSku = detail?.kind === 'sku'
-    ? (ACCELERATORS.find(a => a.id === detail.id) ?? SYSTEMS.find(s => s.id === detail.id))
-    : undefined
-
-  // Pin the calculator's current selection at the top of the relevant list.
-  $: pinnedModelId = $modelId
-  $: pinnedSkuId = $systemId || $acceleratorId
-  $: pinnedModel = MODELS.find(m => m.id === pinnedModelId)
-  $: pinnedSku = ACCELERATORS.find(a => a.id === pinnedSkuId) ?? SYSTEMS.find(s => s.id === pinnedSkuId)
 </script>
 
 <section class="info">
-  {#if detailModel}
-    <button class="back" on:click={() => navigate({ tab: 'info' })}>← All models &amp; SKUs</button>
-    <ModelSpecSheet model={detailModel} />
-  {:else if detailSku}
-    <button class="back" on:click={() => navigate({ tab: 'info' })}>← All models &amp; SKUs</button>
-    <SkuSpecSheet sku={detailSku} />
-  {:else}
-    <div class="subtabs">
-      <button class:active={section === 'models'} on:click={() => section = 'models'}>Models</button>
-      <button class:active={section === 'skus'} on:click={() => section = 'skus'}>SKUs</button>
-    </div>
+  <div class="subtabs">
+    <button class:active={effSection === 'models'} on:click={() => selectSection('models')}>Models</button>
+    <button class:active={effSection === 'skus'} on:click={() => selectSection('skus')}>SKUs</button>
+  </div>
 
-    {#if section === 'models'}
-      {#if pinnedModel}
-        <div class="selected">
-          <div class="selhead">
-            <span class="pinlabel">Selected in calculator</span>
-            <button class="collapse" on:click={() => cardOpen = !cardOpen}
-              aria-expanded={cardOpen}>
-              {cardOpen ? '▾ Collapse' : `▸ ${pinnedModel.name}`}
-            </button>
-          </div>
-          {#if cardOpen}<ModelSpecSheet model={pinnedModel} />{/if}
-        </div>
-      {/if}
-      <div class="groups">
-        {#each modelGroups as g}
-          <div class="group">
-            <h3>{g.publisher}</h3>
-            <ul>
-              {#each g.models as m}
-                <li>
-                  <button class="entry" class:pinned={m.id === pinnedModelId}
-                    on:click={() => navigate({ tab: 'info', detail: { kind: 'model', id: m.id } })}>
-                    {m.name}{#if m.id === pinnedModelId} <span class="badge">selected</span>{/if}
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      {#if pinnedSku}
-        <div class="selected">
-          <div class="selhead">
-            <span class="pinlabel">Selected in calculator</span>
-            <button class="collapse" on:click={() => cardOpen = !cardOpen}
-              aria-expanded={cardOpen}>
-              {cardOpen ? '▾ Collapse' : `▸ ${pinnedSku.name}`}
-            </button>
-          </div>
-          {#if cardOpen}<SkuSpecSheet sku={pinnedSku} />{/if}
-        </div>
-      {/if}
-      <div class="skucols">
-        {#each skuColumns as col}
-          <div class="skucol">
-            {#each col as g}
-              <div class="group">
-                <h3>{g.publisher}</h3>
-                <ul>
-                  {#each g.entries as e}
-                    <li>
-                      <button class="entry" class:pinned={e.id === pinnedSkuId}
-                        on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: e.id } })}>
-                        {e.name}{#if e.kind === 'system'} ({e.count}×){/if}
-                        {#if e.id === pinnedSkuId} <span class="badge">selected</span>{/if}
-                      </button>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/each}
-          </div>
-        {/each}
+  {#if effSection === 'models'}
+    {#if activeModel}
+      <div class="cardwrap">
+        <button class="cardtoggle" title={cardOpen ? 'Collapse' : 'Expand'}
+          aria-label={cardOpen ? 'Collapse' : 'Expand'} aria-expanded={cardOpen}
+          on:click={() => cardOpen = !cardOpen}>{cardOpen ? '−' : '+'}</button>
+        {#if cardOpen}
+          <ModelSpecSheet model={activeModel} />
+        {:else}
+          <div class="collapsed">{activeModel.name}</div>
+        {/if}
       </div>
     {/if}
+    <div class="groups">
+      {#each modelGroups as g}
+        <div class="group">
+          <h3>{g.publisher}</h3>
+          <ul>
+            {#each g.models as m}
+              <li>
+                <button class="entry" class:pinned={m.id === activeModel?.id}
+                  on:click={() => navigate({ tab: 'info', detail: { kind: 'model', id: m.id } })}>
+                  {m.name}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    {#if activeSku}
+      <div class="cardwrap">
+        <button class="cardtoggle" title={cardOpen ? 'Collapse' : 'Expand'}
+          aria-label={cardOpen ? 'Collapse' : 'Expand'} aria-expanded={cardOpen}
+          on:click={() => cardOpen = !cardOpen}>{cardOpen ? '−' : '+'}</button>
+        {#if cardOpen}
+          <SkuSpecSheet sku={activeSku} />
+        {:else}
+          <div class="collapsed">{activeSku.name}</div>
+        {/if}
+      </div>
+    {/if}
+    <div class="skucols">
+      {#each skuColumns as col}
+        <div class="skucol">
+          {#each col as g}
+            <div class="group">
+              <h3>{g.publisher}</h3>
+              <ul>
+                {#each g.entries as e}
+                  <li>
+                    <button class="entry" class:pinned={e.id === activeSku?.id}
+                      on:click={() => navigate({ tab: 'info', detail: { kind: 'sku', id: e.id } })}>
+                      {e.name}{#if e.kind === 'system'} ({e.count}×){/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
   {/if}
 </section>
 
@@ -138,10 +132,24 @@
   }
   .subtabs button:hover { background: #f1f1f1; }
   .subtabs button.active { background: #333; color: #fff; border-color: #333; }
-  /* Newspaper-style flow: variable-height publisher groups fill the screen
-     width in columns, collapsing to one column on narrow viewports. */
+
+  /* Card sits above the always-visible browse list, with a collapse icon
+     pinned to its own top-right corner. */
+  .cardwrap { position: relative; margin-bottom: 1.5rem; }
+  .cardtoggle {
+    position: absolute; top: 0.5rem; right: 0.5rem; z-index: 1;
+    width: 1.7rem; height: 1.7rem; display: flex; align-items: center;
+    justify-content: center; font-size: 1.05rem; line-height: 1;
+    background: #fff; color: #555; border: 1px solid #c8c8c8;
+    border-radius: 0.25rem; cursor: pointer;
+  }
+  .cardtoggle:hover { background: #efefef; color: #111; }
+  .collapsed {
+    border: 2px solid #111; border-radius: 4px;
+    padding: 0.6rem 2.6rem 0.6rem 1rem; font-weight: 600;
+  }
+
   .groups { columns: 240px; column-gap: 2rem; }
-  /* SKU section: fixed vendor-bucketed columns (stack on narrow screens). */
   .skucols { display: flex; flex-wrap: wrap; gap: 2rem; align-items: flex-start; }
   .skucol { flex: 1 1 220px; min-width: 0; }
   .group {
@@ -160,28 +168,5 @@
     color: #1a4f8a; border-radius: 0.25rem;
   }
   .entry:hover { background: #eef2f7; }
-  .entry.pinned { font-weight: 600; }
-  .badge {
-    font-size: 0.7rem; color: #fff; background: #21a87a;
-    padding: 0.05rem 0.35rem; border-radius: 0.25rem; vertical-align: middle;
-  }
-  .back {
-    font: inherit; font-size: 0.85rem; background: none; border: none;
-    color: #1a4f8a; cursor: pointer; padding: 0 0 0.75rem; display: block;
-  }
-  .selected { margin-bottom: 1.5rem; }
-  .selhead {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 0.75rem; margin-bottom: 0.35rem;
-  }
-  .pinlabel {
-    font-size: 0.7rem; text-transform: uppercase;
-    letter-spacing: 0.04em; color: #888;
-  }
-  .collapse {
-    font: inherit; font-size: 0.8rem; background: #f1f1f1; color: #333;
-    border: 1px solid #c8c8c8; border-radius: 0.3rem;
-    padding: 0.2rem 0.6rem; cursor: pointer;
-  }
-  .collapse:hover { background: #e7e7e7; }
+  .entry.pinned { font-weight: 700; }
 </style>
