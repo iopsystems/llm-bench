@@ -135,24 +135,27 @@
 
   /* Card sits above the always-visible browse list, with a collapse icon
      pinned to its own top-right corner. */
-  /* Shrink the wrap to the card's real width (the sheet is narrower and
-     left-aligned), so the absolutely-positioned toggle pins to the card's
-     own top-right corner in both expanded and collapsed states. */
+  /* Shrink-fit wrap with a fixed left gutter for the toggle. The gutter and
+     button sit at a stable screen position; the title line (the card's h2
+     when expanded, the name bar when collapsed) starts at the same place in
+     both states, so the toggle stays under the mouse across open/close. */
   .cardwrap {
     position: relative; display: inline-block; vertical-align: top;
-    margin-bottom: 1.5rem;
+    padding-left: 2.2rem; margin-bottom: 1.5rem;
   }
   .cardtoggle {
-    position: absolute; top: 0.5rem; right: 0.5rem; z-index: 1;
+    position: absolute; top: 0.9rem; left: 0; z-index: 1;
     width: 1.7rem; height: 1.7rem; display: flex; align-items: center;
     justify-content: center; font-size: 1.05rem; line-height: 1;
     background: #fff; color: #555; border: 1px solid #c8c8c8;
     border-radius: 0.25rem; cursor: pointer;
   }
   .cardtoggle:hover { background: #efefef; color: #111; }
+  /* Mirror the sheet card frame + title metrics so collapsing reads as
+     hiding the body, with the title line (and the toggle) unmoved. */
   .collapsed {
     border: 2px solid #111; border-radius: 4px;
-    padding: 0.6rem 2.6rem 0.6rem 1rem; font-weight: 600;
+    padding: 0.9rem 1.1rem; font-size: 1.25rem; font-weight: 600;
   }
 
   .groups { columns: 240px; column-gap: 2rem; }
