@@ -58,13 +58,17 @@
   {#if effSection === 'models'}
     {#if activeModel}
       <div class="cardwrap">
-        <button class="cardtoggle" title={cardOpen ? 'Collapse' : 'Expand'}
-          aria-label={cardOpen ? 'Collapse' : 'Expand'} aria-expanded={cardOpen}
-          on:click={() => cardOpen = !cardOpen}>{cardOpen ? '−' : '+'}</button>
         {#if cardOpen}
-          <ModelSpecSheet model={activeModel} />
+          <ModelSpecSheet model={activeModel}>
+            <button class="cardtoggle" title="Collapse" aria-label="Collapse"
+              aria-expanded="true" on:click={() => cardOpen = false}>−</button>
+          </ModelSpecSheet>
         {:else}
-          <div class="collapsed">{activeModel.name}</div>
+          <div class="collapsed">
+            <button class="cardtoggle" title="Expand" aria-label="Expand"
+              aria-expanded="false" on:click={() => cardOpen = true}>+</button>
+            {activeModel.name}
+          </div>
         {/if}
       </div>
     {/if}
@@ -88,13 +92,17 @@
   {:else}
     {#if activeSku}
       <div class="cardwrap">
-        <button class="cardtoggle" title={cardOpen ? 'Collapse' : 'Expand'}
-          aria-label={cardOpen ? 'Collapse' : 'Expand'} aria-expanded={cardOpen}
-          on:click={() => cardOpen = !cardOpen}>{cardOpen ? '−' : '+'}</button>
         {#if cardOpen}
-          <SkuSpecSheet sku={activeSku} />
+          <SkuSpecSheet sku={activeSku}>
+            <button class="cardtoggle" title="Collapse" aria-label="Collapse"
+              aria-expanded="true" on:click={() => cardOpen = false}>−</button>
+          </SkuSpecSheet>
         {:else}
-          <div class="collapsed">{activeSku.name}</div>
+          <div class="collapsed">
+            <button class="cardtoggle" title="Expand" aria-label="Expand"
+              aria-expanded="false" on:click={() => cardOpen = true}>+</button>
+            {activeSku.name}
+          </div>
         {/if}
       </div>
     {/if}
@@ -135,27 +143,25 @@
 
   /* Card sits above the always-visible browse list, with a collapse icon
      pinned to its own top-right corner. */
-  /* Shrink-fit wrap with a fixed left gutter for the toggle. The gutter and
-     button sit at a stable screen position; the title line (the card's h2
-     when expanded, the name bar when collapsed) starts at the same place in
-     both states, so the toggle stays under the mouse across open/close. */
   .cardwrap {
-    position: relative; display: inline-block; vertical-align: top;
-    padding-left: 2.2rem; margin-bottom: 1.5rem;
+    display: inline-block; vertical-align: top; margin-bottom: 1.5rem;
   }
-  .cardtoggle {
-    position: absolute; top: 0.9rem; left: 0; z-index: 1;
-    width: 1.7rem; height: 1.7rem; display: flex; align-items: center;
-    justify-content: center; font-size: 1.05rem; line-height: 1;
-    background: #fff; color: #555; border: 1px solid #c8c8c8;
-    border-radius: 0.25rem; cursor: pointer;
+  /* The toggle is the first element on the card's title line (inside the
+     border, via the sheet's title slot / the collapsed bar). Sized to sit
+     on the 1.25rem title; same metrics in both states so it doesn't move. */
+  :global(.cardtoggle) {
+    flex: none; width: 1.6rem; height: 1.6rem; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 1.05rem;
+    line-height: 1; background: #fff; color: #555;
+    border: 1px solid #c8c8c8; border-radius: 0.25rem; cursor: pointer;
   }
-  .cardtoggle:hover { background: #efefef; color: #111; }
+  :global(.cardtoggle):hover { background: #efefef; color: #111; }
   /* Mirror the sheet card frame + title metrics so collapsing reads as
      hiding the body, with the title line (and the toggle) unmoved. */
   .collapsed {
     border: 2px solid #111; border-radius: 4px;
     padding: 0.9rem 1.1rem; font-size: 1.25rem; font-weight: 600;
+    display: flex; align-items: center; gap: 0.5rem;
   }
 
   .groups { columns: 240px; column-gap: 2rem; }

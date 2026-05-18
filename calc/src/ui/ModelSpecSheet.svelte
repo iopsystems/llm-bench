@@ -14,7 +14,7 @@
 </script>
 
 <article class="sheet">
-  <h2>{model.name}</h2>
+  <h2><slot />{model.name}</h2>
   <div class="rule-thick"></div>
   <dl>
     <dt>Publisher</dt><dd>{model.publisher}</dd>
@@ -78,7 +78,10 @@
     max-width: 640px; border: 2px solid #111; border-radius: 4px;
     padding: 0.9rem 1.1rem; background: #fff;
   }
-  h2 { margin: 0 0 0.4rem; font-size: 1.25rem; }
+  h2 {
+    margin: 0 0 0.4rem; font-size: 1.25rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
   h3 {
     margin: 0.6rem 0 0.4rem; font-size: 0.78rem; text-transform: uppercase;
     letter-spacing: 0.05em; color: #333;
