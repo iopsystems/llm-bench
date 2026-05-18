@@ -135,7 +135,13 @@
 
   /* Card sits above the always-visible browse list, with a collapse icon
      pinned to its own top-right corner. */
-  .cardwrap { position: relative; margin-bottom: 1.5rem; }
+  /* Shrink the wrap to the card's real width (the sheet is narrower and
+     left-aligned), so the absolutely-positioned toggle pins to the card's
+     own top-right corner in both expanded and collapsed states. */
+  .cardwrap {
+    position: relative; display: inline-block; vertical-align: top;
+    margin-bottom: 1.5rem;
+  }
   .cardtoggle {
     position: absolute; top: 0.5rem; right: 0.5rem; z-index: 1;
     width: 1.7rem; height: 1.7rem; display: flex; align-items: center;
