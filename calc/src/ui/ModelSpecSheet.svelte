@@ -20,30 +20,52 @@
     <dt>Publisher</dt><dd>{model.publisher}</dd>
     <dt>Family</dt><dd>{model.family}</dd>
     <dt>Released</dt><dd>{model.releaseDate}</dd>
+  </dl>
+
+  <div class="rule"></div>
+  <h3>Design</h3>
+  <dl>
+    <dt>Architecture</dt>
+    <dd>{arch.type === 'moe' ? 'Mixture of experts' : 'Dense'}</dd>
+    <dt>Attention</dt><dd>{m.attentionLabel}</dd>
+  </dl>
+
+  <div class="rule"></div>
+  <h3>Scale</h3>
+  <dl>
     <dt>Parameters</dt>
     <dd>
       {paramsStr(model.paramCount)} total
       {#if arch.type === 'moe'}· {paramsStr(arch.activeParamCount)} active
         ({(m.moeActiveRatio! * 100).toFixed(1)}%){/if}
     </dd>
-    <dt>Architecture</dt>
-    <dd>
-      {#if arch.type === 'moe'}MoE — {arch.numExperts} experts, {arch.numExpertsActive} active{#if arch.numSharedExperts}, {arch.numSharedExperts} shared{/if}
-      {:else}Dense{/if}
-    </dd>
+    {#if arch.type === 'moe'}
+      <dt>Experts</dt>
+      <dd>{arch.numExperts} total · {arch.numExpertsActive} active{#if arch.numSharedExperts} · {arch.numSharedExperts} shared{/if}</dd>
+    {/if}
+  </dl>
+
+  <div class="rule"></div>
+  <h3>Dimensions</h3>
+  <dl>
     <dt>Layers</dt><dd>{model.layers}</dd>
     <dt>Hidden / Intermediate</dt><dd>{model.hiddenDim} / {model.intermediateDim}</dd>
-    <dt>Heads (Q / KV)</dt><dd>{model.numHeads} / {model.numKvHeads} · head dim {model.headDim}</dd>
-    <dt>GQA ratio</dt><dd>{m.gqaRatio.toFixed(1)}×</dd>
+    <dt>Heads (Q / KV)</dt>
+    <dd>{model.numHeads} / {model.numKvHeads} · head dim {model.headDim} · GQA {m.gqaRatio.toFixed(1)}×</dd>
     <dt>Vocab</dt><dd>{model.vocabSize.toLocaleString()}</dd>
+  </dl>
+
+  <div class="rule"></div>
+  <h3>Context &amp; decoding</h3>
+  <dl>
     <dt>Max context</dt><dd>{model.maxContext.toLocaleString()} tokens</dd>
-    <dt>Attention</dt><dd>{m.attentionLabel}</dd>
     {#if model.numNextnLayers > 0}
       <dt>MTP depth</dt><dd>{model.numNextnLayers}</dd>
     {/if}
   </dl>
+
   <div class="rule"></div>
-  <h3>Derived <span class="ref">(fp16 KV reference)</span></h3>
+  <h3>Derived memory <span class="ref">(fp16 KV reference)</span></h3>
   <dl>
     <dt>KV / token / layer</dt><dd>{kb(m.kvBytesPerTokenPerLayer)}</dd>
     <dt>KV / token (model)</dt><dd>{kb(m.kvBytesPerToken)}</dd>
