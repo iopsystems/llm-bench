@@ -38,6 +38,7 @@ Schema in [`calc/src/engine/types.ts`](../../../calc/src/engine/types.ts) (`Mode
 
 - `publisher` — the releasing organization (Alibaba, Meta, Google, DeepSeek, Moonshot AI, Zhipu AI, Microsoft, Mistral AI, …). This is the primary grouping key in the model picker, so reuse the exact string an existing same-publisher entry uses — don't introduce "Alibaba" and "Alibaba (Qwen)" as two groups.
 - `releaseDate` — public release/announcement month as ISO `YYYY-MM`. Day granularity is noisy (announce vs. weights vs. paper); month is the contract. Source from the official launch post or paper date. For a forward-looking/speculative entry, use a projected month consistent with its version ordering and say so in the commit.
+- `nativeDtype` — the dtype the released weights ship in (the model-aware quant default). `bf16` for most; `fp8` for natively-fp8 releases (DeepSeek V3/R1/V3.2/V4). Source from the model card / release notes; default `bf16` when unstated. Not a `config.json` field.
 
 ## Architecture (dense vs MoE)
 

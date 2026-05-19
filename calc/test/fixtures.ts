@@ -29,6 +29,7 @@ export const testModel: ModelArch = {
   family: 'test',
   publisher: 'test',
   releaseDate: '2025-01',
+  nativeDtype: 'bf16',
   layers: 2,
   hiddenDim: 4,
   intermediateDim: 8,

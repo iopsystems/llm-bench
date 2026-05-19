@@ -7,6 +7,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-1.7b', name: 'Qwen3 1.7B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 28, hiddenDim: 2048, intermediateDim: 6144,
     numHeads: 16, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 1_720_000_000,
@@ -18,6 +19,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-4b', name: 'Qwen3 4B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 36, hiddenDim: 2560, intermediateDim: 9728,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 4_020_000_000,
@@ -29,6 +31,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-8b', name: 'Qwen3 8B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 36, hiddenDim: 4096, intermediateDim: 12288,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 8_190_000_000,
@@ -40,6 +43,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-14b', name: 'Qwen3 14B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 5120, intermediateDim: 17408,
     numHeads: 40, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 14_770_000_000,
@@ -51,6 +55,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-32b', name: 'Qwen3 32B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 64, hiddenDim: 5120, intermediateDim: 25600,
     numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 32_760_000_000,
@@ -63,6 +68,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-30b-a3b', name: 'Qwen3-30B-A3B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 48, hiddenDim: 2048, intermediateDim: 768,
     numHeads: 32, numKvHeads: 4, headDim: 128, vocabSize: 151936,
     paramCount: 30_500_000_000,
@@ -80,6 +86,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-235b-a22b', name: 'Qwen3-235B-A22B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 94, hiddenDim: 4096, intermediateDim: 1536,
     numHeads: 64, numKvHeads: 4, headDim: 128, vocabSize: 151936,
     paramCount: 235_000_000_000,
@@ -98,6 +105,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-coder-30b-a3b', name: 'Qwen3-Coder-30B-A3B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-07',
+    nativeDtype: 'bf16',
     layers: 48, hiddenDim: 2048, intermediateDim: 768,
     numHeads: 32, numKvHeads: 4, headDim: 128, vocabSize: 151936,
     paramCount: 30_500_000_000,
@@ -115,6 +123,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3-coder-480b-a35b', name: 'Qwen3-Coder-480B-A35B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-07',
+    nativeDtype: 'bf16',
     layers: 62, hiddenDim: 6144, intermediateDim: 2560,
     numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 151936,
     paramCount: 480_000_000_000,
@@ -133,6 +142,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-0.8b', name: 'Qwen3.5-0.8B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 24, hiddenDim: 1024, intermediateDim: 3584,
     numHeads: 8, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 830_000_000,
@@ -149,6 +159,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-2b', name: 'Qwen3.5-2B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 24, hiddenDim: 2048, intermediateDim: 6144,
     numHeads: 8, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 2_240_000_000,
@@ -165,6 +176,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-4b', name: 'Qwen3.5-4B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 32, hiddenDim: 2560, intermediateDim: 9216,
     numHeads: 16, numKvHeads: 4, headDim: 256, vocabSize: 248320,
     paramCount: 4_240_000_000,
@@ -181,6 +193,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-8b', name: 'Qwen3.5-8B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 32, hiddenDim: 4096, intermediateDim: 12288,
     numHeads: 16, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 8_460_000_000,
@@ -197,6 +210,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-9b', name: 'Qwen3.5-9B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 32, hiddenDim: 4096, intermediateDim: 12288,
     numHeads: 16, numKvHeads: 4, headDim: 256, vocabSize: 248320,
     paramCount: 9_300_000_000,
@@ -214,6 +228,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-27b', name: 'Qwen3.5-27B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 64, hiddenDim: 5120, intermediateDim: 17408,
     numHeads: 24, numKvHeads: 4, headDim: 256, vocabSize: 248320,
     paramCount: 27_000_000_000,
@@ -236,6 +251,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-35b-a3b', name: 'Qwen3.5-35B-A3B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 2048, intermediateDim: 768,
     numHeads: 16, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 35_000_000_000,
@@ -258,6 +274,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-122b-a10b', name: 'Qwen3.5-122B-A10B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 48, hiddenDim: 3072, intermediateDim: 1024,
     numHeads: 32, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 122_000_000_000,
@@ -280,6 +297,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'qwen3.5-397b-a17b', name: 'Qwen3.5-397B-A17B', family: 'qwen3.5',
     publisher: 'Alibaba', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 60, hiddenDim: 4096, intermediateDim: 1024,
     numHeads: 32, numKvHeads: 2, headDim: 256, vocabSize: 248320,
     paramCount: 397_000_000_000,
@@ -303,6 +321,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'llama-3.3-70b', name: 'Llama 3.3 70B', family: 'llama-3',
     publisher: 'Meta', releaseDate: '2024-12',
+    nativeDtype: 'bf16',
     layers: 80, hiddenDim: 8192, intermediateDim: 28672,
     numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 128256,
     paramCount: 70_553_706_496,
@@ -314,6 +333,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'llama-3.1-405b', name: 'Llama 3.1 405B', family: 'llama-3',
     publisher: 'Meta', releaseDate: '2024-07',
+    nativeDtype: 'bf16',
     layers: 126, hiddenDim: 16384, intermediateDim: 53248,
     numHeads: 128, numKvHeads: 8, headDim: 128, vocabSize: 128256,
     paramCount: 405_853_356_032,
@@ -326,6 +346,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'gemma-3-12b', name: 'Gemma 3 12B', family: 'gemma-3',
     publisher: 'Google', releaseDate: '2025-03',
+    nativeDtype: 'bf16',
     layers: 48, hiddenDim: 3840, intermediateDim: 15360,
     numHeads: 16, numKvHeads: 8, headDim: 256, vocabSize: 262144,
     paramCount: 12_187_000_000,
@@ -337,6 +358,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'gemma-3-27b', name: 'Gemma 3 27B', family: 'gemma-3',
     publisher: 'Google', releaseDate: '2025-03',
+    nativeDtype: 'bf16',
     layers: 62, hiddenDim: 5376, intermediateDim: 21504,
     numHeads: 32, numKvHeads: 16, headDim: 128, vocabSize: 262144,
     paramCount: 27_009_000_000,
@@ -349,6 +371,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'mistral-7b-v0.1', name: 'Mistral 7B v0.1', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2023-09',
+    nativeDtype: 'bf16',
     layers: 32, hiddenDim: 4096, intermediateDim: 14336,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
     paramCount: 7_241_732_096,
@@ -360,6 +383,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'mixtral-8x7b', name: 'Mixtral 8x7B v0.1', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2023-12',
+    nativeDtype: 'bf16',
     layers: 32, hiddenDim: 4096, intermediateDim: 14336,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
     paramCount: 46_702_792_704,
@@ -377,6 +401,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'mixtral-8x22b', name: 'Mixtral 8x22B v0.1', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2024-04',
+    nativeDtype: 'bf16',
     layers: 56, hiddenDim: 6144, intermediateDim: 16384,
     numHeads: 48, numKvHeads: 8, headDim: 128, vocabSize: 32000,
     paramCount: 141_000_000_000,
@@ -394,6 +419,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'mistral-small-3.1-24b', name: 'Mistral Small 3.1 24B', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2025-03',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
     paramCount: 23_572_403_200,
@@ -405,6 +431,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'mistral-small-3.2-24b', name: 'Mistral Small 3.2 24B', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2025-06',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
     paramCount: 23_572_403_200,
@@ -416,6 +443,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'magistral-small', name: 'Magistral Small 24B', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2025-06',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 5120, intermediateDim: 32768,
     numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
     paramCount: 23_572_403_200,
@@ -427,6 +455,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'mistral-large-2', name: 'Mistral Large 2 123B', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2024-07',
+    nativeDtype: 'bf16',
     layers: 88, hiddenDim: 12288, intermediateDim: 28672,
     numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 32768,
     paramCount: 122_610_524_160,
@@ -439,6 +468,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-v2', name: 'DeepSeek-V2', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2024-05',
+    nativeDtype: 'bf16',
     layers: 60, hiddenDim: 5120, intermediateDim: 12288,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 102400,
     paramCount: 236_000_000_000,
@@ -456,6 +486,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-v3', name: 'DeepSeek-V3', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2024-12',
+    nativeDtype: 'fp8',
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
@@ -473,6 +504,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-r1', name: 'DeepSeek-R1', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2025-01',
+    nativeDtype: 'fp8',
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
@@ -490,6 +522,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-v3.2', name: 'DeepSeek-V3.2', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2025-09',
+    nativeDtype: 'fp8',
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
@@ -507,6 +540,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2026-03',
+    nativeDtype: 'fp8',
     layers: 43, hiddenDim: 4096, intermediateDim: 2048, vocabSize: 129280,
     numHeads: 64, numKvHeads: 1, headDim: 512,
     paramCount: 284_000_000_000,
@@ -530,6 +564,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2026-03',
+    nativeDtype: 'fp8',
     layers: 61, hiddenDim: 7168, intermediateDim: 3072, vocabSize: 129280,
     numHeads: 128, numKvHeads: 1, headDim: 512,
     paramCount: 1_600_000_000_000,
@@ -554,6 +589,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'kimi-k2', name: 'Kimi K2', family: 'kimi',
     publisher: 'Moonshot AI', releaseDate: '2025-07',
+    nativeDtype: 'bf16',
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
     paramCount: 1_026_000_000_000,
@@ -571,6 +607,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'kimi-linear', name: 'Kimi-Linear-48B-A3B', family: 'kimi',
     publisher: 'Moonshot AI', releaseDate: '2026-02',
+    nativeDtype: 'bf16',
     layers: 27, hiddenDim: 2304, intermediateDim: 9216,
     numHeads: 32, numKvHeads: 32, headDim: 192, vocabSize: 163840,
     paramCount: 48_000_000_000,
@@ -598,6 +635,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'glm-4.5-air', name: 'GLM-4.5-Air', family: 'glm',
     publisher: 'Zhipu AI', releaseDate: '2025-07',
+    nativeDtype: 'bf16',
     layers: 46, hiddenDim: 4096, intermediateDim: 10944,
     numHeads: 96, numKvHeads: 8, headDim: 128, vocabSize: 151552,
     paramCount: 106_000_000_000,
@@ -617,6 +655,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'glm-4.7-flash', name: 'GLM-4.7-Flash', family: 'glm',
     publisher: 'Zhipu AI', releaseDate: '2026-01',
+    nativeDtype: 'bf16',
     layers: 47, hiddenDim: 2048, intermediateDim: 1536,
     numHeads: 20, numKvHeads: 20, headDim: 256, vocabSize: 154880,
     paramCount: 30_000_000_000,
@@ -634,6 +673,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'glm-5', name: 'GLM-5', family: 'glm',
     publisher: 'Zhipu AI', releaseDate: '2026-03',
+    nativeDtype: 'bf16',
     layers: 78, hiddenDim: 6144, intermediateDim: 12288,
     numHeads: 64, numKvHeads: 64, headDim: 256, vocabSize: 154880,
     paramCount: 744_000_000_000,
@@ -657,6 +697,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'phi-4', name: 'Phi-4 14B', family: 'phi',
     publisher: 'Microsoft', releaseDate: '2024-12',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 5120, intermediateDim: 17920,
     numHeads: 40, numKvHeads: 10, headDim: 128, vocabSize: 100352,
     paramCount: 14_659_507_200,
@@ -668,6 +709,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'phi-4-mini', name: 'Phi-4-mini 3.8B', family: 'phi',
     publisher: 'Microsoft', releaseDate: '2025-02',
+    nativeDtype: 'bf16',
     layers: 32, hiddenDim: 3072, intermediateDim: 8192,
     numHeads: 24, numKvHeads: 8, headDim: 128, vocabSize: 200064,
     paramCount: 3_840_000_000,
@@ -679,6 +721,7 @@ export const MODELS: ModelArch[] = [
   {
     id: 'phi-4-reasoning', name: 'Phi-4-reasoning 14B', family: 'phi',
     publisher: 'Microsoft', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
     layers: 40, hiddenDim: 5120, intermediateDim: 17920,
     numHeads: 40, numKvHeads: 10, headDim: 128, vocabSize: 100352,
     paramCount: 14_659_507_200,

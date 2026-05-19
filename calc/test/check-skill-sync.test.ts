@@ -108,7 +108,7 @@ describe('integration: current files are in sync', () => {
       'id', 'name', 'family',
       'attention', 'architecture',
       'paramCount',
-      'publisher', 'releaseDate',
+      'publisher', 'releaseDate', 'nativeDtype',
     ])
     const required = (extractInterfaceFields(typesSrc, 'ModelArch') as string[])
       .filter(f => !FIELDS_NOT_IN_TABLE.has(f))
