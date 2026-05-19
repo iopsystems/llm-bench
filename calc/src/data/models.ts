@@ -403,6 +403,28 @@ export const MODELS: ModelArch[] = [
     architecture: { type: 'dense' }
   },
   {
+    id: 'mistral-small-3.2-24b', name: 'Mistral Small 3.2 24B', family: 'mistral',
+    publisher: 'Mistral AI', releaseDate: '2025-06',
+    layers: 40, hiddenDim: 5120, intermediateDim: 32768,
+    numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
+    paramCount: 23_572_403_200,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
+    id: 'magistral-small', name: 'Magistral Small 24B', family: 'mistral',
+    publisher: 'Mistral AI', releaseDate: '2025-06',
+    layers: 40, hiddenDim: 5120, intermediateDim: 32768,
+    numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 131072,
+    paramCount: 23_572_403_200,
+    maxContext: 40960,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
     id: 'mistral-large-2', name: 'Mistral Large 2 123B', family: 'mistral',
     publisher: 'Mistral AI', releaseDate: '2024-07',
     layers: 88, hiddenDim: 12288, intermediateDim: 28672,
@@ -434,6 +456,23 @@ export const MODELS: ModelArch[] = [
   {
     id: 'deepseek-v3', name: 'DeepSeek-V3', family: 'deepseek',
     publisher: 'DeepSeek', releaseDate: '2024-12',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
+    paramCount: 671_000_000_000,
+    maxContext: 163840,
+    numNextnLayers: 0,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 37_000_000_000
+    }
+  },
+  {
+    id: 'deepseek-r1', name: 'DeepSeek-R1', family: 'deepseek',
+    publisher: 'DeepSeek', releaseDate: '2025-01',
     layers: 61, hiddenDim: 7168, intermediateDim: 18432,
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
@@ -622,6 +661,28 @@ export const MODELS: ModelArch[] = [
     numHeads: 40, numKvHeads: 10, headDim: 128, vocabSize: 100352,
     paramCount: 14_659_507_200,
     maxContext: 16384,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
+    id: 'phi-4-mini', name: 'Phi-4-mini 3.8B', family: 'phi',
+    publisher: 'Microsoft', releaseDate: '2025-02',
+    layers: 32, hiddenDim: 3072, intermediateDim: 8192,
+    numHeads: 24, numKvHeads: 8, headDim: 128, vocabSize: 200064,
+    paramCount: 3_840_000_000,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
+    id: 'phi-4-reasoning', name: 'Phi-4-reasoning 14B', family: 'phi',
+    publisher: 'Microsoft', releaseDate: '2025-04',
+    layers: 40, hiddenDim: 5120, intermediateDim: 17920,
+    numHeads: 40, numKvHeads: 10, headDim: 128, vocabSize: 100352,
+    paramCount: 14_659_507_200,
+    maxContext: 32768,
     numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
