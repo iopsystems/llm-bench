@@ -1,4 +1,4 @@
-import { writable, derived, type Readable } from 'svelte/store'
+import { writable, derived, get, type Readable } from 'svelte/store'
 import { ACCELERATORS, MODELS } from '../data'
 import { SYSTEMS } from '../data/systems'
 import { calculate } from '../engine'
@@ -32,6 +32,27 @@ export const disaggFirstTokenOnPrefill = writable<boolean>(true)
 export const quant = writable<Quantization>({
   weights: 'fp16', kv: 'fp16', activations: 'fp16'
 })
+
+// When false (default), switching models reseeds weights+activations to the
+// new model's nativeDtype. When true, the user has pinned the precision and
+// model switches leave quant alone. Part of shareable URL state (see share.ts).
+export const lockDtype = writable(false)
+
+// Wire the model→quant coupling. Call once at startup AFTER readUrlIntoStores()
+// so a shared URL's quant/model is in place first. Skips the current modelId
+// value (no reseed on load); reseeds on subsequent changes only when unlocked.
+// KV is never touched — it's an independent serving axis.
+export function initNativeDtypeSync(): () => void {
+  let first = true
+  return modelId.subscribe($modelId => {
+    if (first) { first = false; return }
+    if (get(lockDtype)) return
+    const m = MODELS.find(x => x.id === $modelId)
+    if (!m) return
+    quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
+  })
+}
+
 export const workload = writable<Workload>({
   promptTokens: 2048, outputTokens: 512, concurrency: 1
 })
