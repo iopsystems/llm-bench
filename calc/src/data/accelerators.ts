@@ -161,6 +161,20 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     ]
   },
   {
+    id: 'l4', name: 'NVIDIA L4', vendor: 'NVIDIA', family: 'Ada Lovelace',
+    releaseDate: '2023-05',
+    variants: [{
+      id: 'pcie-24', label: 'PCIe 24GB', hbmCapacityGB: 24,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // NVIDIA's L4 product page quotes with-sparsity figures (242 / 485);
+        // recording dense halves per the adding-hardware-sku skill.
+        tflops: { fp16: 121, bf16: 121, fp8: 242.5, int8: 242.5 },
+        hbmBandwidthGBs: 300
+      }]
+    }]
+  },
+  {
     id: 'l40s', name: 'NVIDIA L40S', vendor: 'NVIDIA', family: 'Ada Lovelace',
     releaseDate: '2023-08',
     variants: [{
