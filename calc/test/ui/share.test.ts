@@ -20,6 +20,7 @@ const singleChipState: ShareableState = {
   parallelismOverride: null,
   disaggKvTransferFabricId: '',
   disaggFirstTokenOnPrefill: true,
+  lockDtype: false,
 }
 
 const multiDeviceState: ShareableState = {
@@ -35,6 +36,7 @@ const multiDeviceState: ShareableState = {
   },
   disaggKvTransferFabricId: '',
   disaggFirstTokenOnPrefill: true,
+  lockDtype: false,
 }
 
 describe('encodeState', () => {

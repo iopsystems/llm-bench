@@ -14,7 +14,7 @@ import { get } from 'svelte/store'
 import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  quant, workload
+  quant, workload, lockDtype
 } from './stores'
 import { parseRoute } from './route'
 import { ACCELERATORS, MODELS } from '../data'
@@ -46,6 +46,7 @@ export interface ShareableState {
   parallelismOverride: ParallelismConfig | null
   disaggKvTransferFabricId: string
   disaggFirstTokenOnPrefill: boolean
+  lockDtype: boolean
 }
 
 // Encode state to a URL-search-style string (no leading `#`).
@@ -75,6 +76,7 @@ export function encodeState(state: ShareableState): string {
     // worst-case sequential handoff.
     if (!state.disaggFirstTokenOnPrefill) p.set('df', '0')
   }
+  if (state.lockDtype) p.set('ld', '1')
   return p.toString()
 }
 
@@ -122,6 +124,12 @@ export function decodeState(hash: string): Partial<ShareableState> {
   if (w && kv && ac && isDtype(w) && isDtype(kv) && isDtype(ac)) {
     out.quant = { weights: w, kv, activations: ac }
   }
+
+  // lockDtype: explicit `ld` wins; otherwise an explicit quant in the URL
+  // implies the sharer pinned a precision, so lock to avoid reseeding it.
+  const ld = params.get('ld')
+  if (ld !== null) out.lockDtype = ld !== '0'
+  else if (out.quant !== undefined) out.lockDtype = true
 
   const pt = params.get('pt')
   const ot = params.get('ot')
@@ -197,6 +205,7 @@ function readStoreState(): ShareableState {
     parallelismOverride: get(parallelismOverride),
     disaggKvTransferFabricId: get(disaggKvTransferFabricId),
     disaggFirstTokenOnPrefill: get(disaggFirstTokenOnPrefill),
+    lockDtype: get(lockDtype),
   }
 }
 
@@ -213,6 +222,7 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.parallelismOverride !== undefined) parallelismOverride.set(partial.parallelismOverride)
   if (partial.disaggKvTransferFabricId !== undefined) disaggKvTransferFabricId.set(partial.disaggKvTransferFabricId)
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
+  if (partial.lockDtype !== undefined) lockDtype.set(partial.lockDtype)
 }
 
 // Extract the calculator payload from a raw location.hash. Supports the
@@ -265,6 +275,7 @@ export function startUrlSync(): () => void {
     disaggFirstTokenOnPrefill.subscribe(write),
     quant.subscribe(write),
     workload.subscribe(write),
+    lockDtype.subscribe(write),
   ]
   ready = true
   write()
