@@ -9,10 +9,10 @@ const bf16Model = MODELS.find(m => m.nativeDtype === 'bf16')!.id
 describe('native-dtype re-seed', () => {
   let stop: () => void
   beforeEach(() => {
+    stop?.()
     lockDtype.set(false)
     quant.set({ weights: 'fp16', kv: 'fp16', activations: 'fp16' })
     modelId.set(bf16Model)
-    stop?.()
     stop = initNativeDtypeSync()
   })
 
