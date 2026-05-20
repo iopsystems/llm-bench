@@ -107,14 +107,18 @@ total_requests = 100
 # Input Configuration
 # =============================================================================
 [input]
-# Path to JSONL file, a known dataset name for auto-download from HuggingFace, or "synthetic" to generate synthetic prompts
+# Source of per-request prompts. Options:
+#   - Path to a JSONL file (single-turn or ShareGPT multi-turn)
+#   - A known dataset name for auto-download from HuggingFace:
+#       "openorca", "sharegpt", "toolbench", "gpt4-tool-use", "claude-distill"
+#   - "synthetic" to generate prompts via [input.synthetic]
 #
 # Known dataset names (downloaded and cached on first use):
-#   "openorca"  — Open-Orca/OpenOrca GPT-4 subset (~1 GB download, 1M single-turn prompts)
-#   "sharegpt"  — ShareGPT Vicuna conversations (~670 MB download, ~90K multi-turn conversations)
-#   "toolbench" — THUDM/ToolBench (~300 MB, tool-use trajectories)
+#   "openorca"      — Open-Orca/OpenOrca GPT-4 subset (~1 GB download, 1M single-turn prompts)
+#   "sharegpt"      — ShareGPT Vicuna conversations (~670 MB download, ~90K multi-turn conversations)
+#   "toolbench"     — THUDM/ToolBench (~300 MB, tool-use trajectories)
 #   "gpt4-tool-use" — openai/gpt-4-tool-use-v1.0 (~200 MB, GPT-4 tool calling examples)
-#   "claude-distill" — Kassadin88/Claude-Distills (~800 MB, Claude Sonnet/Opus distillations with system prompts)
+#   "claude-distill"— Kassadin88/Claude-Distills (~800 MB, Claude Sonnet/Opus distillations with system prompts)
 #
 # Custom JSONL formats:
 #   Single-turn: {"prompt": "your prompt here", "max_tokens": 100}
@@ -132,14 +136,8 @@ total_requests = 100
 #   - max_tokens in [endpoint] is required for synthetic mode to control maximum output length
 #   - prompt_tokens controls the prompt length
 #   - prompt_tokens_stdev, prompt_tokens_min, prompt_tokens_max (optional) control variability and limits of prompt lengths
-#   - add_prefix (default: true) adds a unique "[synthetic-{index}-t{turn}]" prefix to each generated prompt.
-#     When add_prefix is enabled, llm-perf automatically disables the request-level cache_busting prefix to
-#     avoid double-prefixing; you do not need to set cache_busting = false manually.
-#   - common_prefix_sample_ratio (default: 0.0) controls the ratio of generated prompts that have a common prefix. When testing the prefix cache effectiveness,
-#     it's essential to set [input.cache_busting] = false to avoid adding unique cache-busting prefixes to each prompt.
+#   - common_prefix_sample_ratio (default: 0.0) controls the ratio of generated prompts that share a common prefix
 #   - common_prefix_tokens (default: 0) controls the token length of the shared common prefix
-#     If equals prompt_tokens, the whole prompt is the common prefix
-#   - sample_size controls how many synthetic prompts to generate (default: 10000)
 #   example that generates 10k synthetic prompts with 512 input tokens and maximum 512 output tokens:
 #   [endpoint]
 #   max_tokens = 512
@@ -149,15 +147,6 @@ total_requests = 100
 #   [input.synthetic]
 #   prompt_tokens = 512
 #
-#   example that generates prompts with 50% sharing a 256-token common prefix to test prefix caching:
-#   [input]
-#   file = "synthetic"
-#   cache_busting = false
-#   [input.synthetic]
-#   prompt_tokens = 512
-#   common_prefix_sample_ratio = 0.5
-#   common_prefix_tokens = 256
-
 #   example that generates multi-turn synthetic conversations (3 turns each):
 #   [input]
 #   file = "synthetic"
@@ -169,13 +158,6 @@ total_requests = 100
 
 file = "examples/prompts/openorca-10000.jsonl"
 
-# Cache-Busting Prefix (Optional)
-# By default, llm-perf adds a unique [req-{index}] prefix to each prompt to ensure independent benchmarking.
-# Set this to false to disable the cache-busting prefix, allowing server-side prefix caching to work.
-# This is essential when testing prefix caching effectiveness (e.g., with vLLM's automatic prefix caching).
-# Default: true
-# cache_busting = true
-
 # Seed for deterministic, reproducible runs.
 # In file/dataset mode: shuffles prompts with this seed for reproducible ordering.
 # In synthetic mode: seeds the prompt generator for reproducible synthetic prompts.
@@ -185,20 +167,56 @@ file = "examples/prompts/openorca-10000.jsonl"
 # Control dataset size:
 # In file/dataset mode: take the first N prompts from the file (applied before shuffling)
 # In synthetic mode: generate exactly N prompts (default: 10000)
-# sample_size = 50
+# sample_size = 100
 
-# System Prompt Override (Optional)
-# Override the system prompt for all conversations in the input file.
-# This is useful for testing agentic workloads with specific system instructions.
-# If set, it replaces any system prompt in the dataset.
-# system_prompt = "You are a helpful AI assistant specialized in coding tasks."
+# =============================================================================
+# System Prompt (Optional)
+# Always sent clean — never modified per-request, never cache-busted.
+# Pick exactly one of: content, file, or tokens.
+# =============================================================================
+# [input.system_prompt]
+# content = "You are a helpful assistant."   # inline
+# file    = "prompts/system.md"              # from disk
+# tokens  = 2048                             # synthetic, fixed seed
 
-# System Prompt from File (Optional)
-# Path to a file containing the system prompt to use for all requests.
-# This is an alternative to system_prompt (inline string).
-# The path is relative to the process's current working directory (where llm-perf is invoked from).
-# If both system_prompt and system_prompt_file are set, system_prompt takes precedence.
-# system_prompt_file = "prompts/system.md"
+# =============================================================================
+# Shared Prefix (Optional)
+# A fixed block prepended to every first user turn.
+# Requests tagged [shared] (expected hit) or [bust-N] (expected miss).
+#
+# miss_rate = 0.0 → all requests expected to hit after warmup (decode-sweep)
+# miss_rate = 1.0 → all requests expected to miss (prefill-sweep with large context)
+# miss_rate = 0.1 → 10% of requests bust the cache to measure pipeline bubbles
+# =============================================================================
+# [input.shared_prefix]
+# tokens    = 8192    # synthetic, fixed seed (or: content = "..." / file = "path")
+# miss_rate = 0.1     # fraction of requests that get [bust-N] prefix (default: 0.0)
+
+# =============================================================================
+# Conversation Configuration (Optional)
+# =============================================================================
+# Models user "think time" between turns of a multi-turn conversation. With
+# default settings, llm-perf sends the next user turn as soon as the previous
+# response stream ends — that exercises either fully-resident or fully-evicted
+# KV-cache regimes, but never the realistic "evicted-then-reloaded" case that
+# KV offloading targets. Setting a non-zero turn_delay_ms inserts a sampled
+# sleep between turns so conversations pause like a real user reading and
+# typing.
+#
+# A delay is sampled per gap from a Gaussian centered at turn_delay_ms with
+# stdev turn_delay_stdev_ms, clamped to [turn_delay_min_ms, turn_delay_max_ms].
+# Default behavior (section omitted, or all values left at defaults) is
+# identical to back-to-back turns.
+#
+# Applies to every multi-turn source (synthetic, ShareGPT, etc.). The
+# conversation's worker slot remains held during the sleep — turns-per-second
+# at a fixed concurrent_requests drops accordingly, which matches real chat
+# users keeping the seat warm while idle.
+# [conversation]
+# turn_delay_ms       = 15000   # mean pause between turns, ms
+# turn_delay_stdev_ms = 0       # Gaussian stdev; 0 = deterministic
+# turn_delay_min_ms   = 0       # clamp floor, ms
+# turn_delay_max_ms   = 60000   # clamp ceiling, ms
 
 # =============================================================================
 # Output Configuration
@@ -306,6 +324,35 @@ level = "info"
 # p999_ms = 100.0              # TPOT p999 must stay under 100ms
 
 # =============================================================================
+# Experiment Recipes
+# =============================================================================
+#
+# Prefill-sweep (unique inputs, measure raw prefill throughput):
+#   [input]
+#   file = "synthetic"
+#   [input.synthetic]
+#   prompt_tokens = 512
+#   prompt_tokens_stdev = 128
+#   [endpoint]
+#   max_tokens = 1
+#
+# Decode-sweep (large shared prefix, all cache hits after warmup):
+#   [input.shared_prefix]
+#   tokens = 8192
+#   miss_rate = 0.0
+#   [input.synthetic]
+#   prompt_tokens = 32    # short unique suffix
+#
+# Mixed — 10% cache miss rate (study prefill pipeline bubbles):
+#   [input.shared_prefix]
+#   tokens = 4096
+#   miss_rate = 0.1
+#   [input.synthetic]
+#   prompt_tokens = 64
+#
+# =============================================================================
+
+# =============================================================================
 # Common Configuration Patterns
 # =============================================================================
 
@@ -343,10 +390,11 @@ level = "info"
 # TTFT growth with conversation depth and prefix caching effectiveness.
 #
 # For agentic workloads with specific system instructions, use the claude-distill
-# dataset (automatically downloaded from HuggingFace) and override the system prompt:
+# dataset (automatically downloaded from HuggingFace) with a system prompt override:
 # [input]
 # file = "claude-distill"  # Auto-downloads Claude Sonnet/Opus distillations
-# system_prompt = "You are Claude, a helpful AI assistant. Follow these guidelines:..."
+# [input.system_prompt]
+# content = "You are Claude, a helpful AI assistant. Follow these guidelines:..."
 # [load]
 # concurrent_requests = 20  # 20 concurrent conversations
 # duration_seconds = 120

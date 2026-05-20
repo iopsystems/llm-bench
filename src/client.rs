@@ -99,11 +99,19 @@ pub struct Choice {
     pub finish_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PromptTokensDetails {
+    #[serde(default)]
+    pub cached_tokens: u32,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    #[serde(default)]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
 // Streaming response types
@@ -1084,6 +1092,47 @@ fn normalize_model_name(model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usage_with_cached_tokens_parses() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "prompt_tokens_details": {"cached_tokens": 80}
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            usage.prompt_tokens_details.as_ref().unwrap().cached_tokens,
+            80
+        );
+    }
+
+    #[test]
+    fn usage_without_cached_tokens_parses() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert!(usage.prompt_tokens_details.is_none());
+    }
+
+    #[test]
+    fn cached_tokens_absent_in_details_defaults_to_zero() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "prompt_tokens_details": {}
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            usage.prompt_tokens_details.as_ref().unwrap().cached_tokens,
+            0
+        );
+    }
 
     #[test]
     fn test_normalize_model_name() {

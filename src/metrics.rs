@@ -147,6 +147,22 @@ pub const ITL_ENTRIES: usize = PHASE_COUNT * CTX_COUNT;
 #[metric(name = "itl", metadata = { unit = "nanoseconds" })]
 pub static ITL: HistogramGroup = HistogramGroup::new(ITL_ENTRIES, 7, 64);
 
+// Cache outcome counters — indexed by expected×actual behavior
+pub const CACHE_HIT_CONFIRMED: usize = 0; // expected hit, actual hit
+pub const CACHE_HIT_EVICTED: usize = 1; // expected hit, actual miss (eviction signal)
+pub const CACHE_MISS_CONFIRMED: usize = 2; // expected miss, actual miss
+pub const CACHE_MISS_SPURIOUS: usize = 3; // expected miss, actual hit
+
+#[metric(name = "cache")]
+pub static CACHE: CounterGroup = CounterGroup::new(4);
+
+// TTFT split by expected cache behavior
+pub const CACHE_EXPECTED_HIT_IDX: usize = 0;
+pub const CACHE_EXPECTED_MISS_IDX: usize = 1;
+
+#[metric(name = "ttft_by_cache", metadata = { unit = "nanoseconds" })]
+pub static TTFT_BY_CACHE: HistogramGroup = HistogramGroup::new(2, 7, 64);
+
 /// Map input token count to a TTFT context-size index.
 fn ttft_context_index(input_tokens: u64) -> usize {
     match input_tokens {
@@ -267,6 +283,30 @@ impl Metrics {
                     ]),
                 );
             }
+        }
+
+        // Cache outcome counter metadata
+        for (idx, outcome) in [
+            "hit_confirmed",
+            "hit_evicted",
+            "miss_confirmed",
+            "miss_spurious",
+        ]
+        .iter()
+        .enumerate()
+        {
+            CACHE.set_metadata(
+                idx,
+                HashMap::from([("outcome".to_string(), outcome.to_string())]),
+            );
+        }
+
+        // TTFT_BY_CACHE histogram metadata
+        for (idx, expected) in ["hit", "miss"].iter().enumerate() {
+            TTFT_BY_CACHE.set_metadata(
+                idx,
+                HashMap::from([("expected".to_string(), expected.to_string())]),
+            );
         }
     }
 
@@ -402,5 +442,62 @@ impl Metrics {
 
     pub fn record_conversation_latency(duration: Duration) {
         let _ = CONVERSATION_LATENCY.increment(duration.as_nanos() as u64);
+    }
+
+    /// Record a cache outcome and split TTFT.
+    /// `expected_hit`: true if request was sent with `[shared]` prefix (expected cache hit).
+    /// `actual_hit`: true if server reported cached_tokens > 0. None if server did not report.
+    pub fn record_cache_outcome(
+        expected_hit: bool,
+        actual_hit: Option<bool>,
+        ttft: std::time::Duration,
+    ) {
+        let ttft_idx = if expected_hit {
+            CACHE_EXPECTED_HIT_IDX
+        } else {
+            CACHE_EXPECTED_MISS_IDX
+        };
+        let _ = TTFT_BY_CACHE.increment(ttft_idx, ttft.as_nanos() as u64);
+
+        if let Some(hit) = actual_hit {
+            let idx = match (expected_hit, hit) {
+                (true, true) => CACHE_HIT_CONFIRMED,
+                (true, false) => CACHE_HIT_EVICTED,
+                (false, true) => CACHE_MISS_SPURIOUS,
+                (false, false) => CACHE_MISS_CONFIRMED,
+            };
+            let _ = CACHE.increment(idx);
+        }
+    }
+}
+
+/// Returns true if a request should be designated a cache miss, based on miss_rate.
+pub fn should_miss(miss_rate: f64) -> bool {
+    if miss_rate <= 0.0 {
+        return false;
+    }
+    if miss_rate >= 1.0 {
+        return true;
+    }
+    rand::random::<f64>() < miss_rate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_counter_indices_are_distinct() {
+        assert_ne!(CACHE_HIT_CONFIRMED, CACHE_HIT_EVICTED);
+        assert_ne!(CACHE_HIT_CONFIRMED, CACHE_MISS_CONFIRMED);
+        assert_ne!(CACHE_HIT_CONFIRMED, CACHE_MISS_SPURIOUS);
+        assert_ne!(CACHE_HIT_EVICTED, CACHE_MISS_CONFIRMED);
+        assert_ne!(CACHE_HIT_EVICTED, CACHE_MISS_SPURIOUS);
+        assert_ne!(CACHE_MISS_CONFIRMED, CACHE_MISS_SPURIOUS);
+    }
+
+    #[test]
+    fn ttft_by_cache_hit_and_miss_indices_are_distinct() {
+        assert_ne!(CACHE_EXPECTED_HIT_IDX, CACHE_EXPECTED_MISS_IDX);
     }
 }

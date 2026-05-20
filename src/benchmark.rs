@@ -5,7 +5,7 @@ use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -13,13 +13,12 @@ use tokio::sync::Semaphore;
 use tokio::time::{sleep, timeout};
 
 use crate::client::{ClientError, Message, OpenAIClient};
-use crate::config::{Config, resolve_max_tokens};
-use crate::distribution::RequestDistribution;
+use crate::config::{Config, ConversationConfig, resolve_max_tokens};
+use crate::distribution::{RequestDistribution, TurnDelayDistribution};
 use crate::metrics::{ErrorType, InflightGuard, Metrics, RequestStatus};
 use crate::report::ReportBuilder;
 use crate::saturation::SaturationResults;
 use crate::tokenizer::Tokenizer;
-use tokio::fs::read_to_string;
 
 /// A prompt to be sent to the LLM server.
 ///
@@ -97,6 +96,25 @@ pub struct BenchmarkRunner {
     workloads: Arc<Vec<Workload>>, // Wrapped in Arc to avoid cloning
     tokenizer: Arc<Tokenizer>,
     system_prompt: Arc<Option<String>>, // Wrapped in Arc to avoid per-request cloning
+    shared_prefix: Arc<Option<String>>,
+    miss_counter: Arc<AtomicU64>,
+}
+
+pub(crate) fn compute_bust_prefix(expected_hit: bool, counter: &AtomicU64) -> String {
+    if expected_hit {
+        "[shared] ".to_string()
+    } else {
+        let n = counter.fetch_add(1, Ordering::Relaxed) + 1;
+        format!("[bust-{}] ", n)
+    }
+}
+
+/// Returns Some(true/false) if the server reported cache details, None otherwise.
+pub(crate) fn actual_cache_hit_option(usage: &crate::client::Usage) -> Option<bool> {
+    usage
+        .prompt_tokens_details
+        .as_ref()
+        .map(|d| d.cached_tokens > 0)
 }
 
 impl BenchmarkRunner {
@@ -218,16 +236,6 @@ impl BenchmarkRunner {
             }
         };
 
-        // In synthetic mode with add_prefix enabled, each generated prompt already carries a
-        // unique [synthetic-{index}-t{turn}] prefix. Disable the request-level cache_busting
-        // prefix to avoid stacking a redundant [req-N] on top and inflating token counts.
-        if config.input.should_suppress_cache_busting() {
-            info!(
-                "Synthetic add_prefix is enabled; disabling cache_busting to avoid double prefix"
-            );
-            config.input.cache_busting = false;
-        }
-
         // Log what we loaded or generated
         if config.input.is_synthetic() {
             info!("Generated {} synthetic prompts", workloads.len());
@@ -248,33 +256,76 @@ impl BenchmarkRunner {
             }
         }
 
-        // Load system prompt: first try inline string, then file if specified.
-        // None means "not configured" — dataset conversations keep their own system prompts.
-        let system_prompt_opt: Option<String> = if let Some(ref inline) = config.input.system_prompt
-        {
-            Some(inline.clone())
-        } else if let Some(file_path) = &config.input.system_prompt_file {
-            if let Ok(content) = read_to_string(file_path).await {
-                info!("Loaded system prompt from file: {}", file_path.display());
-                Some(content)
-            } else {
-                warn!("Failed to read system prompt file: {}", file_path.display());
-                return Err(anyhow::anyhow!(
-                    "Failed to read system prompt file: {}",
-                    file_path.display()
-                ));
+        let system_prompt_text: Option<String> = match &config.input.system_prompt {
+            None => None,
+            Some(sp) => {
+                if let Some(ref content) = sp.content {
+                    Some(content.clone())
+                } else if let Some(ref file_path) = sp.file {
+                    match tokio::fs::read_to_string(file_path).await {
+                        Ok(content) => Some(content),
+                        Err(e) => {
+                            return Err(anyhow::anyhow!(
+                                "Failed to read system prompt file {}: {}",
+                                file_path.display(),
+                                e
+                            ));
+                        }
+                    }
+                } else if let Some(tokens) = sp.tokens {
+                    let seed = config.input.seed.unwrap_or(42);
+                    info!("Generating {}-token synthetic system prompt", tokens);
+                    Some(crate::synthetic::generate_fixed_text(
+                        tokens,
+                        Arc::clone(&tokenizer),
+                        seed,
+                    ))
+                } else {
+                    None
+                }
             }
-        } else {
-            None
         };
+        let system_prompt = Arc::new(system_prompt_text);
 
-        let system_prompt = Arc::new(system_prompt_opt);
+        let shared_prefix_text: Option<String> = match &config.input.shared_prefix {
+            None => None,
+            Some(pfx) => {
+                if let Some(ref content) = pfx.content {
+                    Some(content.clone())
+                } else if let Some(ref file_path) = pfx.file {
+                    match tokio::fs::read_to_string(file_path).await {
+                        Ok(content) => Some(content),
+                        Err(e) => {
+                            return Err(anyhow::anyhow!(
+                                "Failed to read shared prefix file {}: {}",
+                                file_path.display(),
+                                e
+                            ));
+                        }
+                    }
+                } else if let Some(tokens) = pfx.tokens {
+                    let seed = config.input.seed.unwrap_or(42).wrapping_add(1);
+                    info!("Generating {}-token synthetic shared prefix", tokens);
+                    Some(crate::synthetic::generate_fixed_text(
+                        tokens,
+                        Arc::clone(&tokenizer),
+                        seed,
+                    ))
+                } else {
+                    None
+                }
+            }
+        };
+        let shared_prefix = Arc::new(shared_prefix_text);
+
         Ok(Self {
             client: Arc::new(client),
             config,
             workloads: Arc::new(workloads), // Wrap in Arc
             tokenizer,
             system_prompt, // Arc-wrapped to avoid per-request cloning
+            shared_prefix,
+            miss_counter: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -382,6 +433,33 @@ impl BenchmarkRunner {
         let start_instant = Instant::now();
 
         debug!("Starting benchmark run");
+
+        if let Some(conv) = self.config.conversation
+            && conv.turn_delay_ms > 0
+            && let Some(duration_secs) = self.config.load.duration_seconds
+        {
+            let max_turns = self
+                .workloads
+                .iter()
+                .map(|w| match w {
+                    Workload::SingleTurn(_) => 1,
+                    Workload::MultiTurn(c) => c.user_turns.len(),
+                })
+                .max()
+                .unwrap_or(1);
+            if max_turns > 1 {
+                let needed_ms = (max_turns as u64).saturating_mul(conv.turn_delay_ms);
+                let budget_ms = duration_secs.saturating_mul(1000);
+                if needed_ms > budget_ms {
+                    warn!(
+                        "Inter-turn delays may exceed test duration: max conversation turns ({}) \
+                         * turn_delay_ms ({}) = {} ms exceeds duration_seconds={}s ({}ms). \
+                         Some conversations will not complete within the run.",
+                        max_turns, conv.turn_delay_ms, needed_ms, duration_secs, budget_ms
+                    );
+                }
+            }
+        }
 
         // Set running flag
         crate::metrics::RUNNING.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -516,7 +594,27 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
-                let cache_busting = self.config.input.cache_busting;
+                let shared_prefix = Arc::clone(&self.shared_prefix);
+                let miss_counter = Arc::clone(&self.miss_counter);
+                let miss_rate = self
+                    .config
+                    .input
+                    .shared_prefix
+                    .as_ref()
+                    .map(|p| p.miss_rate)
+                    .unwrap_or(0.0);
+                let expected_hit = if shared_prefix.is_some() {
+                    !crate::metrics::should_miss(miss_rate)
+                } else {
+                    true
+                };
+                let bust_prefix_str = if shared_prefix.is_some() {
+                    compute_bust_prefix(expected_hit, &miss_counter)
+                } else {
+                    String::new()
+                };
+                let conversation_cfg = self.config.conversation;
+                let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -532,7 +630,10 @@ impl BenchmarkRunner {
                         idx,
                         true,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -566,7 +667,27 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
-                let cache_busting = self.config.input.cache_busting;
+                let shared_prefix = Arc::clone(&self.shared_prefix);
+                let miss_counter = Arc::clone(&self.miss_counter);
+                let miss_rate = self
+                    .config
+                    .input
+                    .shared_prefix
+                    .as_ref()
+                    .map(|p| p.miss_rate)
+                    .unwrap_or(0.0);
+                let expected_hit = if shared_prefix.is_some() {
+                    !crate::metrics::should_miss(miss_rate)
+                } else {
+                    true
+                };
+                let bust_prefix_str = if shared_prefix.is_some() {
+                    compute_bust_prefix(expected_hit, &miss_counter)
+                } else {
+                    String::new()
+                };
+                let conversation_cfg = self.config.conversation;
+                let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -582,7 +703,10 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -611,7 +735,17 @@ impl BenchmarkRunner {
                     // Capture system_prompt for this closure
                     let system_prompt = Arc::clone(&self.system_prompt);
                     let default_max_tokens = self.config.endpoint.max_tokens;
-                    let cache_busting = self.config.input.cache_busting;
+                    let shared_prefix = Arc::clone(&self.shared_prefix);
+                    let miss_counter = Arc::clone(&self.miss_counter);
+                    let miss_rate = self
+                        .config
+                        .input
+                        .shared_prefix
+                        .as_ref()
+                        .map(|p| p.miss_rate)
+                        .unwrap_or(0.0);
+                    let conversation_cfg = self.config.conversation;
+                    let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                     let handle = tokio::spawn(async move {
                         while Instant::now() < warmup_deadline {
@@ -623,6 +757,17 @@ impl BenchmarkRunner {
                             let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
                             let workload = &workloads[idx % workloads.len()];
 
+                            let expected_hit = if shared_prefix.is_some() {
+                                !crate::metrics::should_miss(miss_rate)
+                            } else {
+                                true
+                            };
+                            let bust_prefix_str = if shared_prefix.is_some() {
+                                compute_bust_prefix(expected_hit, &miss_counter)
+                            } else {
+                                String::new()
+                            };
+
                             let _ = Self::execute_workload(
                                 &system_prompt,
                                 client.clone(),
@@ -631,7 +776,10 @@ impl BenchmarkRunner {
                                 idx,
                                 true,
                                 default_max_tokens,
-                                cache_busting,
+                                bust_prefix_str,
+                                expected_hit,
+                                conversation_cfg,
+                                delay_base_seed,
                             )
                             .await;
                             warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -672,7 +820,17 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
-                let cache_busting = self.config.input.cache_busting;
+                let shared_prefix = Arc::clone(&self.shared_prefix);
+                let miss_counter = Arc::clone(&self.miss_counter);
+                let miss_rate = self
+                    .config
+                    .input
+                    .shared_prefix
+                    .as_ref()
+                    .map(|p| p.miss_rate)
+                    .unwrap_or(0.0);
+                let conversation_cfg = self.config.conversation;
+                let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                 let handle = tokio::spawn(async move {
                     while !should_stop.load(Ordering::Relaxed) {
@@ -702,6 +860,17 @@ impl BenchmarkRunner {
                             break;
                         }
 
+                        let expected_hit = if shared_prefix.is_some() {
+                            !crate::metrics::should_miss(miss_rate)
+                        } else {
+                            true
+                        };
+                        let bust_prefix_str = if shared_prefix.is_some() {
+                            compute_bust_prefix(expected_hit, &miss_counter)
+                        } else {
+                            String::new()
+                        };
+
                         // Execute workload with timeout based on remaining time
                         let request_future = Self::execute_workload(
                             &system_prompt,
@@ -711,7 +880,10 @@ impl BenchmarkRunner {
                             idx,
                             false,
                             default_max_tokens,
-                            cache_busting,
+                            bust_prefix_str,
+                            expected_hit,
+                            conversation_cfg,
+                            delay_base_seed,
                         );
                         match tokio::time::timeout(remaining, request_future).await {
                             Ok(_) => {
@@ -805,7 +977,17 @@ impl BenchmarkRunner {
                 // Capture system_prompt for this closure
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
-                let cache_busting = self.config.input.cache_busting;
+                let shared_prefix = Arc::clone(&self.shared_prefix);
+                let miss_counter = Arc::clone(&self.miss_counter);
+                let miss_rate = self
+                    .config
+                    .input
+                    .shared_prefix
+                    .as_ref()
+                    .map(|p| p.miss_rate)
+                    .unwrap_or(0.0);
+                let conversation_cfg = self.config.conversation;
+                let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                 let handle = tokio::spawn(async move {
                     while Instant::now() < warmup_deadline {
@@ -815,6 +997,16 @@ impl BenchmarkRunner {
                         };
                         let idx = prompt_index_clone.fetch_add(1, Ordering::Relaxed);
                         let workload = &workloads[idx % workloads.len()];
+                        let expected_hit = if shared_prefix.is_some() {
+                            !crate::metrics::should_miss(miss_rate)
+                        } else {
+                            true
+                        };
+                        let bust_prefix_str = if shared_prefix.is_some() {
+                            compute_bust_prefix(expected_hit, &miss_counter)
+                        } else {
+                            String::new()
+                        };
                         let _ = Self::execute_workload(
                             &system_prompt,
                             client.clone(),
@@ -823,7 +1015,10 @@ impl BenchmarkRunner {
                             idx,
                             true,
                             default_max_tokens,
-                            cache_busting,
+                            bust_prefix_str,
+                            expected_hit,
+                            conversation_cfg,
+                            delay_base_seed,
                         )
                         .await;
                     }
@@ -864,7 +1059,17 @@ impl BenchmarkRunner {
             // Capture system_prompt for this closure
             let system_prompt = Arc::clone(&self.system_prompt);
             let default_max_tokens = self.config.endpoint.max_tokens;
-            let cache_busting = self.config.input.cache_busting;
+            let shared_prefix = Arc::clone(&self.shared_prefix);
+            let miss_counter = Arc::clone(&self.miss_counter);
+            let miss_rate = self
+                .config
+                .input
+                .shared_prefix
+                .as_ref()
+                .map(|p| p.miss_rate)
+                .unwrap_or(0.0);
+            let conversation_cfg = self.config.conversation;
+            let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
             handles.push(tokio::spawn(async move {
                 loop {
@@ -884,6 +1089,16 @@ impl BenchmarkRunner {
 
                     let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
                     let workload = &workloads[idx % workloads.len()];
+                    let expected_hit = if shared_prefix.is_some() {
+                        !crate::metrics::should_miss(miss_rate)
+                    } else {
+                        true
+                    };
+                    let bust_prefix_str = if shared_prefix.is_some() {
+                        compute_bust_prefix(expected_hit, &miss_counter)
+                    } else {
+                        String::new()
+                    };
                     let _ = Self::execute_workload(
                         &system_prompt,
                         client.clone(),
@@ -892,7 +1107,10 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     )
                     .await;
                 }
@@ -1004,7 +1222,27 @@ impl BenchmarkRunner {
                 let warmup_completed = Arc::clone(&warmup_completed);
                 let system_prompt_clone = Arc::clone(&system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
-                let cache_busting = self.config.input.cache_busting;
+                let shared_prefix = Arc::clone(&self.shared_prefix);
+                let miss_counter = Arc::clone(&self.miss_counter);
+                let miss_rate = self
+                    .config
+                    .input
+                    .shared_prefix
+                    .as_ref()
+                    .map(|p| p.miss_rate)
+                    .unwrap_or(0.0);
+                let expected_hit = if shared_prefix.is_some() {
+                    !crate::metrics::should_miss(miss_rate)
+                } else {
+                    true
+                };
+                let bust_prefix_str = if shared_prefix.is_some() {
+                    compute_bust_prefix(expected_hit, &miss_counter)
+                } else {
+                    String::new()
+                };
+                let conversation_cfg = self.config.conversation;
+                let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -1020,7 +1258,10 @@ impl BenchmarkRunner {
                         idx,
                         true,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1055,7 +1296,27 @@ impl BenchmarkRunner {
                 let warmup_completed = Arc::clone(&warmup_completed);
                 let system_prompt_closure = Arc::clone(&system_prompt_clone);
                 let default_max_tokens = self.config.endpoint.max_tokens;
-                let cache_busting = self.config.input.cache_busting;
+                let shared_prefix = Arc::clone(&self.shared_prefix);
+                let miss_counter = Arc::clone(&self.miss_counter);
+                let miss_rate = self
+                    .config
+                    .input
+                    .shared_prefix
+                    .as_ref()
+                    .map(|p| p.miss_rate)
+                    .unwrap_or(0.0);
+                let expected_hit = if shared_prefix.is_some() {
+                    !crate::metrics::should_miss(miss_rate)
+                } else {
+                    true
+                };
+                let bust_prefix_str = if shared_prefix.is_some() {
+                    compute_bust_prefix(expected_hit, &miss_counter)
+                } else {
+                    String::new()
+                };
+                let conversation_cfg = self.config.conversation;
+                let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
                 let handle = tokio::spawn(async move {
                     let workload = &workloads[workload_idx];
@@ -1071,7 +1332,10 @@ impl BenchmarkRunner {
                         idx,
                         true,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1135,7 +1399,27 @@ impl BenchmarkRunner {
             let request_timeout = remaining;
             let system_prompt_for_closure = Arc::clone(&system_prompt);
             let default_max_tokens = self.config.endpoint.max_tokens;
-            let cache_busting = self.config.input.cache_busting;
+            let shared_prefix = Arc::clone(&self.shared_prefix);
+            let miss_counter = Arc::clone(&self.miss_counter);
+            let miss_rate = self
+                .config
+                .input
+                .shared_prefix
+                .as_ref()
+                .map(|p| p.miss_rate)
+                .unwrap_or(0.0);
+            let expected_hit = if shared_prefix.is_some() {
+                !crate::metrics::should_miss(miss_rate)
+            } else {
+                true
+            };
+            let bust_prefix_str = if shared_prefix.is_some() {
+                compute_bust_prefix(expected_hit, &miss_counter)
+            } else {
+                String::new()
+            };
+            let conversation_cfg = self.config.conversation;
+            let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
             let handle = tokio::spawn(async move {
                 let workload = &workloads[workload_idx];
@@ -1153,7 +1437,10 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     );
                     match timeout(timeout_duration, request_future).await {
                         Ok(result) => {
@@ -1178,7 +1465,10 @@ impl BenchmarkRunner {
                         idx,
                         false,
                         default_max_tokens,
-                        cache_busting,
+                        bust_prefix_str,
+                        expected_hit,
+                        conversation_cfg,
+                        delay_base_seed,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -1254,7 +1544,10 @@ impl BenchmarkRunner {
         index: usize,
         is_warmup: bool,
         default_max_tokens: Option<u32>,
-        cache_busting: bool,
+        bust_prefix: String,
+        expected_hit: bool,
+        conversation_cfg: Option<ConversationConfig>,
+        delay_base_seed: u64,
     ) -> Result<()> {
         match workload {
             Workload::SingleTurn(prompt) => {
@@ -1266,7 +1559,8 @@ impl BenchmarkRunner {
                     index,
                     is_warmup,
                     default_max_tokens,
-                    cache_busting,
+                    bust_prefix,
+                    expected_hit,
                 )
                 .await
             }
@@ -1288,13 +1582,17 @@ impl BenchmarkRunner {
                     index,
                     is_warmup,
                     default_max_tokens,
-                    cache_busting,
+                    bust_prefix,
+                    expected_hit,
+                    conversation_cfg,
+                    delay_base_seed,
                 )
                 .await
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn execute_conversation(
         client: Arc<OpenAIClient>,
         tokenizer: Arc<Tokenizer>,
@@ -1302,7 +1600,10 @@ impl BenchmarkRunner {
         index: usize,
         is_warmup: bool,
         default_max_tokens: Option<u32>,
-        cache_busting: bool,
+        bust_prefix: String,
+        expected_hit: bool,
+        conversation_cfg: Option<ConversationConfig>,
+        delay_base_seed: u64,
     ) -> Result<()> {
         debug!(
             "Executing conversation {} ({} turns, warmup: {})",
@@ -1329,12 +1630,23 @@ impl BenchmarkRunner {
 
         let mut conversation_failed = false;
 
+        // Per-conversation inter-turn delay sampler. Built only when delays are
+        // configured to a non-zero distribution, so the default-config path
+        // remains byte-identical to the pre-feature behavior.
+        let mut turn_delay = conversation_cfg
+            .filter(|c| !TurnDelayDistribution::is_no_op(c))
+            .map(|c| {
+                let seed = delay_base_seed.wrapping_add((index as u64).wrapping_mul(7919));
+                TurnDelayDistribution::new(&c, seed)
+            });
+        let total_turns = conversation.user_turns.len();
+
         for (turn_idx, user_turn) in conversation.user_turns.iter().enumerate() {
-            // Cache bust only the first user message to prevent cross-conversation
-            // cache hits, but allow prefix caching within the conversation
-            // (unless cache-busting is disabled)
-            let content = if cache_busting && turn_idx == 0 {
-                format!("[req-{}] {}", index, user_turn)
+            // Prepend bust_prefix only to the first user message to prevent
+            // cross-conversation cache hits while allowing prefix caching within
+            // the conversation
+            let content = if turn_idx == 0 {
+                format!("{}{}", bust_prefix, user_turn)
             } else {
                 user_turn.clone()
             };
@@ -1403,6 +1715,16 @@ impl BenchmarkRunner {
 
                         if let Some(ttft) = stream.time_to_first_token() {
                             Metrics::record_ttft(ttft, input_tokens);
+                            // Record cache outcome only for first turn (where bust_prefix applies)
+                            if turn_idx == 0 {
+                                let actual_hit =
+                                    stream.server_usage().and_then(actual_cache_hit_option);
+                                crate::metrics::Metrics::record_cache_outcome(
+                                    expected_hit,
+                                    actual_hit,
+                                    ttft,
+                                );
+                            }
                         }
                         if let Some(ttft) = stream.time_to_first_content_token() {
                             Metrics::record_ttft_content(ttft, input_tokens);
@@ -1488,6 +1810,18 @@ impl BenchmarkRunner {
                     break;
                 }
             }
+
+            // Inter-turn think time. The InflightGuard for this turn has already
+            // been consumed by `guard.complete(...)` above, so the conversation
+            // is not counted as in-flight while we sleep.
+            if let Some(ref mut sampler) = turn_delay
+                && turn_idx + 1 < total_turns
+            {
+                let delay = sampler.sample();
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
+            }
         }
 
         if !is_warmup {
@@ -1506,6 +1840,7 @@ impl BenchmarkRunner {
     pub(crate) fn build_single_turn_messages(
         system_prompt: &Option<String>,
         user_content: String,
+        bust_prefix: &str,
     ) -> Vec<Message> {
         let mut messages = Vec::new();
         if let Some(sp) = system_prompt {
@@ -1516,7 +1851,7 @@ impl BenchmarkRunner {
         }
         messages.push(Message {
             role: "user".to_string(),
-            content: user_content,
+            content: format!("{}{}", bust_prefix, user_content),
         });
         messages
     }
@@ -1530,7 +1865,8 @@ impl BenchmarkRunner {
         index: usize,
         is_warmup: bool,
         default_max_tokens: Option<u32>,
-        cache_busting: bool,
+        bust_prefix: String,
+        expected_hit: bool,
     ) -> Result<()> {
         debug!("Executing request {} (warmup: {})", index, is_warmup);
 
@@ -1538,16 +1874,10 @@ impl BenchmarkRunner {
 
         let guard = InflightGuard::new(!is_warmup);
 
-        // Add per-request cache-busting to ensure every request is unique
-        // (unless disabled for prefix caching tests)
-        let user_content = if !cache_busting {
-            prompt.prompt.clone()
-        } else {
-            format!("[req-{}] {}", index, prompt.prompt)
-        };
+        let user_content = prompt.prompt.clone();
         let max_tokens = resolve_max_tokens(default_max_tokens, prompt.max_tokens);
 
-        let messages = Self::build_single_turn_messages(system_prompt, user_content);
+        let messages = Self::build_single_turn_messages(system_prompt, user_content, &bust_prefix);
         let request = client.create_messages_request(&messages, max_tokens, None, None);
 
         match client.chat_completion_stream(request).await {
@@ -1598,6 +1928,13 @@ impl BenchmarkRunner {
                     // TTFT — first token of any kind (prefill latency)
                     if let Some(ttft) = stream.time_to_first_token() {
                         Metrics::record_ttft(ttft, input_tokens);
+                        // Record cache outcome split by expected/actual hit using TTFT
+                        let actual_hit = stream.server_usage().and_then(actual_cache_hit_option);
+                        crate::metrics::Metrics::record_cache_outcome(
+                            expected_hit,
+                            actual_hit,
+                            ttft,
+                        );
                     }
                     // TTFT content — first visible content token
                     if let Some(ttft) = stream.time_to_first_content_token() {
@@ -1812,30 +2149,6 @@ impl BenchmarkRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{InputConfig, SyntheticConfig};
-
-    // Helper to build a minimal synthetic InputConfig
-    fn synthetic_input(add_prefix: bool, cache_busting: bool) -> InputConfig {
-        InputConfig {
-            file: "synthetic".into(),
-            seed: None,
-            sample_size: None,
-            system_prompt: None,
-            system_prompt_file: None,
-            synthetic: Some(SyntheticConfig {
-                prompt_tokens: 100,
-                prompt_tokens_stdev: None,
-                prompt_tokens_min: None,
-                prompt_tokens_max: None,
-                add_prefix,
-                common_prefix_sample_ratio: 0.0,
-                common_prefix_tokens: 0,
-                turns: 1,
-                turn_prompt_tokens: None,
-            }),
-            cache_busting,
-        }
-    }
 
     // --- ShareGPT system prompt preservation ---
 
@@ -1887,7 +2200,8 @@ mod tests {
     #[test]
     fn build_single_turn_messages_prepends_system_message() {
         let system = Some("You are a pirate.".to_string());
-        let messages = BenchmarkRunner::build_single_turn_messages(&system, "Hello".to_string());
+        let messages =
+            BenchmarkRunner::build_single_turn_messages(&system, "Hello".to_string(), "");
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "system");
         assert_eq!(messages[0].content, "You are a pirate.");
@@ -1897,40 +2211,68 @@ mod tests {
 
     #[test]
     fn build_single_turn_messages_omits_system_when_none() {
-        let messages = BenchmarkRunner::build_single_turn_messages(&None, "Hello".to_string());
+        let messages = BenchmarkRunner::build_single_turn_messages(&None, "Hello".to_string(), "");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "Hello");
     }
 
-    // --- Synthetic cache-busting suppression ---
-
     #[test]
-    fn cache_busting_suppressed_when_synthetic_add_prefix_on() {
-        assert!(synthetic_input(true, true).should_suppress_cache_busting());
+    fn build_single_turn_with_bust_prefix_prepends_to_user_content() {
+        let messages = BenchmarkRunner::build_single_turn_messages(
+            &Some("sys".to_string()),
+            "hello".to_string(),
+            "[shared] ",
+        );
+        assert_eq!(messages[0].role, "system");
+        assert_eq!(messages[0].content, "sys");
+        assert_eq!(messages[1].role, "user");
+        assert_eq!(messages[1].content, "[shared] hello");
     }
 
     #[test]
-    fn cache_busting_not_suppressed_when_add_prefix_off() {
-        assert!(!synthetic_input(false, true).should_suppress_cache_busting());
+    fn build_single_turn_empty_bust_prefix_leaves_content_unchanged() {
+        let messages = BenchmarkRunner::build_single_turn_messages(&None, "hello".to_string(), "");
+        assert_eq!(messages[0].content, "hello");
     }
 
     #[test]
-    fn cache_busting_not_suppressed_when_already_disabled() {
-        assert!(!synthetic_input(true, false).should_suppress_cache_busting());
+    fn bust_prefix_for_hit_is_shared_tag() {
+        let counter = std::sync::atomic::AtomicU64::new(0);
+        let prefix = compute_bust_prefix(true, &counter);
+        assert_eq!(prefix, "[shared] ");
     }
 
     #[test]
-    fn cache_busting_not_suppressed_for_file_mode() {
-        let config = InputConfig {
-            file: "prompts.jsonl".into(),
-            seed: None,
-            sample_size: None,
-            system_prompt: None,
-            system_prompt_file: None,
-            synthetic: None,
-            cache_busting: true,
+    fn bust_prefix_for_miss_increments_counter() {
+        let counter = std::sync::atomic::AtomicU64::new(0);
+        let p1 = compute_bust_prefix(false, &counter);
+        let p2 = compute_bust_prefix(false, &counter);
+        assert_eq!(p1, "[bust-1] ");
+        assert_eq!(p2, "[bust-2] ");
+    }
+
+    #[test]
+    fn actual_cache_hit_detected_when_cached_tokens_nonzero() {
+        use crate::client::Usage;
+        let usage = Usage {
+            prompt_tokens: 100,
+            completion_tokens: 10,
+            total_tokens: 110,
+            prompt_tokens_details: Some(crate::client::PromptTokensDetails { cached_tokens: 80 }),
         };
-        assert!(!config.should_suppress_cache_busting());
+        assert_eq!(actual_cache_hit_option(&usage), Some(true));
+    }
+
+    #[test]
+    fn actual_hit_absent_when_no_details() {
+        use crate::client::Usage;
+        let usage = Usage {
+            prompt_tokens: 100,
+            completion_tokens: 10,
+            total_tokens: 110,
+            prompt_tokens_details: None,
+        };
+        assert!(actual_cache_hit_option(&usage).is_none());
     }
 }

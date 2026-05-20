@@ -100,7 +100,6 @@ pub struct SyntheticDataGenerator {
     turn_prompt_tokens: Option<usize>,
     tokenizer: Arc<Tokenizer>,
     seed: u64,
-    add_prefix: bool,
     common_prefix_ratio: f64,
     common_prefix_text: Option<String>,
 }
@@ -110,7 +109,7 @@ impl SyntheticDataGenerator {
     pub fn new(config: &SyntheticConfig, tokenizer: Arc<Tokenizer>, seed: u64) -> Self {
         // Generate common prefix text if needed
         let common_prefix_text = if config.common_prefix_tokens > 0 {
-            Some(Self::generate_prefix_text(
+            Some(generate_fixed_text(
                 config.common_prefix_tokens,
                 tokenizer.clone(),
                 seed,
@@ -130,7 +129,6 @@ impl SyntheticDataGenerator {
             turn_prompt_tokens: config.turn_prompt_tokens,
             tokenizer,
             seed,
-            add_prefix: config.add_prefix,
             common_prefix_ratio: config.common_prefix_sample_ratio,
             common_prefix_text,
         }
@@ -208,31 +206,28 @@ impl SyntheticDataGenerator {
         use_common_prefix: bool,
         _max_tokens: Option<u32>,
     ) -> String {
-        // Prefix uses workload index + turn index for deterministic uniqueness
+        // Use common prefix text if applicable, otherwise empty prefix
         let prefix = if use_common_prefix {
             if let Some(ref common_prefix) = self.common_prefix_text {
                 if !common_prefix.is_empty() {
                     common_prefix.clone()
-                } else if self.add_prefix {
-                    format!("[synthetic-{}-t{}] ", index, turn_idx)
                 } else {
                     String::new()
                 }
-            } else if self.add_prefix {
-                format!("[synthetic-{}-t{}] ", index, turn_idx)
             } else {
                 String::new()
             }
-        } else if self.add_prefix {
-            format!("[synthetic-{}-t{}] ", index, turn_idx)
         } else {
             String::new()
         };
 
+        // Suppress unused variable warnings for index and turn_idx
+        let _ = (index, turn_idx);
+
         // Calculate how many tokens we need after the prefix
         let prefix_tokens = self.tokenizer.count_tokens(&prefix);
         let remaining_tokens = if prefix_tokens >= token_count {
-            return prefix[..self.truncate_to_tokens(&prefix, token_count)].to_string();
+            return self.tokenizer.truncate_to_tokens(&prefix, token_count);
         } else {
             token_count - prefix_tokens
         };
@@ -260,7 +255,7 @@ impl SyntheticDataGenerator {
             let token_count_actual = self.tokenizer.count_tokens(&full_text);
 
             if token_count_actual >= token_count {
-                return full_text[..self.truncate_to_tokens(&full_text, token_count)].to_string();
+                return self.tokenizer.truncate_to_tokens(&full_text, token_count);
             }
             if attempts >= MAX_ATTEMPTS {
                 warn!(
@@ -271,89 +266,58 @@ impl SyntheticDataGenerator {
             }
         }
     }
+}
 
-    /// Truncate text to exact token count by finding the character boundary.
-    fn truncate_to_tokens(&self, text: &str, target_tokens: usize) -> usize {
-        // Binary search to find the right character position
-        let mut low = 0;
-        let mut high = text.len();
+/// Generate fixed-seed synthetic text of exactly `token_count` tokens.
+/// Used for common prefix generation and cache control testing.
+///
+/// # Arguments
+/// * `token_count` - Number of tokens to generate
+/// * `tokenizer` - Tokenizer for counting and truncating tokens
+/// * `seed` - Random seed for reproducibility
+pub fn generate_fixed_text(token_count: usize, tokenizer: Arc<Tokenizer>, seed: u64) -> String {
+    const AVG_CHARS_PER_TOKEN: usize = 5;
+    const MARGIN_OF_SAFETY: f64 = 1.5;
+    const MAX_ATTEMPTS: usize = 3;
 
-        while low < high {
-            let mid = (low + high).div_ceil(2);
-            let tokens = self.tokenizer.count_tokens(&text[..mid]);
+    let mut attempts = 0;
 
-            if tokens <= target_tokens {
-                low = mid;
-            } else {
-                high = mid - 1;
-            }
+    loop {
+        attempts += 1;
+
+        // Estimate characters needed
+        let num_chars = ((token_count * AVG_CHARS_PER_TOKEN) as f64
+            * MARGIN_OF_SAFETY
+            * attempts as f64) as usize;
+
+        // Generate random text using fake-rs
+        // Use a fixed seed for deterministic output
+        let mut rng = StdRng::seed_from_u64(seed);
+
+        // Generate text by concatenating sentences until we have enough characters
+        let mut text = String::new();
+        while text.len() < num_chars {
+            let sentence: String = Sentence(5..20).fake_with_rng(&mut rng);
+            text.push_str(&sentence);
+            text.push(' ');
         }
 
-        low
-    }
+        // Truncate to requested length
+        let text = text[..num_chars.min(text.len())].to_string();
 
-    /// Generate a common prefix text with exact token count.
-    /// This prefix will be shared across multiple samples to test prefix caching.
-    fn generate_prefix_text(token_count: usize, tokenizer: Arc<Tokenizer>, seed: u64) -> String {
-        const AVG_CHARS_PER_TOKEN: usize = 5;
-        const MARGIN_OF_SAFETY: f64 = 1.5;
-        const MAX_ATTEMPTS: usize = 3;
+        // Tokenize
+        let token_count_actual = tokenizer.count_tokens(&text);
 
-        let mut attempts = 0;
+        if token_count_actual >= token_count {
+            return tokenizer.truncate_to_tokens(&text, token_count);
+        }
 
-        loop {
-            attempts += 1;
-
-            // Estimate characters needed
-            let num_chars = ((token_count * AVG_CHARS_PER_TOKEN) as f64
-                * MARGIN_OF_SAFETY
-                * attempts as f64) as usize;
-
-            // Generate random text using fake-rs
-            // Use a fixed seed for the common prefix
-            let mut rng = StdRng::seed_from_u64(seed);
-
-            // Generate text by concatenating sentences until we have enough characters
-            let mut text = String::new();
-            while text.len() < num_chars {
-                let sentence: String = Sentence(5..20).fake_with_rng(&mut rng);
-                text.push_str(&sentence);
-                text.push(' ');
-            }
-
-            // Truncate to requested length
-            let text = text[..num_chars.min(text.len())].to_string();
-
-            // Tokenize
-            let token_count_actual = tokenizer.count_tokens(&text);
-
-            if token_count_actual >= token_count {
-                // Success - we have enough tokens
-                // Now truncate to exact count
-                let mut low = 0;
-                let mut high = text.len();
-
-                while low < high {
-                    let mid = (low + high).div_ceil(2);
-                    let tokens = tokenizer.count_tokens(&text[..mid]);
-
-                    if tokens <= token_count {
-                        low = mid;
-                    } else {
-                        high = mid - 1;
-                    }
-                }
-
-                return text[..low].to_string();
-            }
-
-            if attempts >= MAX_ATTEMPTS {
-                warn!(
-                    "Failed to generate common prefix with {} tokens after {} attempts (got {}), using what we have",
-                    token_count, MAX_ATTEMPTS, token_count_actual
-                );
-                return text;
-            }
+        if attempts >= MAX_ATTEMPTS {
+            warn!(
+                "Failed to generate fixed text with {} tokens after {} attempts (got {}), using what we have",
+                token_count, MAX_ATTEMPTS, token_count_actual
+            );
+            return text;
         }
     }
 }
@@ -460,7 +424,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: true,
             common_prefix_sample_ratio: 0.0,
             common_prefix_tokens: 0,
             turns: 1,
@@ -469,12 +432,6 @@ mod tests {
 
         let generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
         let text = generator.generate_prompt_for_turn(50, 0, 0, false, None);
-
-        // Verify it has the prefix
-        assert!(
-            text.starts_with("[synthetic-0-t0]"),
-            "Prompt should have cache-busting prefix with turn index"
-        );
 
         // Verify token count is close to target (allow some tolerance due to tokenization)
         let token_count = tokenizer.count_tokens(&text);
@@ -494,7 +451,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: true,
             common_prefix_sample_ratio: 0.0,
             common_prefix_tokens: 0,
             turns: 1,
@@ -506,10 +462,6 @@ mod tests {
 
         match workload {
             Workload::SingleTurn(prompt) => {
-                assert!(
-                    prompt.prompt.starts_with("[synthetic-0-t0]"),
-                    "Workload should have cache-busting prefix with turn index"
-                );
                 assert_eq!(
                     prompt.max_tokens,
                     Some(50),
@@ -529,7 +481,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: true,
             common_prefix_sample_ratio: 0.0,
             common_prefix_tokens: 0,
             turns: 1,
@@ -567,7 +518,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: false,
             common_prefix_sample_ratio: 0.0,
             common_prefix_tokens: 0,
             turns: 1,
@@ -577,10 +527,10 @@ mod tests {
         let generator = SyntheticDataGenerator::new(&config, tokenizer.clone(), 42);
         let text = generator.generate_prompt_for_turn(50, 0, 0, false, None);
 
-        // Verify it does NOT have the prefix
+        // add_prefix has been removed; prompts should not contain synthetic prefix markers
         assert!(
             !text.starts_with("[synthetic-"),
-            "Prompt should not have prefix when add_prefix=false"
+            "Prompt should not have synthetic prefix after add_prefix removal"
         );
 
         // Verify token count is still close to target
@@ -601,7 +551,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: false,
             common_prefix_sample_ratio: 0.5, // 50% should share common prefix
             common_prefix_tokens: 50,
             turns: 1,
@@ -658,7 +607,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: true,
             common_prefix_sample_ratio: 0.0,
             common_prefix_tokens: 0,
             turns: 3,
@@ -680,10 +628,6 @@ mod tests {
                     "First turn token count {} should be close to 64",
                     first_tokens
                 );
-                assert!(
-                    conv.user_turns[0].starts_with("[synthetic-0-t0]"),
-                    "First turn should have correct prefix"
-                );
 
                 // Subsequent turns use turn_prompt_tokens (48)
                 for (i, turn) in conv.user_turns.iter().skip(1).enumerate() {
@@ -694,11 +638,6 @@ mod tests {
                         "Turn {} token count {} should be close to 48",
                         turn_idx,
                         turn_tokens
-                    );
-                    assert!(
-                        turn.starts_with(&format!("[synthetic-0-t{}]", turn_idx)),
-                        "Turn {} should have correct turn-specific prefix",
-                        turn_idx
                     );
                 }
             }
@@ -715,7 +654,6 @@ mod tests {
             prompt_tokens_stdev: None,
             prompt_tokens_min: None,
             prompt_tokens_max: None,
-            add_prefix: true,
             common_prefix_sample_ratio: 0.0,
             common_prefix_tokens: 0,
             turns: 4,

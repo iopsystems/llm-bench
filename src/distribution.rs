@@ -1,8 +1,10 @@
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rand::thread_rng;
-use rand_distr::{Distribution, Exp};
+use rand_distr::{Distribution, Exp, Normal};
 use std::time::Duration;
 
-use crate::config::ArrivalDistribution;
+use crate::config::{ArrivalDistribution, ConversationConfig};
 
 /// Manages request arrival patterns for load testing
 pub struct RequestDistribution {
@@ -65,6 +67,57 @@ impl RequestDistribution {
     }
 }
 
+/// Per-conversation sampler for inter-turn delays.
+///
+/// Samples from a Gaussian centered at `mean_ms` with `stdev_ms` standard deviation,
+/// clamped to `[min_ms, max_ms]`. With `stdev_ms == 0`, the sampler returns `mean_ms`
+/// exactly (clamped) and consumes no entropy from the RNG.
+pub struct TurnDelayDistribution {
+    mean_ms: u64,
+    stdev_ms: u64,
+    min_ms: u64,
+    max_ms: u64,
+    rng: StdRng,
+}
+
+impl TurnDelayDistribution {
+    pub fn new(config: &ConversationConfig, seed: u64) -> Self {
+        Self {
+            mean_ms: config.turn_delay_ms,
+            stdev_ms: config.turn_delay_stdev_ms,
+            min_ms: config.turn_delay_min_ms,
+            max_ms: config.turn_delay_max_ms,
+            rng: StdRng::seed_from_u64(seed),
+        }
+    }
+
+    /// Returns true if every sample would be exactly zero — the caller can skip
+    /// the entire delay-sampling-and-sleeping machinery without changing observable
+    /// behavior.
+    pub fn is_no_op(config: &ConversationConfig) -> bool {
+        config.turn_delay_ms == 0
+            && config.turn_delay_stdev_ms == 0
+            && config.turn_delay_min_ms == 0
+    }
+
+    /// Sample the next inter-turn delay.
+    pub fn sample(&mut self) -> Duration {
+        let ms = if self.stdev_ms == 0 {
+            self.mean_ms.clamp(self.min_ms, self.max_ms)
+        } else {
+            let normal = Normal::new(self.mean_ms as f64, self.stdev_ms as f64)
+                .expect("non-negative stdev produces valid Normal distribution");
+            let sample = normal.sample(&mut self.rng).round();
+            // Clamp in f64 space before casting so negative draws floor to min_ms,
+            // not whatever `as u64` decides to do with a negative float.
+            let lo = self.min_ms as f64;
+            let hi = self.max_ms as f64;
+            sample.clamp(lo, hi) as u64
+        };
+        Duration::from_millis(ms)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +169,95 @@ mod tests {
 
         let poisson = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0);
         assert_eq!(poisson.distribution_name(), "Poisson");
+    }
+
+    #[test]
+    fn turn_delay_returns_mean_when_stdev_zero() {
+        let cfg = ConversationConfig {
+            turn_delay_ms: 250,
+            turn_delay_stdev_ms: 0,
+            turn_delay_min_ms: 0,
+            turn_delay_max_ms: 60_000,
+        };
+        let mut dist = TurnDelayDistribution::new(&cfg, 1);
+        for _ in 0..5 {
+            assert_eq!(dist.sample(), Duration::from_millis(250));
+        }
+    }
+
+    #[test]
+    fn turn_delay_clamps_to_min_max() {
+        // Force the mean way above max so every sample clamps.
+        let cfg = ConversationConfig {
+            turn_delay_ms: 10_000,
+            turn_delay_stdev_ms: 5_000,
+            turn_delay_min_ms: 100,
+            turn_delay_max_ms: 200,
+        };
+        let mut dist = TurnDelayDistribution::new(&cfg, 42);
+        for _ in 0..100 {
+            let d = dist.sample().as_millis() as u64;
+            assert!((100..=200).contains(&d), "sample {} out of bounds", d);
+        }
+    }
+
+    #[test]
+    fn turn_delay_is_deterministic_for_seed() {
+        let cfg = ConversationConfig {
+            turn_delay_ms: 500,
+            turn_delay_stdev_ms: 100,
+            turn_delay_min_ms: 0,
+            turn_delay_max_ms: 60_000,
+        };
+        let mut a = TurnDelayDistribution::new(&cfg, 7);
+        let mut b = TurnDelayDistribution::new(&cfg, 7);
+        for _ in 0..20 {
+            assert_eq!(a.sample(), b.sample());
+        }
+    }
+
+    #[test]
+    fn turn_delay_is_no_op_for_defaults() {
+        assert!(TurnDelayDistribution::is_no_op(
+            &ConversationConfig::default()
+        ));
+        assert!(!TurnDelayDistribution::is_no_op(&ConversationConfig {
+            turn_delay_ms: 1,
+            ..ConversationConfig::default()
+        }));
+        assert!(!TurnDelayDistribution::is_no_op(&ConversationConfig {
+            turn_delay_stdev_ms: 1,
+            ..ConversationConfig::default()
+        }));
+    }
+
+    #[test]
+    fn turn_delay_three_turn_total_matches_spec_example() {
+        // Spec test #2: a 3-turn conversation with turn_delay_ms=200, stdev=0
+        // has two gaps and totals 400 ms of inter-turn delay.
+        let cfg = ConversationConfig {
+            turn_delay_ms: 200,
+            turn_delay_stdev_ms: 0,
+            turn_delay_min_ms: 0,
+            turn_delay_max_ms: 60_000,
+        };
+        let mut dist = TurnDelayDistribution::new(&cfg, 0);
+        let total: Duration = (0..2).map(|_| dist.sample()).sum();
+        assert_eq!(total, Duration::from_millis(400));
+    }
+
+    #[test]
+    fn turn_delay_zero_mean_with_stdev_stays_non_negative() {
+        let cfg = ConversationConfig {
+            turn_delay_ms: 0,
+            turn_delay_stdev_ms: 1000,
+            turn_delay_min_ms: 0,
+            turn_delay_max_ms: 60_000,
+        };
+        let mut dist = TurnDelayDistribution::new(&cfg, 11);
+        for _ in 0..200 {
+            let d = dist.sample();
+            assert!(d.as_millis() <= 60_000);
+        }
     }
 }

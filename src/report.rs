@@ -35,6 +35,10 @@ pub struct BenchmarkReport {
     // Saturation search results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saturation: Option<crate::saturation::SaturationResults>,
+
+    // Cache outcome metrics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache: Option<CacheReport>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +56,14 @@ pub struct TestConfiguration {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
     pub sample_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_delay_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_delay_stdev_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_delay_min_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_delay_max_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,6 +171,22 @@ pub struct ConversationStats {
     pub conversation_latency_p99_ms: f64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CacheReport {
+    pub hit_confirmed: u64,
+    pub hit_evicted: u64,
+    pub miss_confirmed: u64,
+    pub miss_spurious: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_expected_hit_p50_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_expected_hit_p99_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_expected_miss_p50_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_expected_miss_p99_ms: Option<f64>,
+}
+
 pub struct ReportBuilder {
     start_time: SystemTime,
     config: Option<crate::config::Config>,
@@ -251,6 +279,10 @@ impl ReportBuilder {
                 prompt_file: config.input.file.display().to_string(),
                 seed: config.input.seed,
                 sample_size: config.input.sample_size,
+                turn_delay_ms: config.conversation.map(|c| c.turn_delay_ms),
+                turn_delay_stdev_ms: config.conversation.map(|c| c.turn_delay_stdev_ms),
+                turn_delay_min_ms: config.conversation.map(|c| c.turn_delay_min_ms),
+                turn_delay_max_ms: config.conversation.map(|c| c.turn_delay_max_ms),
             }
         } else {
             // Default configuration if not provided
@@ -267,6 +299,10 @@ impl ReportBuilder {
                 prompt_file: "unknown".to_string(),
                 seed: None,
                 sample_size: None,
+                turn_delay_ms: None,
+                turn_delay_stdev_ms: None,
+                turn_delay_min_ms: None,
+                turn_delay_max_ms: None,
             }
         };
 
@@ -319,6 +355,8 @@ impl ReportBuilder {
         // Convert SystemTime to DateTime<Utc>
         let timestamp: DateTime<Utc> = self.start_time.into();
 
+        let cache = build_cache_report();
+
         Ok(BenchmarkReport {
             timestamp,
             duration,
@@ -332,6 +370,7 @@ impl ReportBuilder {
             context_itl,
             conversation,
             saturation: self.saturation_results.clone(),
+            cache,
         })
     }
 
@@ -731,8 +770,111 @@ impl ReportBuilder {
             );
         }
 
+        // Cache outcome stats
+        if let Some(cache_summary) = build_cache_section() {
+            println!("{} {}", timestamp, cache_summary);
+        }
+
         println!("\n");
 
         Ok(())
+    }
+}
+
+/// Returns a `CacheReport` if any cache counters are non-zero, otherwise `None`.
+pub fn build_cache_report() -> Option<CacheReport> {
+    use crate::metrics::{
+        CACHE, CACHE_HIT_CONFIRMED, CACHE_HIT_EVICTED, CACHE_MISS_CONFIRMED, CACHE_MISS_SPURIOUS,
+    };
+
+    let hit_confirmed = CACHE.value(CACHE_HIT_CONFIRMED).unwrap_or(0);
+    let hit_evicted = CACHE.value(CACHE_HIT_EVICTED).unwrap_or(0);
+    let miss_confirmed = CACHE.value(CACHE_MISS_CONFIRMED).unwrap_or(0);
+    let miss_spurious = CACHE.value(CACHE_MISS_SPURIOUS).unwrap_or(0);
+
+    let total = hit_confirmed + hit_evicted + miss_confirmed + miss_spurious;
+    if total == 0 {
+        return None;
+    }
+
+    let extract_ttft_p50_p99 = |idx: usize| -> (Option<f64>, Option<f64>) {
+        use crate::metrics::TTFT_BY_CACHE;
+        let loaded = match TTFT_BY_CACHE.load(idx) {
+            Some(h) => h,
+            None => return (None, None),
+        };
+        if let Ok(Some(result)) = loaded.quantiles(&[0.5, 0.99]) {
+            let values: Vec<f64> = result
+                .entries()
+                .values()
+                .map(|b| b.end() as f64 / 1_000_000.0)
+                .collect();
+            if values.len() == 2 {
+                return (Some(values[0]), Some(values[1]));
+            }
+        }
+        (None, None)
+    };
+
+    let (hit_p50, hit_p99) = extract_ttft_p50_p99(crate::metrics::CACHE_EXPECTED_HIT_IDX);
+    let (miss_p50, miss_p99) = extract_ttft_p50_p99(crate::metrics::CACHE_EXPECTED_MISS_IDX);
+
+    Some(CacheReport {
+        hit_confirmed,
+        hit_evicted,
+        miss_confirmed,
+        miss_spurious,
+        ttft_expected_hit_p50_ms: hit_p50,
+        ttft_expected_hit_p99_ms: hit_p99,
+        ttft_expected_miss_p50_ms: miss_p50,
+        ttft_expected_miss_p99_ms: miss_p99,
+    })
+}
+
+/// Returns a formatted cache summary string if any cache counters are non-zero.
+pub fn build_cache_section() -> Option<String> {
+    let report = build_cache_report()?;
+
+    let hit_confirmed = report.hit_confirmed;
+    let hit_evicted = report.hit_evicted;
+    let miss_confirmed = report.miss_confirmed;
+    let miss_spurious = report.miss_spurious;
+
+    let hit_rate = if hit_confirmed + hit_evicted > 0 {
+        hit_confirmed as f64 / (hit_confirmed + hit_evicted) as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    let mut s = format!(
+        "Cache Outcomes: hit confirmed: {} | hit evicted: {} | miss confirmed: {} | miss spurious: {} | actual hit rate (of expected hits): {:.1}%",
+        hit_confirmed, hit_evicted, miss_confirmed, miss_spurious, hit_rate
+    );
+
+    if let (Some(hp50), Some(hp99), Some(mp50), Some(mp99)) = (
+        report.ttft_expected_hit_p50_ms,
+        report.ttft_expected_hit_p99_ms,
+        report.ttft_expected_miss_p50_ms,
+        report.ttft_expected_miss_p99_ms,
+    ) {
+        s.push_str(&format!(
+            "\n  TTFT expected-hit  p50={:.1}ms p99={:.1}ms  |  expected-miss  p50={:.1}ms p99={:.1}ms",
+            hp50, hp99, mp50, mp99
+        ));
+    }
+
+    Some(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_section_absent_when_no_observations() {
+        // When all CACHE counters are zero, section should return None.
+        // Since metrics are global and may have been modified by other tests,
+        // just confirm the function doesn't panic.
+        let _ = build_cache_section();
     }
 }

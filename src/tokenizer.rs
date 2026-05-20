@@ -40,6 +40,18 @@ impl Tokenizer {
         self.encoder.encode_with_special_tokens(text).len()
     }
 
+    /// Truncate text to at most `max_tokens` tokens. Encodes once and decodes the prefix,
+    /// avoiding the O(log N) repeated tokenization of a binary search.
+    pub fn truncate_to_tokens(&self, text: &str, max_tokens: usize) -> String {
+        let tokens = self.encoder.encode_with_special_tokens(text);
+        if tokens.len() <= max_tokens {
+            return text.to_string();
+        }
+        self.encoder
+            .decode(tokens[..max_tokens].to_vec())
+            .unwrap_or_else(|_| text.to_string())
+    }
+
     pub fn model_type(&self) -> ModelType {
         self.model_type
     }

@@ -13,6 +13,7 @@ pub fn resolve_max_tokens(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub endpoint: EndpointConfig,
     pub load: LoadConfig,
@@ -30,9 +31,47 @@ pub struct Config {
     pub logprobs: Option<LogprobsConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saturation: Option<SaturationConfig>,
+    /// Inter-turn delay configuration for multi-turn conversations.
+    /// If absent, behavior is identical to back-to-back turns (no delay).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<ConversationConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationConfig {
+    /// Mean delay between consecutive turns of a conversation, in milliseconds.
+    #[serde(default)]
+    pub turn_delay_ms: u64,
+    /// Standard deviation for Gaussian sampling of the delay, in milliseconds.
+    /// 0 (default) makes the delay deterministic.
+    #[serde(default)]
+    pub turn_delay_stdev_ms: u64,
+    /// Lower clamp for the sampled delay, in milliseconds.
+    #[serde(default)]
+    pub turn_delay_min_ms: u64,
+    /// Upper clamp for the sampled delay, in milliseconds.
+    #[serde(default = "default_turn_delay_max_ms")]
+    pub turn_delay_max_ms: u64,
+}
+
+impl Default for ConversationConfig {
+    fn default() -> Self {
+        Self {
+            turn_delay_ms: 0,
+            turn_delay_stdev_ms: 0,
+            turn_delay_min_ms: 0,
+            turn_delay_max_ms: default_turn_delay_max_ms(),
+        }
+    }
+}
+
+fn default_turn_delay_max_ms() -> u64 {
+    60_000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EndpointConfig {
     pub base_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -68,6 +107,7 @@ pub enum ArrivalDistribution {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LoadConfig {
     #[serde(default = "default_concurrent_requests")]
     pub concurrent_requests: usize,
@@ -85,10 +125,6 @@ pub struct LoadConfig {
     pub warmup_duration: Option<u64>, // Warmup duration in seconds (alternative to warmup_requests)
 }
 
-fn default_add_prefix() -> bool {
-    true
-}
-
 fn default_common_prefix_sample_ratio() -> f64 {
     0.0
 }
@@ -97,15 +133,12 @@ fn default_common_prefix_tokens() -> usize {
     0
 }
 
-fn default_cache_busting() -> bool {
-    true
-}
-
 fn default_turns() -> usize {
     1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SyntheticConfig {
     /// Average number of tokens in generated prompts
     pub prompt_tokens: usize,
@@ -118,10 +151,6 @@ pub struct SyntheticConfig {
     /// Maximum prompt token count (hard limit)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_max: Option<usize>,
-    /// Whether to add unique [synthetic-{index}] prefix for cache busting
-    /// Default: true
-    #[serde(default = "default_add_prefix")]
-    pub add_prefix: bool,
     /// Ratio of samples that share a common prefix (0.0 to 1.0).
     /// Used to test prefix caching effectiveness. 0.0 = all unique, 1.0 = all share common prefix.
     /// Selection is deterministic and strided (e.g. 0.5 picks every other request), not random.
@@ -142,53 +171,79 @@ pub struct SyntheticConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InputConfig {
-    pub file: PathBuf,
-    /// Seed for deterministic shuffling. If set, prompts are shuffled using this seed
-    /// for reproducible ordering across runs. If not set, prompts are used in file order.
+#[serde(deny_unknown_fields)]
+pub struct SystemPromptConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed: Option<u64>,
+    pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_size: Option<usize>,
-    /// System prompt to use for conversations. If set, will override the system message
-    /// in the dataset (if present) or prepend to the first user message. Useful for
-    /// agentic workloads where you want to test with specific system instructions.
+    pub file: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_prompt: Option<String>,
-    /// Path to a file containing the system prompt. If provided, the file will be read
-    /// and used as the system prompt. This is an alternative to `system_prompt` which
-    /// allows specifying the prompt inline. The file path is relative to the config file
-    /// unless it is an absolute path.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_prompt_file: Option<PathBuf>,
-    /// Synthetic data configuration. Used when file = "synthetic" to generate
-    /// random prompts with controlled token distributions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub synthetic: Option<SyntheticConfig>,
-    /// Whether to prepend a unique [req-{index}] prefix to each prompt.
-    /// When true (default), each prompt gets a unique prefix for independent benchmarking.
-    /// When false, prompts are sent as-is, allowing prefix caching to work.
-    /// Default: true
-    #[serde(default = "default_cache_busting")]
-    pub cache_busting: bool,
+    pub tokens: Option<usize>,
 }
 
-impl InputConfig {
-    /// Check if synthetic mode is enabled
-    pub fn is_synthetic(&self) -> bool {
-        self.file.to_str() == Some("synthetic")
-    }
-
-    /// Returns true when cache_busting should be disabled because synthetic add_prefix
-    /// already guarantees uniqueness via a per-workload [synthetic-N-tT] prefix.
-    pub fn should_suppress_cache_busting(&self) -> bool {
-        self.is_synthetic()
-            && self.synthetic.as_ref().is_some_and(|s| s.add_prefix)
-            && self.cache_busting
+impl SystemPromptConfig {
+    fn source_count(&self) -> usize {
+        [
+            self.content.is_some(),
+            self.file.is_some(),
+            self.tokens.is_some(),
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedPrefixConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<usize>,
+    #[serde(default)]
+    pub miss_rate: f64,
+}
+
+impl SharedPrefixConfig {
+    fn source_count(&self) -> usize {
+        [
+            self.content.is_some(),
+            self.file.is_some(),
+            self.tokens.is_some(),
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputConfig {
+    pub file: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub synthetic: Option<SyntheticConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<SystemPromptConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_prefix: Option<SharedPrefixConfig>,
+}
+
+impl InputConfig {
+    pub fn is_synthetic(&self) -> bool {
+        self.file.to_str() == Some("synthetic")
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OutputConfig {
     #[serde(default = "default_output_format")]
     pub format: OutputFormat,
@@ -201,12 +256,14 @@ pub struct OutputConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RuntimeConfig {
     #[serde(default = "default_worker_threads")]
     pub worker_threads: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: LogLevel,
@@ -245,6 +302,7 @@ pub enum OutputFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MetricsConfig {
     /// File for parquet metrics output
     pub output: PathBuf,
@@ -257,6 +315,7 @@ pub struct MetricsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AdminConfig {
     #[serde(default = "default_admin_listen")]
     pub listen: String,
@@ -265,6 +324,7 @@ pub struct AdminConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LogprobsConfig {
     /// Whether to request logprobs from the server
     #[serde(default)]
@@ -307,6 +367,7 @@ impl Default for LogConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SaturationConfig {
     /// SLO thresholds — at least one metric/percentile must be specified
     pub slo: SloThresholds,
@@ -331,6 +392,7 @@ pub struct SaturationConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SloThresholds {
     /// TTFT (time to first token) thresholds
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -344,6 +406,7 @@ pub struct SloThresholds {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SloPercentiles {
     /// Maximum acceptable p50 in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -530,6 +593,16 @@ impl Config {
                 .map_err(|e| anyhow::anyhow!("saturation.sample_window: {}", e))?;
         }
 
+        if let Some(ref conv) = self.conversation
+            && conv.turn_delay_min_ms > conv.turn_delay_max_ms
+        {
+            anyhow::bail!(
+                "conversation.turn_delay_min_ms ({}) must be <= turn_delay_max_ms ({})",
+                conv.turn_delay_min_ms,
+                conv.turn_delay_max_ms
+            );
+        }
+
         // Validate synthetic mode configuration
         if self.input.is_synthetic() {
             // Require endpoint.max_tokens to be set
@@ -619,13 +692,40 @@ impl Config {
             }
         }
 
+        if let Some(ref sp) = self.input.system_prompt {
+            if sp.source_count() == 0 {
+                anyhow::bail!(
+                    "input.system_prompt must have exactly one of: content, file, tokens"
+                );
+            }
+            if sp.source_count() > 1 {
+                anyhow::bail!(
+                    "input.system_prompt must have exactly one of: content, file, tokens"
+                );
+            }
+        }
+
+        if let Some(ref pfx) = self.input.shared_prefix {
+            if pfx.source_count() != 1 {
+                anyhow::bail!(
+                    "input.shared_prefix must have exactly one of: content, file, tokens"
+                );
+            }
+            if !(0.0..=1.0).contains(&pfx.miss_rate) {
+                anyhow::bail!(
+                    "input.shared_prefix.miss_rate must be between 0.0 and 1.0, got {}",
+                    pfx.miss_rate
+                );
+            }
+        }
+
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_max_tokens;
+    use super::*;
 
     #[test]
     fn endpoint_max_tokens_overrides_workload_value() {
@@ -640,5 +740,85 @@ mod tests {
     #[test]
     fn no_max_tokens_when_neither_source_sets_it() {
         assert_eq!(resolve_max_tokens(None, None), None);
+    }
+
+    #[test]
+    fn config_without_conversation_section_omits_field_on_serialize() {
+        // Backward-compat acceptance: a config that omits [conversation] must
+        // not introduce the field into serialized output.
+        let toml = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+
+[load]
+total_requests = 1
+concurrent_requests = 1
+
+[input]
+file = "examples/prompts/openorca-10000.jsonl"
+
+[output]
+format = "json"
+"#;
+        let config: Config = toml::from_str(toml).expect("toml parses");
+        assert!(config.conversation.is_none());
+        let json = serde_json::to_string(&config).expect("json serializes");
+        assert!(
+            !json.contains("conversation"),
+            "serialized config should not mention the conversation field: {}",
+            json
+        );
+        assert!(!json.contains("turn_delay"));
+    }
+
+    #[test]
+    fn conversation_section_parses_with_defaults() {
+        let toml = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+
+[load]
+total_requests = 1
+concurrent_requests = 1
+
+[input]
+file = "examples/prompts/openorca-10000.jsonl"
+
+[output]
+format = "json"
+
+[conversation]
+turn_delay_ms = 1500
+"#;
+        let config: Config = toml::from_str(toml).expect("toml parses");
+        let conv = config.conversation.expect("[conversation] present");
+        assert_eq!(conv.turn_delay_ms, 1500);
+        assert_eq!(conv.turn_delay_stdev_ms, 0);
+        assert_eq!(conv.turn_delay_min_ms, 0);
+        assert_eq!(conv.turn_delay_max_ms, 60_000);
+    }
+
+    #[test]
+    fn conversation_min_max_inversion_is_rejected() {
+        let toml = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+
+[load]
+total_requests = 1
+concurrent_requests = 1
+
+[input]
+file = "examples/prompts/openorca-10000.jsonl"
+
+[output]
+format = "json"
+
+[conversation]
+turn_delay_min_ms = 5000
+turn_delay_max_ms = 1000
+"#;
+        let config: Config = toml::from_str(toml).expect("toml parses");
+        assert!(config.validate().is_err());
     }
 }
