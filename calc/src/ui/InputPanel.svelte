@@ -2,7 +2,7 @@
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
   import { INTERCONNECTS } from '../data/interconnects'
-  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill } from './stores'
+  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill, lockDtype } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
@@ -153,7 +153,7 @@
       <label>
         Weights
         <select bind:value={$quant.weights}>
-          {#each DTYPES as d}<option value={d}>{d}</option>{/each}
+          {#each DTYPES as d}<option value={d} class:native={d === selectedModel?.nativeDtype}>{d}{d === selectedModel?.nativeDtype ? ' — native' : ''}</option>{/each}
         </select>
       </label>
       <label>
@@ -165,8 +165,12 @@
       <label>
         Activations
         <select bind:value={$quant.activations}>
-          {#each DTYPES as d}<option value={d}>{d}</option>{/each}
+          {#each DTYPES as d}<option value={d} class:native={d === selectedModel?.nativeDtype}>{d}{d === selectedModel?.nativeDtype ? ' — native' : ''}</option>{/each}
         </select>
+      </label>
+      <label class="lockdtype" title="Keep this precision when switching models; otherwise weights/activations follow each model's native dtype">
+        <input type="checkbox" bind:checked={$lockDtype} />
+        Lock dtype
       </label>
     </div>
   </fieldset>
@@ -247,4 +251,6 @@
   .warn { font-size: 0.78rem; color: #b85b00; margin-top: 0.15rem; }
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
   input.invalid { border-color: #b85b00; background: #fff7ec; }
+  option.native { font-weight: 700; }
+  .lockdtype { font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; }
 </style>
