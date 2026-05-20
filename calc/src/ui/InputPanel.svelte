@@ -252,5 +252,5 @@
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
   input.invalid { border-color: #b85b00; background: #fff7ec; }
   option.native { font-weight: 700; }
-  .lockdtype { font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; }
+  .lockdtype { font-size: 0.85rem; display: flex; flex-direction: row; align-items: center; gap: 0.35rem; }
 </style>
