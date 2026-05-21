@@ -48,6 +48,7 @@ Replace the hardcoded global `fp16/fp16/fp16` quant default with model-aware def
 
 - `calc/src/ui/InputPanel.svelte`: a **"Lock dtype"** checkbox in the quant controls area, bound to `lockDtype`. Tooltip: "Keep this precision when switching models; otherwise weights/activations follow each model's native dtype."
 - In the **weights** and **activations** `<select>`s: the `<option>` whose value equals the selected model's `nativeDtype` gets `class="native"` (CSS `font-weight: bold`, best-effort — Firefox honors it) **and** a ` — native` text suffix on the option label (the reliable cross-browser cue, since Chrome/Safari ignore per-option font styling).
+- The **weights** `<select>` additionally **disables** options that aren't the native and whose bit-width is `>=` the native's (no upcast, no same-width sideways — post-release quant is downward-only). Activations and KV dropdowns are NOT constrained; activations may differ from weights (weight-only quant is a common deployment pattern), and KV is an independent serving axis.
 - `calc/src/ui/ModelSpecSheet.svelte`: add a "Native precision" row to the **Design** section, rendering `model.nativeDtype`.
 
 ## 5. Testing (TDD)
