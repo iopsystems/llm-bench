@@ -39,13 +39,13 @@ export const quant = writable<Quantization>({
 export const lockDtype = writable(false)
 
 // Wire the model→quant coupling. Call once at startup AFTER readUrlIntoStores()
-// so a shared URL's quant/model is in place first. Skips the current modelId
-// value (no reseed on load); reseeds on subsequent changes only when unlocked.
+// so URL-provided quant (and the quant-implies-lock rule in share.ts) is in
+// place first. Fires on the initial subscribe too: if lockDtype was set by
+// the URL, the early-return preserves URL quant; otherwise weights+activations
+// are seeded from the current model's nativeDtype (spec §3 fresh-load rule).
 // KV is never touched — it's an independent serving axis.
 export function initNativeDtypeSync(): () => void {
-  let first = true
   return modelId.subscribe($modelId => {
-    if (first) { first = false; return }
     if (get(lockDtype)) return
     const m = MODELS.find(x => x.id === $modelId)
     if (!m) return

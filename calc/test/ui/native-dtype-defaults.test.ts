@@ -36,4 +36,12 @@ describe('native-dtype re-seed', () => {
     expect(get(quant).weights).toBe('bf16')
     expect(get(quant).activations).toBe('bf16')
   })
+
+  it('initial subscribe reseeds to current model nativeDtype when unlocked', () => {
+    // beforeEach has already called initNativeDtypeSync() with modelId=bf16Model
+    // and lockDtype=false; the initial fire must reseed weights+activations.
+    expect(get(quant).weights).toBe('bf16')
+    expect(get(quant).activations).toBe('bf16')
+    expect(get(quant).kv).toBe('fp16')   // KV preserved
+  })
 })
