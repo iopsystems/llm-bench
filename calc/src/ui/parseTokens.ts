@@ -10,9 +10,9 @@ export function parseTokenCount(s: string): number | null {
   else if (unit === 'm') v = n * 1024 * 1024
   else v = n
   if (!Number.isFinite(v)) return null
-  // Clamp non-positive numeric input to 1 — never silently ignore the
-  // user's input; the existing input handlers reflect the snapped value
-  // back into the displayed text so the user sees it happen.
+  // Clamp non-positive numeric input to 1 so the store never receives a
+  // zero-token workload; callers (input handlers) decide how to surface
+  // the snap to the user.
   return Math.max(1, Math.round(v))
 }
 
