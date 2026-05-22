@@ -36,9 +36,17 @@ describe('parseTokenCount', () => {
     expect(parseTokenCount('40g')).toBeNull()
   })
 
-  it('rejects zero and negative results (min 1 token)', () => {
-    expect(parseTokenCount('0')).toBeNull()
-    expect(parseTokenCount('0k')).toBeNull()
+  it('snaps non-positive numeric input to 1 (input is never silently ignored)', () => {
+    expect(parseTokenCount('0')).toBe(1)
+    expect(parseTokenCount('0k')).toBe(1)
+    expect(parseTokenCount('0.4')).toBe(1)     // rounds to 0, then snaps to 1
+  })
+  it('rejects negative or malformed input (returns null → caller shows invalid badge)', () => {
+    expect(parseTokenCount('-5')).toBeNull()    // regex won't match the sign
+    expect(parseTokenCount('-5k')).toBeNull()
+    // 'abc' / '' / '40g' / '40kk' rejection already covered in the
+    // "rejects invalid input" case above; this case is specifically about
+    // sign-rejection vs zero-snap so the contract split is explicit.
   })
 })
 
