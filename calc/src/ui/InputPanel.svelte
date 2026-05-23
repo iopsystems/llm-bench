@@ -62,9 +62,10 @@
     const n = parseTokenCount(v)
     if (n === null) { promptInvalid = true; return }
     promptInvalid = false
-    // Reflect snap (e.g. user typed "0" → parser returned 1) back into the
-    // text so the change isn't silent.
-    if (String(n) !== v.trim()) promptInput = String(n)
+    // Reflect only when the parser snapped a non-positive input to 1; legitimate
+    // k/M inputs (e.g. "4k" → 4096) must not clobber the friendly suffix the
+    // user typed.
+    if (n === 1 && v.trim() !== '1') promptInput = '1'
     workload.update(w => ({ ...w, promptTokens: n }))
   }
 
@@ -74,7 +75,7 @@
     const n = parseTokenCount(v)
     if (n === null) { outputInvalid = true; return }
     outputInvalid = false
-    if (String(n) !== v.trim()) outputInput = String(n)
+    if (n === 1 && v.trim() !== '1') outputInput = '1'
     workload.update(w => ({ ...w, outputTokens: n }))
   }
 
@@ -84,7 +85,7 @@
     const n = parseTokenCount(v)
     if (n === null) { concurrencyInvalid = true; return }
     concurrencyInvalid = false
-    if (String(n) !== v.trim()) concurrencyInput = String(n)
+    if (n === 1 && v.trim() !== '1') concurrencyInput = '1'
     workload.update(w => ({ ...w, concurrency: n }))
   }
 </script>
