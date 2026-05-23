@@ -51,8 +51,10 @@
   // invalid value never propagates NaN downstream and blanks the chart.
   let promptInput = formatTokenCount($workload.promptTokens)
   let outputInput = formatTokenCount($workload.outputTokens)
+  let concurrencyInput = String($workload.concurrency)
   let promptInvalid = false
   let outputInvalid = false
+  let concurrencyInvalid = false
 
   function onPromptInput(e: Event) {
     const v = (e.target as HTMLInputElement).value
@@ -60,6 +62,9 @@
     const n = parseTokenCount(v)
     if (n === null) { promptInvalid = true; return }
     promptInvalid = false
+    // Reflect snap (e.g. user typed "0" → parser returned 1) back into the
+    // text so the change isn't silent.
+    if (String(n) !== v.trim()) promptInput = String(n)
     workload.update(w => ({ ...w, promptTokens: n }))
   }
 
@@ -69,7 +74,18 @@
     const n = parseTokenCount(v)
     if (n === null) { outputInvalid = true; return }
     outputInvalid = false
+    if (String(n) !== v.trim()) outputInput = String(n)
     workload.update(w => ({ ...w, outputTokens: n }))
+  }
+
+  function onConcurrencyInput(e: Event) {
+    const v = (e.target as HTMLInputElement).value
+    concurrencyInput = v
+    const n = parseTokenCount(v)
+    if (n === null) { concurrencyInvalid = true; return }
+    concurrencyInvalid = false
+    if (String(n) !== v.trim()) concurrencyInput = String(n)
+    workload.update(w => ({ ...w, concurrency: n }))
   }
 </script>
 
@@ -197,7 +213,17 @@
       </label>
       <label>
         Concurrency
-        <input type="number" min="1" bind:value={$workload.concurrency} />
+        <input
+          type="text"
+          inputmode="numeric"
+          value={concurrencyInput}
+          on:input={onConcurrencyInput}
+          class:invalid={concurrencyInvalid}
+          title="Positive integer (1 or more); 0 snaps to 1"
+        />
+        {#if concurrencyInvalid}
+          <span class="warn">⚠ invalid — use a positive integer</span>
+        {/if}
       </label>
     </div>
   </fieldset>
