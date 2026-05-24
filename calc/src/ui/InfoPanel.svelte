@@ -8,7 +8,13 @@
   import ModelSpecSheet from './ModelSpecSheet.svelte'
   import SkuSpecSheet from './SkuSpecSheet.svelte'
 
-  const modelGroups = orderModels(MODELS)
+  // Pin Moonshot AI to the head so CSS-column auto-flow lands it in the
+  // leftmost column of the browse grid.
+  const _orderedModels = orderModels(MODELS)
+  const _moonshotIdx = _orderedModels.findIndex(g => g.publisher === 'Moonshot AI')
+  const modelGroups = _moonshotIdx > 0
+    ? [_orderedModels[_moonshotIdx], ..._orderedModels.slice(0, _moonshotIdx), ..._orderedModels.slice(_moonshotIdx + 1)]
+    : _orderedModels
   const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
 
   let section: 'models' | 'skus' = 'models'

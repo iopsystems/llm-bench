@@ -51,8 +51,10 @@
   // invalid value never propagates NaN downstream and blanks the chart.
   let promptInput = formatTokenCount($workload.promptTokens)
   let outputInput = formatTokenCount($workload.outputTokens)
+  let concurrencyInput = String($workload.concurrency)
   let promptInvalid = false
   let outputInvalid = false
+  let concurrencyInvalid = false
 
   function onPromptInput(e: Event) {
     const v = (e.target as HTMLInputElement).value
@@ -70,6 +72,15 @@
     if (n === null) { outputInvalid = true; return }
     outputInvalid = false
     workload.update(w => ({ ...w, outputTokens: n }))
+  }
+
+  function onConcurrencyInput(e: Event) {
+    const v = (e.target as HTMLInputElement).value
+    concurrencyInput = v
+    const n = parseTokenCount(v)
+    if (n === null) { concurrencyInvalid = true; return }
+    concurrencyInvalid = false
+    workload.update(w => ({ ...w, concurrency: n }))
   }
 </script>
 
@@ -171,10 +182,10 @@
           value={promptInput}
           on:input={onPromptInput}
           class:invalid={promptInvalid}
-          title="Accepts plain integers or k/M suffixes (1024-based), e.g. 40k, 1M"
+          title="Positive integer (≥1). Accepts plain integers or k/M suffixes (1024-based), e.g. 40k, 1M"
         />
         {#if promptInvalid}
-          <span class="warn">⚠ invalid — use e.g. 8192, 40k, 1M</span>
+          <span class="warn">⚠ invalid — use a positive integer (e.g. 8192, 40k, 1M)</span>
         {:else if contextWarning}
           <span class="warn" title="Model trained at max_position_embeddings={selectedModel?.maxContext}. The calc still runs but accuracy is extrapolated past this ceiling.">
             ⚠ {contextWarning}
@@ -189,15 +200,25 @@
           value={outputInput}
           on:input={onOutputInput}
           class:invalid={outputInvalid}
-          title="Accepts plain integers or k/M suffixes (1024-based)"
+          title="Positive integer (≥1). Accepts plain integers or k/M suffixes (1024-based)"
         />
         {#if outputInvalid}
-          <span class="warn">⚠ invalid — use e.g. 512, 4k</span>
+          <span class="warn">⚠ invalid — use a positive integer (e.g. 512, 4k)</span>
         {/if}
       </label>
       <label>
         Concurrency
-        <input type="number" min="1" bind:value={$workload.concurrency} />
+        <input
+          type="text"
+          inputmode="numeric"
+          value={concurrencyInput}
+          on:input={onConcurrencyInput}
+          class:invalid={concurrencyInvalid}
+          title="Positive integer (≥1)"
+        />
+        {#if concurrencyInvalid}
+          <span class="warn">⚠ invalid — use a positive integer</span>
+        {/if}
       </label>
     </div>
   </fieldset>

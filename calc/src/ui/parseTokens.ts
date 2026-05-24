@@ -2,7 +2,7 @@
 // match HuggingFace context-window conventions (8k=8192, 128k=131072, 1M=1048576).
 export function parseTokenCount(s: string): number | null {
   const m = s.trim().match(/^(\d+(?:\.\d+)?)\s*([kKmM]?)$/)
-  if (!m) return null
+  if (!m) return null   // unparseable (incl. negative — regex has no sign)
   const n = parseFloat(m[1])
   const unit = m[2].toLowerCase()
   let v: number

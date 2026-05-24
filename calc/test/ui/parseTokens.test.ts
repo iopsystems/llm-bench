@@ -36,9 +36,12 @@ describe('parseTokenCount', () => {
     expect(parseTokenCount('40g')).toBeNull()
   })
 
-  it('rejects zero and negative results (min 1 token)', () => {
+  it('rejects zero and negative results (positive integer required)', () => {
     expect(parseTokenCount('0')).toBeNull()
     expect(parseTokenCount('0k')).toBeNull()
+    expect(parseTokenCount('0.4')).toBeNull()   // rounds to 0 → rejected
+    expect(parseTokenCount('-5')).toBeNull()    // regex won't match the sign
+    expect(parseTokenCount('-5k')).toBeNull()
   })
 })
 
