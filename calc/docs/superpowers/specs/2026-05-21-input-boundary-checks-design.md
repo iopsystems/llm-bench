@@ -14,19 +14,19 @@ For **all three** numeric workload inputs — prompt tokens, output tokens, conc
 | Input | After parse |
 |---|---|
 | `1`, `40k`, `1M`, valid positives | use as parsed |
-| `0`, `0k` | **snap to `1`** (silent; display updates to `1` too so the user sees it) |
-| `-5`, `abc`, malformed | **rejected**: show the existing `.warn` "invalid" badge; store keeps prior value |
+| `0`, `0k`, `-5`, `abc`, malformed | **rejected**: show the existing `.warn` "invalid" badge clarifying *positive integer required*; store keeps prior value |
+
+Rationale for rejecting `0` (revised 2026-05-24): an earlier draft snapped `0` to `1` silently. In practice, watching `0` flip to `1` mid-typing was jarring — the user reads it as the UI fighting their input. Treating `0` the same as a malformed value (invalid badge, store untouched) is simpler and matches user mental model: *positive integers only.*
 
 ## Implementation
 
-Three files, ~30 LoC:
+Two files, ~10 LoC:
 
-1. **`calc/src/ui/parseTokens.ts`** — change the post-parse guard from `if (!Number.isFinite(v) || v < 1) return null` to `return Math.max(1, Math.round(v))` after the regex match. Effect: `0` and `0k` now return `1` (snap). Negatives still return `null` because the existing regex `^(\d+(?:\.\d+)?)\s*([kKmM]?)$` doesn't accept the `-` sign — they fall out at the regex-non-match path and stay `null` (rejected → invalid badge, unchanged behavior).
+1. **`calc/src/ui/parseTokens.ts`** — leave the existing `if (!Number.isFinite(v) || v < 1) return null` post-parse guard in place; `0`, `0k`, and negatives all return `null`. (No change required here once the original guard is restored.)
 
-2. **`calc/test/ui/parseTokens.test.ts`** — update the existing "rejects zero and negative results" case: split into two cases — "snaps zero to 1" (asserts `parseTokenCount('0') === 1`, `'0k' === 1024`? No — `0k = 0*1024 = 0`, post-snap `1`) and "rejects negatives" (asserts `parseTokenCount('-5') === null`). TDD-style: update first, see failures, change the parser, see green.
+2. **`calc/test/ui/parseTokens.test.ts`** — keep a single "rejects zero and negative results (positive integer required)" case asserting `'0'`, `'0k'`, `'0.4'`, `'-5'`, `'-5k'` all return `null`. The existing "rejects invalid input" case still covers `''`, `'abc'`, `'40kk'`, `'40g'`.
 
-3. **`calc/src/ui/InputPanel.svelte`** — convert the **concurrency** `<input type="number" min="1" bind:value={$workload.concurrency}>` to the same pattern prompt/output already use: a local string `concurrencyInput`, a `concurrencyInvalid` flag, an `onConcurrencyInput` handler that calls `parseTokenCount(v)`, sets `concurrencyInvalid = true` on null (badge appears), or updates the store + reflects the (possibly snapped) value back into the input on success. KV reuse of `parseTokenCount` is fine — the parser accepts integers; users typing `1k` for concurrency get 1024 which is a coherent number. Add the `.warn` badge markup (mirrors the existing prompt/output blocks).
-   Additionally, the prompt and output handlers already use `parseTokenCount`; their snap behavior follows from the parser change in (1). One small UX add: when the parser returns a snapped value that differs from what the user typed (e.g. `0` → `1`), reflect the snapped value in the displayed text so the user sees the snap happen rather than seeing their `0` stay in the box while the rest of the UI shows `1`. Implementation: after `const n = parseTokenCount(v)`, `if (n !== null && String(n) !== v.trim()) promptInput = String(n)` (and analogous for output, concurrency).
+3. **`calc/src/ui/InputPanel.svelte`** — convert the **concurrency** `<input type="number" min="1" bind:value={$workload.concurrency}>` to the same pattern prompt/output already use: a local string `concurrencyInput`, a `concurrencyInvalid` flag, an `onConcurrencyInput` handler that calls `parseTokenCount(v)`, sets `concurrencyInvalid = true` on null (badge appears), or updates the store on success. KV reuse of `parseTokenCount` is fine — the parser accepts integers; users typing `1k` for concurrency get 1024 which is a coherent number. Add the `.warn` badge markup (mirrors the existing prompt/output blocks). Update the prompt/output tooltips and warn messages to say *positive integer required* so the rejection of `0` reads correctly.
 
 ## Non-goals
 
@@ -36,6 +36,6 @@ Three files, ~30 LoC:
 
 ## Testing
 
-- **TDD** at the parser: update + add `parseTokens.test.ts` cases (snap `0` to `1`; `0k` to `1`; reject `-5`, `abc` as before).
+- **TDD** at the parser: keep the single `parseTokens.test.ts` case rejecting `0`, `0k`, `0.4`, `-5`, `-5k` as null (positive-integer contract).
 - **Component (InputPanel) change** verified in-browser per existing convention; no new component test.
 - Full `npm test` + `npm run check` + `npm run build` must stay green.

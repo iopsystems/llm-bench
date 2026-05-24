@@ -62,10 +62,6 @@
     const n = parseTokenCount(v)
     if (n === null) { promptInvalid = true; return }
     promptInvalid = false
-    // Reflect only when the parser snapped a non-positive input to 1; legitimate
-    // k/M inputs (e.g. "4k" → 4096) must not clobber the friendly suffix the
-    // user typed.
-    if (n === 1 && v.trim() !== '1') promptInput = '1'
     workload.update(w => ({ ...w, promptTokens: n }))
   }
 
@@ -75,7 +71,6 @@
     const n = parseTokenCount(v)
     if (n === null) { outputInvalid = true; return }
     outputInvalid = false
-    if (n === 1 && v.trim() !== '1') outputInput = '1'
     workload.update(w => ({ ...w, outputTokens: n }))
   }
 
@@ -85,7 +80,6 @@
     const n = parseTokenCount(v)
     if (n === null) { concurrencyInvalid = true; return }
     concurrencyInvalid = false
-    if (n === 1 && v.trim() !== '1') concurrencyInput = '1'
     workload.update(w => ({ ...w, concurrency: n }))
   }
 </script>
@@ -188,10 +182,10 @@
           value={promptInput}
           on:input={onPromptInput}
           class:invalid={promptInvalid}
-          title="Accepts plain integers or k/M suffixes (1024-based), e.g. 40k, 1M"
+          title="Positive integer (≥1). Accepts plain integers or k/M suffixes (1024-based), e.g. 40k, 1M"
         />
         {#if promptInvalid}
-          <span class="warn">⚠ invalid — use e.g. 8192, 40k, 1M</span>
+          <span class="warn">⚠ invalid — use a positive integer (e.g. 8192, 40k, 1M)</span>
         {:else if contextWarning}
           <span class="warn" title="Model trained at max_position_embeddings={selectedModel?.maxContext}. The calc still runs but accuracy is extrapolated past this ceiling.">
             ⚠ {contextWarning}
@@ -206,10 +200,10 @@
           value={outputInput}
           on:input={onOutputInput}
           class:invalid={outputInvalid}
-          title="Accepts plain integers or k/M suffixes (1024-based)"
+          title="Positive integer (≥1). Accepts plain integers or k/M suffixes (1024-based)"
         />
         {#if outputInvalid}
-          <span class="warn">⚠ invalid — use e.g. 512, 4k</span>
+          <span class="warn">⚠ invalid — use a positive integer (e.g. 512, 4k)</span>
         {/if}
       </label>
       <label>
@@ -220,7 +214,7 @@
           value={concurrencyInput}
           on:input={onConcurrencyInput}
           class:invalid={concurrencyInvalid}
-          title="Positive integer (1 or more); 0 snaps to 1"
+          title="Positive integer (≥1)"
         />
         {#if concurrencyInvalid}
           <span class="warn">⚠ invalid — use a positive integer</span>

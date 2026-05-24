@@ -9,11 +9,9 @@ export function parseTokenCount(s: string): number | null {
   if (unit === 'k') v = n * 1024
   else if (unit === 'm') v = n * 1024 * 1024
   else v = n
-  if (!Number.isFinite(v)) return null
-  // Clamp non-positive numeric input to 1 so the store never receives a
-  // zero-token workload; callers (input handlers) decide how to surface
-  // the snap to the user.
-  return Math.max(1, Math.round(v))
+  v = Math.round(v)
+  if (!Number.isFinite(v) || v < 1) return null
+  return v
 }
 
 export function formatTokenCount(n: number): string {
