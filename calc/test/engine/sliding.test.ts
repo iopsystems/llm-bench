@@ -11,7 +11,7 @@ import type { ModelArch } from '../../src/engine/types'
 
 describe('activeParams', () => {
   const base: ModelArch = {
-    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
     layers: 2, hiddenDim: 4, intermediateDim: 8,
     numHeads: 2, numKvHeads: 1, headDim: 2, vocabSize: 100,
     paramCount: 1000,
@@ -44,7 +44,7 @@ describe('activeParams', () => {
 
 describe('kvBytesPerTokenPerLayer', () => {
   const base: ModelArch = {
-    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
@@ -88,7 +88,7 @@ describe('kvBytesPerTokenPerLayer', () => {
 
 describe('attentionDim', () => {
   const base: ModelArch = {
-    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
@@ -131,7 +131,7 @@ describe('attentionDim', () => {
 
 describe('attendedSeqlenSummedOverLayers', () => {
   const base: ModelArch = {
-    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
@@ -203,7 +203,7 @@ describe('attendedSeqlenSummedOverLayers', () => {
 
 describe('linear-mla-hybrid branches in existing helpers', () => {
   const base: ModelArch = {
-    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
     layers: 4, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
     paramCount: 1000,
@@ -251,7 +251,7 @@ describe('linear-mla-hybrid branches in existing helpers', () => {
 describe('linearAttentionStateBytes', () => {
   it('returns 0 for non-linear attention types', () => {
     const m: ModelArch = {
-      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
@@ -265,7 +265,7 @@ describe('linearAttentionStateBytes', () => {
 
   it('returns numLinearLayers × numLinearHeads × linearHeadDim² × bytes for linear-mla-hybrid', () => {
     const m: ModelArch = {
-      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
@@ -286,7 +286,7 @@ describe('linearAttentionStateBytes', () => {
 
 describe('csa-hca-hybrid branches in existing helpers', () => {
   const base: ModelArch = {
-    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+    id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
     layers: 3, hiddenDim: 16, intermediateDim: 64,
     numHeads: 8, numKvHeads: 1, headDim: 8, vocabSize: 100,
     paramCount: 1000,
@@ -350,7 +350,7 @@ describe('csa-hca-hybrid branches in existing helpers', () => {
 describe('linearAttentionFlopsPerToken', () => {
   it('returns 0 for non-linear attention types', () => {
     const m: ModelArch = {
-      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,
@@ -364,7 +364,7 @@ describe('linearAttentionFlopsPerToken', () => {
 
   it('returns 2 × numLinearLayers × numLinearHeads × linearHeadDim² for linear-mla-hybrid', () => {
     const m: ModelArch = {
-      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01',
+      id: 't', name: 'Test', family: 'test', publisher: 'test', releaseDate: '2025-01', nativeDtype: 'bf16',
       layers: 4, hiddenDim: 16, intermediateDim: 64,
       numHeads: 8, numKvHeads: 2, headDim: 8, vocabSize: 100,
       paramCount: 1000,

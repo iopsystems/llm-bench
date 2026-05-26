@@ -360,6 +360,10 @@ export interface ModelArch {
   // noisy (announce vs. weights vs. paper), so month is the contract.
   // Drives newer-first ordering in the picker.
   releaseDate: string
+  // Precision the released weights ship in (bf16 for most; fp8 for the
+  // DeepSeek native-fp8 family). Drives the model-aware weights/activations
+  // quant default. Catalog metadata, NOT from HuggingFace config.json.
+  nativeDtype: Dtype
   layers: number
   hiddenDim: number
   intermediateDim: number

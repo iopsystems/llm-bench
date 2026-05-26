@@ -4,7 +4,7 @@ import type { ModelArch } from '../../src/engine/types'
 import { bytesOf } from '../../src/engine/dtypes'
 
 const dense: ModelArch = {
-  id: 'd', name: 'D', family: 't', publisher: 't', releaseDate: '2025-01',
+  id: 'd', name: 'D', family: 't', publisher: 't', releaseDate: '2025-01', nativeDtype: 'bf16',
   layers: 32, hiddenDim: 4096, intermediateDim: 14336,
   numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 32000,
   paramCount: 7_000_000_000,

@@ -14,6 +14,17 @@
 
   const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
 
+  // Width in bits per dtype, for the weights-only "no upcast / no sideways"
+  // selectability rule: a weight option is disabled if its width is >= the
+  // model's native dtype AND it isn't the native itself.
+  const DTYPE_WIDTH: Record<Dtype, number> = {
+    fp32: 32, fp16: 16, bf16: 16, fp8: 8, int8: 8, fp4: 4, int4: 4,
+  }
+  function isWeightDisabled(d: Dtype, native: Dtype | undefined): boolean {
+    if (!native || d === native) return false
+    return DTYPE_WIDTH[d] >= DTYPE_WIDTH[native]
+  }
+
   // Picker ordering lives in catalogOrder.ts: publisher groups (newest-shipping
   // publisher first), then within a group newer/larger first. SKU groups also
   // put single accelerators ahead of multi-accelerator systems.
@@ -153,7 +164,7 @@
       <label>
         Weights
         <select bind:value={$quant.weights}>
-          {#each DTYPES as d}<option value={d}>{d}</option>{/each}
+          {#each DTYPES as d}<option value={d} class:native={d === selectedModel?.nativeDtype} disabled={isWeightDisabled(d, selectedModel?.nativeDtype)}>{d}{d === selectedModel?.nativeDtype ? ' — native' : ''}</option>{/each}
         </select>
       </label>
       <label>
@@ -165,7 +176,7 @@
       <label>
         Activations
         <select bind:value={$quant.activations}>
-          {#each DTYPES as d}<option value={d}>{d}</option>{/each}
+          {#each DTYPES as d}<option value={d} class:native={d === selectedModel?.nativeDtype}>{d}{d === selectedModel?.nativeDtype ? ' — native' : ''}</option>{/each}
         </select>
       </label>
     </div>
@@ -247,4 +258,5 @@
   .warn { font-size: 0.78rem; color: #b85b00; margin-top: 0.15rem; }
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
   input.invalid { border-color: #b85b00; background: #fff7ec; }
+  option.native { font-weight: 700; }
 </style>

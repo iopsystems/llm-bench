@@ -208,7 +208,15 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.variantId !== undefined) variantId.set(partial.variantId)
   if (partial.systemId !== undefined) systemId.set(partial.systemId)
   if (partial.modelId !== undefined) modelId.set(partial.modelId)
-  if (partial.quant !== undefined) quant.set(partial.quant)
+  if (partial.quant !== undefined) {
+    quant.set(partial.quant)
+  } else if (partial.modelId !== undefined) {
+    // URL specified a model without explicit quant: seed weights+activations
+    // from the model's native precision so sharing `?m=X` lands on X's
+    // defaults rather than whatever the recipient last had loaded.
+    const m = MODELS.find(x => x.id === partial.modelId)
+    if (m) quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
+  }
   if (partial.workload !== undefined) workload.set(partial.workload)
   if (partial.parallelismOverride !== undefined) parallelismOverride.set(partial.parallelismOverride)
   if (partial.disaggKvTransferFabricId !== undefined) disaggKvTransferFabricId.set(partial.disaggKvTransferFabricId)

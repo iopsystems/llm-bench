@@ -28,6 +28,7 @@
     <dt>Architecture</dt>
     <dd>{arch.type === 'moe' ? 'Mixture of experts' : 'Dense'}</dd>
     <dt>Attention</dt><dd>{m.attentionLabel}</dd>
+    <dt>Native precision</dt><dd>{model.nativeDtype}</dd>
   </dl>
 
   <div class="rule"></div>

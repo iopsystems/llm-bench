@@ -29,9 +29,28 @@ export const disaggKvTransferFabricId = writable<string>('')
 // KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
 export const disaggFirstTokenOnPrefill = writable<boolean>(true)
 
+// Initial quant follows the default model's native precision; KV defaults to
+// fp16 because cache quant is an independent serving-side axis, not a
+// property of how the weights ship.
 export const quant = writable<Quantization>({
-  weights: 'fp16', kv: 'fp16', activations: 'fp16'
+  weights: defaultModel.nativeDtype, kv: 'fp16', activations: defaultModel.nativeDtype
 })
+
+// Wire the model→quant coupling: switching models reseeds weights+activations
+// to the new model's nativeDtype (KV untouched). Call once at startup AFTER
+// readUrlIntoStores(); the initial subscribe fire is skipped so URL-provided
+// quant survives load. Fresh-load defaults are handled by the store's initial
+// value above (and applyToStores for URL-with-model-but-no-quant).
+export function initNativeDtypeSync(): () => void {
+  let first = true
+  return modelId.subscribe($modelId => {
+    if (first) { first = false; return }
+    const m = MODELS.find(x => x.id === $modelId)
+    if (!m) return
+    quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
+  })
+}
+
 export const workload = writable<Workload>({
   promptTokens: 2048, outputTokens: 512, concurrency: 1
 })
