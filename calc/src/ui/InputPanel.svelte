@@ -2,7 +2,7 @@
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
   import { INTERCONNECTS } from '../data/interconnects'
-  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill, lockDtype } from './stores'
+  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
@@ -179,10 +179,6 @@
           {#each DTYPES as d}<option value={d} class:native={d === selectedModel?.nativeDtype}>{d}{d === selectedModel?.nativeDtype ? ' — native' : ''}</option>{/each}
         </select>
       </label>
-      <label class="lockdtype" title="Keep this precision when switching models; otherwise weights/activations follow each model's native dtype">
-        <input type="checkbox" bind:checked={$lockDtype} />
-        Lock dtype
-      </label>
     </div>
   </fieldset>
 
@@ -263,5 +259,4 @@
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
   input.invalid { border-color: #b85b00; background: #fff7ec; }
   option.native { font-weight: 700; }
-  .lockdtype { font-size: 0.85rem; display: flex; flex-direction: row; align-items: center; gap: 0.35rem; }
 </style>

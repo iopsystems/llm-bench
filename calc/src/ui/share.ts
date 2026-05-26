@@ -14,7 +14,7 @@ import { get } from 'svelte/store'
 import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  quant, workload, lockDtype
+  quant, workload
 } from './stores'
 import { parseRoute } from './route'
 import { ACCELERATORS, MODELS } from '../data'
@@ -46,7 +46,6 @@ export interface ShareableState {
   parallelismOverride: ParallelismConfig | null
   disaggKvTransferFabricId: string
   disaggFirstTokenOnPrefill: boolean
-  lockDtype: boolean
 }
 
 // Encode state to a URL-search-style string (no leading `#`).
@@ -76,7 +75,6 @@ export function encodeState(state: ShareableState): string {
     // worst-case sequential handoff.
     if (!state.disaggFirstTokenOnPrefill) p.set('df', '0')
   }
-  if (state.lockDtype) p.set('ld', '1')
   return p.toString()
 }
 
@@ -124,12 +122,6 @@ export function decodeState(hash: string): Partial<ShareableState> {
   if (w && kv && ac && isDtype(w) && isDtype(kv) && isDtype(ac)) {
     out.quant = { weights: w, kv, activations: ac }
   }
-
-  // lockDtype: explicit `ld` wins; otherwise an explicit quant in the URL
-  // implies the sharer pinned a precision, so lock to avoid reseeding it.
-  const ld = params.get('ld')
-  if (ld !== null) out.lockDtype = ld !== '0'
-  else if (out.quant !== undefined) out.lockDtype = true
 
   const pt = params.get('pt')
   const ot = params.get('ot')
@@ -205,7 +197,6 @@ function readStoreState(): ShareableState {
     parallelismOverride: get(parallelismOverride),
     disaggKvTransferFabricId: get(disaggKvTransferFabricId),
     disaggFirstTokenOnPrefill: get(disaggFirstTokenOnPrefill),
-    lockDtype: get(lockDtype),
   }
 }
 
@@ -217,12 +208,19 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.variantId !== undefined) variantId.set(partial.variantId)
   if (partial.systemId !== undefined) systemId.set(partial.systemId)
   if (partial.modelId !== undefined) modelId.set(partial.modelId)
-  if (partial.quant !== undefined) quant.set(partial.quant)
+  if (partial.quant !== undefined) {
+    quant.set(partial.quant)
+  } else if (partial.modelId !== undefined) {
+    // URL specified a model without explicit quant: seed weights+activations
+    // from the model's native precision so sharing `?m=X` lands on X's
+    // defaults rather than whatever the recipient last had loaded.
+    const m = MODELS.find(x => x.id === partial.modelId)
+    if (m) quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
+  }
   if (partial.workload !== undefined) workload.set(partial.workload)
   if (partial.parallelismOverride !== undefined) parallelismOverride.set(partial.parallelismOverride)
   if (partial.disaggKvTransferFabricId !== undefined) disaggKvTransferFabricId.set(partial.disaggKvTransferFabricId)
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
-  if (partial.lockDtype !== undefined) lockDtype.set(partial.lockDtype)
 }
 
 // Extract the calculator payload from a raw location.hash. Supports the
@@ -275,7 +273,6 @@ export function startUrlSync(): () => void {
     disaggFirstTokenOnPrefill.subscribe(write),
     quant.subscribe(write),
     workload.subscribe(write),
-    lockDtype.subscribe(write),
   ]
   ready = true
   write()

@@ -1,4 +1,4 @@
-import { writable, derived, get, type Readable } from 'svelte/store'
+import { writable, derived, type Readable } from 'svelte/store'
 import { ACCELERATORS, MODELS } from '../data'
 import { SYSTEMS } from '../data/systems'
 import { calculate } from '../engine'
@@ -29,24 +29,22 @@ export const disaggKvTransferFabricId = writable<string>('')
 // KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
 export const disaggFirstTokenOnPrefill = writable<boolean>(true)
 
+// Initial quant follows the default model's native precision; KV defaults to
+// fp16 because cache quant is an independent serving-side axis, not a
+// property of how the weights ship.
 export const quant = writable<Quantization>({
-  weights: 'fp16', kv: 'fp16', activations: 'fp16'
+  weights: defaultModel.nativeDtype, kv: 'fp16', activations: defaultModel.nativeDtype
 })
 
-// When false (default), switching models reseeds weights+activations to the
-// new model's nativeDtype. When true, the user has pinned the precision and
-// model switches leave quant alone. Part of shareable URL state (see share.ts).
-export const lockDtype = writable(false)
-
-// Wire the model→quant coupling. Call once at startup AFTER readUrlIntoStores()
-// so URL-provided quant (and the quant-implies-lock rule in share.ts) is in
-// place first. Fires on the initial subscribe too: if lockDtype was set by
-// the URL, the early-return preserves URL quant; otherwise weights+activations
-// are seeded from the current model's nativeDtype (spec §3 fresh-load rule).
-// KV is never touched — it's an independent serving axis.
+// Wire the model→quant coupling: switching models reseeds weights+activations
+// to the new model's nativeDtype (KV untouched). Call once at startup AFTER
+// readUrlIntoStores(); the initial subscribe fire is skipped so URL-provided
+// quant survives load. Fresh-load defaults are handled by the store's initial
+// value above (and applyToStores for URL-with-model-but-no-quant).
 export function initNativeDtypeSync(): () => void {
+  let first = true
   return modelId.subscribe($modelId => {
-    if (get(lockDtype)) return
+    if (first) { first = false; return }
     const m = MODELS.find(x => x.id === $modelId)
     if (!m) return
     quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))

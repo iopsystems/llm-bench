@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { calcPayloadFromHash, encodeState, decodeState } from '../../src/ui/share'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { get } from 'svelte/store'
+import { calcPayloadFromHash, encodeState, decodeState, readUrlIntoStores } from '../../src/ui/share'
+import { modelId, quant } from '../../src/ui/stores'
+import { MODELS } from '../../src/data'
 
 describe('calcPayloadFromHash', () => {
   it('extracts payload after calc?', () => {
@@ -18,28 +21,53 @@ describe('calcPayloadFromHash', () => {
   })
 })
 
-describe('lockDtype share state', () => {
-  const base = {
-    acceleratorId: 'h100', variantId: 'sxm-80', systemId: '', modelId: 'llama-3.3-70b',
-    quant: { weights: 'bf16', kv: 'fp16', activations: 'bf16' } as const,
-    workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
-    parallelismOverride: null, disaggKvTransferFabricId: '', disaggFirstTokenOnPrefill: true,
-  }
-  it('round-trips lockDtype=true via ld=1', () => {
-    const enc = encodeState({ ...base, lockDtype: true })
-    expect(enc).toContain('ld=1')
-    expect(decodeState(enc).lockDtype).toBe(true)
+// Behavioral test for the model-implies-native-quant fallback in
+// applyToStores. We don't export applyToStores, so exercise it via the
+// public readUrlIntoStores → encodeState/decodeState surface indirectly by
+// reaching into the stores after a hand-crafted apply. The simpler path:
+// import the module under test and call the helpers through their exported
+// API. Here decodeState alone is enough to verify the contract that the
+// URL `?m=` key by itself does not produce a quant in the partial — the
+// store-level fallback is verified by setting modelId via the store and
+// inspecting the quant the public surface would land on.
+describe('URL with model but no quant → quant seeded from native', () => {
+  const fp8Model = MODELS.find(m => m.nativeDtype === 'fp8')!
+  const bf16Model = MODELS.find(m => m.nativeDtype === 'bf16')!
+
+  beforeEach(() => {
+    // Reset stores to a known prior state so the seed-from-model effect is
+    // observable (i.e. quant doesn't already equal the target's nativeDtype).
+    modelId.set(bf16Model.id)
+    quant.set({ weights: 'fp4', kv: 'int8', activations: 'fp4' })
   })
-  it('omits ld when false', () => {
-    expect(encodeState({ ...base, lockDtype: false })).not.toContain('ld=')
+
+  it('decodeState returns no quant when URL omits w/kv/ac', () => {
+    expect(decodeState(`m=${fp8Model.id}`).quant).toBeUndefined()
   })
-  it('quant present but no ld → lockDtype true (preserve sharer intent)', () => {
-    expect(decodeState('m=llama-3.3-70b&w=fp8&kv=fp16&ac=fp8').lockDtype).toBe(true)
+
+  it('explicit quant in URL still decodes verbatim', () => {
+    const enc = encodeState({
+      acceleratorId: 'h100', variantId: 'sxm-80', systemId: '', modelId: fp8Model.id,
+      quant: { weights: 'fp8', kv: 'fp16', activations: 'fp8' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
+      parallelismOverride: null, disaggKvTransferFabricId: '', disaggFirstTokenOnPrefill: true,
+    })
+    expect(enc).not.toContain('ld=')   // no more ld key
+    expect(decodeState(enc).quant).toEqual({ weights: 'fp8', kv: 'fp16', activations: 'fp8' })
   })
-  it('explicit ld=0 with quant is honored', () => {
-    expect(decodeState('m=llama-3.3-70b&w=fp8&kv=fp16&ac=fp8&ld=0').lockDtype).toBe(false)
-  })
-  it('no quant, no ld → lockDtype undefined (caller defaults false)', () => {
-    expect(decodeState('m=llama-3.3-70b').lockDtype).toBeUndefined()
+
+  it('store-level fallback: URL with model but no quant reseeds weights+activations (kv preserved)', () => {
+    // Stub minimal window so readUrlIntoStores' early-return doesn't fire
+    // (vitest env is 'node'; no DOM by default).
+    const w = globalThis as { window?: { location: { hash: string } } }
+    w.window = { location: { hash: `#calc?m=${fp8Model.id}` } }
+    try {
+      readUrlIntoStores()
+      expect(get(modelId)).toBe(fp8Model.id)
+      // weights+activations reseeded from native; kv preserved from prior state.
+      expect(get(quant)).toEqual({ weights: 'fp8', kv: 'int8', activations: 'fp8' })
+    } finally {
+      delete w.window
+    }
   })
 })
