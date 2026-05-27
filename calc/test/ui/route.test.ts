@@ -23,6 +23,12 @@ describe('parseRoute', () => {
   it('unknown path → calc', () => {
     expect(parseRoute('#bogus')).toEqual({ tab: 'calc' })
   })
+  it('bare sim → sim', () => {
+    expect(parseRoute('#sim')).toEqual({ tab: 'sim' })
+  })
+  it('sim with payload', () => {
+    expect(parseRoute('#sim?a=h100&m=llama-3.3-70b')).toEqual({ tab: 'sim' })
+  })
 })
 
 describe('serializeRoute', () => {
@@ -35,6 +41,12 @@ describe('serializeRoute', () => {
   it('info detail round-trips', () => {
     const r: Route = { tab: 'info', detail: { kind: 'model', id: 'x.y' } }
     expect(parseRoute(serializeRoute(r))).toEqual(r)
+  })
+  it('sim → #sim', () => {
+    expect(serializeRoute({ tab: 'sim' })).toBe('#sim')
+  })
+  it('sim with payload', () => {
+    expect(serializeRoute({ tab: 'sim' }, 'a=h100')).toBe('#sim?a=h100')
   })
 })
 
