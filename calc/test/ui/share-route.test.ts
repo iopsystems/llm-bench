@@ -1,23 +1,33 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { get } from 'svelte/store'
-import { calcPayloadFromHash, encodeState, decodeState, readUrlIntoStores } from '../../src/ui/share'
+import { tabPayloadFromHash, encodeState, decodeState, readUrlIntoStores } from '../../src/ui/share'
 import { modelId, quant } from '../../src/ui/stores'
 import { MODELS } from '../../src/data'
 
-describe('calcPayloadFromHash', () => {
+describe('tabPayloadFromHash', () => {
   it('extracts payload after calc?', () => {
-    expect(calcPayloadFromHash('#calc?a=h100&m=x')).toBe('a=h100&m=x')
+    expect(tabPayloadFromHash('#calc?a=h100&m=x', 'calc')).toBe('a=h100&m=x')
   })
-  it('legacy bare payload (no calc prefix) still works', () => {
-    expect(calcPayloadFromHash('#a=h100&m=x')).toBe('a=h100&m=x')
+  it('extracts payload after sim?', () => {
+    expect(tabPayloadFromHash('#sim?a=h100&m=x', 'sim')).toBe('a=h100&m=x')
   })
-  it('info routes carry no calc payload', () => {
-    expect(calcPayloadFromHash('#info/model/deepseek-v3')).toBe('')
-    expect(calcPayloadFromHash('#info')).toBe('')
+  it('returns empty for mismatched tab', () => {
+    expect(tabPayloadFromHash('#calc?a=h100', 'sim')).toBe('')
+    expect(tabPayloadFromHash('#sim?a=h100',  'calc')).toBe('')
+  })
+  it('legacy bare payload counts as calc-tab payload', () => {
+    expect(tabPayloadFromHash('#a=h100&m=x', 'calc')).toBe('a=h100&m=x')
+    expect(tabPayloadFromHash('#a=h100&m=x', 'sim')).toBe('')
+  })
+  it('info routes carry no calc/sim payload', () => {
+    expect(tabPayloadFromHash('#info/model/deepseek-v3', 'calc')).toBe('')
+    expect(tabPayloadFromHash('#info/model/deepseek-v3', 'sim')).toBe('')
+    expect(tabPayloadFromHash('#info', 'calc')).toBe('')
   })
   it('empty hash → empty', () => {
-    expect(calcPayloadFromHash('')).toBe('')
-    expect(calcPayloadFromHash('#calc')).toBe('')
+    expect(tabPayloadFromHash('', 'calc')).toBe('')
+    expect(tabPayloadFromHash('#calc', 'calc')).toBe('')
+    expect(tabPayloadFromHash('#sim',  'sim')).toBe('')
   })
 })
 
@@ -66,6 +76,17 @@ describe('URL with model but no quant → quant seeded from native', () => {
       expect(get(modelId)).toBe(fp8Model.id)
       // weights+activations reseeded from native; kv preserved from prior state.
       expect(get(quant)).toEqual({ weights: 'fp8', kv: 'int8', activations: 'fp8' })
+    } finally {
+      delete w.window
+    }
+  })
+
+  it('readUrlIntoStores accepts #sim? prefix too', () => {
+    const w = globalThis as { window?: { location: { hash: string } } }
+    w.window = { location: { hash: `#sim?m=${fp8Model.id}` } }
+    try {
+      readUrlIntoStores()
+      expect(get(modelId)).toBe(fp8Model.id)
     } finally {
       delete w.window
     }
