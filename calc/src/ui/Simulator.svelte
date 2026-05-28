@@ -46,6 +46,7 @@
   {#if $simError}
     <div class="error">⚠ {$simError}</div>
   {:else if tier && ganttInput}
+    <h3 class="config-header">Single request, monolithic</h3>
     <div class="kpis">
       <div class="kpi">
         <div class="label">TTFT</div>
@@ -99,6 +100,9 @@
     background: #fde6e6; color: #8a1f1f;
     border: 1px solid #f0b0b0; border-radius: 0.25rem;
     font-size: 0.9rem;
+  }
+  .config-header {
+    margin: 0.5rem 0 -0.25rem; font-size: 1rem; font-weight: 600; color: #333;
   }
   .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
   .kpi {
