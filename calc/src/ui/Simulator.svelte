@@ -31,6 +31,12 @@
   $: opIds = $simResult ? Object.keys($simResult.perf) : []
   $: primary = opIds[0]
   $: tier = $simResult && primary ? $simResult.perf[primary] : null
+  // Gate results on memory fit: per-rank when parallelism shards the model
+  // across devices, top-level otherwise. The calc tab shows perf anyway
+  // ("what would it look like if it fit"); the simulator's framing is
+  // user-experience-of-this-request, which is moot if the model can't load.
+  $: memory = $simResult?.memory
+  $: fits = memory ? (memory.perRank?.fits ?? memory.fits) : false
 
   $: ganttInput = tier ? ({
     prefillS: tier.prefill.timeS,
@@ -51,6 +57,14 @@
 
   {#if $simError}
     <div class="error">⚠ {$simError}</div>
+  {:else if memory && !fits}
+    <div class="oom">
+      <strong>✗ Out of memory.</strong>
+      Model + KV cache + activations exceed HBM capacity on the selected
+      configuration. Pick a larger SKU, add parallelism (TP/PP), or trim the
+      workload (prompt/output tokens). See the Calculator tab's Memory panel
+      for the breakdown.
+    </div>
   {:else if tier && ganttInput}
     <h3 class="config-header">Single request, monolithic</h3>
     <div class="kpis">
@@ -108,6 +122,13 @@
     border: 1px solid #f0b0b0; border-radius: 0.25rem;
     font-size: 0.9rem;
   }
+  .oom {
+    padding: 0.7rem 0.9rem;
+    background: #fff7ec; color: #8a3f00;
+    border: 1px solid #f0c890; border-radius: 0.3rem;
+    font-size: 0.9rem; line-height: 1.4;
+  }
+  .oom strong { color: #b85b00; margin-right: 0.25rem; }
   .config-header {
     margin: 0.5rem 0 -0.25rem; font-size: 1rem; font-weight: 600; color: #333;
   }
