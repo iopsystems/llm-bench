@@ -35,8 +35,9 @@
       y={0}
       width={Math.max(seg.width * pxPerS, 1)}
       height={ROW_H}
-    />
-    <title>{seg.kind} · {ms(seg.width)} · {seg.regime}-bound</title>
+    >
+      <title>{seg.kind} · {ms(seg.width)} · {seg.regime}-bound</title>
+    </rect>
   {/each}
 
   <!-- KV-xfer overlay (case B only). -->
@@ -47,8 +48,9 @@
       y={ROW_H + ROW_GAP}
       width={Math.max(geom.kvOverlay.width * pxPerS, 1)}
       height={OVERLAY_H}
-    />
-    <title>kv-xfer · {ms(geom.kvOverlay.width)} · overlapped with first decode step</title>
+    >
+      <title>kv-xfer · {ms(geom.kvOverlay.width)} · overlapped with first decode step</title>
+    </rect>
   {/if}
 
   <!-- TTFT marker. -->
@@ -66,7 +68,7 @@
     text-anchor="middle"
   >first token</text>
 
-  <!-- Axis ticks: 0, TTFT, Total. -->
+  <!-- Axis ticks: 0 and Total. (TTFT is shown by the marker line and label above.) -->
   <text class="tick" x={PADDING}                                    y={totalH - 4} text-anchor="start">0</text>
   <text class="tick" x={PADDING + geom.totalS * pxPerS}             y={totalH - 4} text-anchor="end">{ms(geom.totalS)}</text>
 </svg>
