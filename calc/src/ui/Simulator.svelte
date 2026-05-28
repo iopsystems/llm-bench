@@ -24,13 +24,6 @@
     return `${sig3(tps)} tok/s`
   }
 
-  // The simulator follows the same op-point the calc tab is showing. Since
-  // op-point isn't currently URL state, "the same" reduces to "show every
-  // op-point" — pick the first key in perf for the cards/gantt and let
-  // additional op-points appear below as a small comparison list.
-  $: opIds = $simResult ? Object.keys($simResult.perf) : []
-  $: primary = opIds[0]
-  $: tier = $simResult && primary ? $simResult.perf[primary] : null
   // Gate results on memory fit: per-rank when parallelism shards the model
   // across devices, top-level otherwise. The calc tab shows perf anyway
   // ("what would it look like if it fit"); the simulator's framing is
@@ -38,18 +31,38 @@
   $: memory = $simResult?.memory
   $: fits = memory ? (memory.perRank?.fits ?? memory.fits) : false
 
-  $: ganttInput = tier ? ({
-    prefillS: tier.prefill.timeS,
-    kvTransferS: tier.kvTransferS,
-    tpotS: tier.decode.timePerTokenS,
-    outputTokens: $workload.outputTokens,
-    firstTokenOnPrefill: $disaggFirstTokenOnPrefill,
-    ttftS: tier.ttftS,
-    prefillRegime: tier.prefill.regime,
-    decodeRegime: tier.decode.regime,
-  } satisfies GanttInput) : null
-
-  $: totalS = tier ? tier.ttftS + tier.decode.timePerTokenS * ($workload.outputTokens - 1) : 0
+  // Build a row per operating point and sort by Total latency ascending
+  // (fast → slow, i.e. peak → achievable when both are present). Each row
+  // carries everything the cards + gantt need.
+  interface OpRow {
+    id: string
+    ttftS: number
+    tpotS: number
+    totalS: number
+    inputTokenRate: number
+    prefillRegime: 'compute' | 'memory' | 'comms'
+    decodeRegime: 'compute' | 'memory' | 'comms'
+    gantt: GanttInput
+  }
+  $: rows = ($simResult ? Object.entries($simResult.perf).map(([id, t]): OpRow => ({
+    id,
+    ttftS: t.ttftS,
+    tpotS: t.decode.timePerTokenS,
+    totalS: t.ttftS + t.decode.timePerTokenS * ($workload.outputTokens - 1),
+    inputTokenRate: t.inputTokenRate,
+    prefillRegime: t.prefill.regime,
+    decodeRegime: t.decode.regime,
+    gantt: {
+      prefillS: t.prefill.timeS,
+      kvTransferS: t.kvTransferS,
+      tpotS: t.decode.timePerTokenS,
+      outputTokens: $workload.outputTokens,
+      firstTokenOnPrefill: $disaggFirstTokenOnPrefill,
+      ttftS: t.ttftS,
+      prefillRegime: t.prefill.regime,
+      decodeRegime: t.decode.regime,
+    },
+  })) : []).sort((a, b) => a.totalS - b.totalS)
 </script>
 
 <section class="simulator">
@@ -65,52 +78,49 @@
       workload (prompt/output tokens). See the Calculator tab's Memory panel
       for the breakdown.
     </div>
-  {:else if tier && ganttInput}
+  {:else if rows.length > 0}
     <h3 class="config-header">Single request, monolithic</h3>
     <div class="kpis">
       <div class="kpi">
         <div class="label">TTFT</div>
-        <div class="value">{ms(tier.ttftS)}</div>
-        <div class="badge regime-{tier.prefill.regime}">{tier.prefill.regime}-bound prefill</div>
-        <div class="caption">{rate(tier.inputTokenRate)} input</div>
+        {#each rows as row, i}
+          <div class="op" class:secondary={i > 0}>
+            {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+            <div class="value">{ms(row.ttftS)}</div>
+            <div class="badge regime-{row.prefillRegime}">{row.prefillRegime}-bound prefill</div>
+            <div class="caption">{rate(row.inputTokenRate)} input</div>
+          </div>
+        {/each}
       </div>
       <div class="kpi">
         <div class="label">TPOT</div>
-        <div class="value">{ms(tier.decode.timePerTokenS)}</div>
-        <div class="badge regime-{tier.decode.regime}">{tier.decode.regime}-bound decode</div>
-        <div class="caption">{rate(1 / tier.decode.timePerTokenS)} output</div>
+        {#each rows as row, i}
+          <div class="op" class:secondary={i > 0}>
+            {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+            <div class="value">{ms(row.tpotS)}</div>
+            <div class="badge regime-{row.decodeRegime}">{row.decodeRegime}-bound decode</div>
+            <div class="caption">{rate(1 / row.tpotS)} output</div>
+          </div>
+        {/each}
       </div>
       <div class="kpi">
         <div class="label">Total latency</div>
-        <div class="value">{ms(totalS)}</div>
-        <div class="caption">{$workload.outputTokens} output tokens</div>
+        {#each rows as row, i}
+          <div class="op" class:secondary={i > 0}>
+            {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+            <div class="value">{ms(row.totalS)}</div>
+            <div class="caption">{$workload.outputTokens} output tokens</div>
+          </div>
+        {/each}
       </div>
     </div>
 
-    <div class="gantt-wrap">
-      <h4>Timeline ({primary})</h4>
-      <SimulatorGantt input={ganttInput} />
-    </div>
-
-    {#if opIds.length > 1}
-      <details class="other-ops">
-        <summary>Other operating points</summary>
-        <table>
-          <thead><tr><th>Op</th><th>TTFT</th><th>TPOT</th><th>Total</th></tr></thead>
-          <tbody>
-            {#each opIds.slice(1) as id}
-              {@const t = $simResult!.perf[id]}
-              <tr>
-                <td>{id}</td>
-                <td>{ms(t.ttftS)}</td>
-                <td>{ms(t.decode.timePerTokenS)}</td>
-                <td>{ms(t.ttftS + t.decode.timePerTokenS * ($workload.outputTokens - 1))}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </details>
-    {/if}
+    {#each rows as row}
+      <div class="gantt-wrap">
+        <h4>Timeline{rows.length > 1 ? ` (${row.id})` : ''}</h4>
+        <SimulatorGantt input={row.gantt} />
+      </div>
+    {/each}
   {/if}
 </section>
 
@@ -132,15 +142,25 @@
   .config-header {
     margin: 0.5rem 0 -0.25rem; font-size: 1rem; font-weight: 600; color: #333;
   }
-  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; align-items: start; }
   .kpi {
     border: 1px solid #d4d4d4; border-radius: 0.4rem; padding: 0.8rem 1rem;
     background: #fff;
   }
   .kpi .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
-  .kpi .value { font-size: 1.75rem; font-weight: 700; line-height: 1.1; margin-top: 0.2rem; }
-  .kpi .badge {
-    display: inline-block; margin-top: 0.4rem; padding: 0.1rem 0.45rem;
+  /* Each op-point sub-block inside a card. The secondary modifier separates
+     subsequent rows with a hairline so the eye can scan top-down within one card. */
+  .op { padding-top: 0.2rem; }
+  .op.secondary {
+    margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid #eee;
+  }
+  .op-name {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #b85b00; font-weight: 600; margin-bottom: 0.1rem;
+  }
+  .op .value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; margin-top: 0.1rem; }
+  .op .badge {
+    display: inline-block; margin-top: 0.35rem; padding: 0.1rem 0.45rem;
     font-size: 0.75rem; border-radius: 0.2rem; color: #fff;
   }
   /* Regime palette matches the Calculator tab: compute=warm/orange,
@@ -150,11 +170,8 @@
   .badge.regime-compute { background: #c05621; }
   .badge.regime-memory  { background: #2b6cb0; }
   .badge.regime-comms   { background: #6b46c1; }
-  .kpi .caption { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
+  .op .caption { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
   .gantt-wrap h4 { margin: 0 0 0.4rem; font-size: 0.85rem; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .other-ops { font-size: 0.85rem; }
-  .other-ops table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
-  .other-ops th, .other-ops td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; }
   @media (max-width: 640px) {
     .kpis { grid-template-columns: 1fr; }
   }
