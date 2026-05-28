@@ -147,7 +147,7 @@
     border: 1px solid #d4d4d4; border-radius: 0.4rem; padding: 0.8rem 1rem;
     background: #fff;
   }
-  .kpi .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
+  .kpi .label { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; color: #888; }
   /* Each op-point sub-block inside a card. The secondary modifier separates
      subsequent rows with a hairline so the eye can scan top-down within one card. */
   .op { padding-top: 0.2rem; }
@@ -155,8 +155,8 @@
     margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid #eee;
   }
   .op-name {
-    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
-    color: #b85b00; font-weight: 600; margin-bottom: 0.1rem;
+    font-size: 0.85rem; font-style: italic; color: #555;
+    margin-bottom: 0.1rem;
   }
   .op .value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; margin-top: 0.1rem; }
   .op .badge {
