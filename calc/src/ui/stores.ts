@@ -112,3 +112,24 @@ const computed: Readable<Computed> = derived(input, $input => {
 
 export const result: Readable<CalcResult | null> = derived(computed, $c => $c.result)
 export const error: Readable<string | null> = derived(computed, $c => $c.error)
+
+// --- Single-request simulator ---
+// The simulator tab consumes calculate() with concurrency forced to 1,
+// regardless of what the shared workload store carries. This keeps the
+// calc tab and sim tab sharing all other state without one clobbering
+// the other's mental model of "what is concurrency."
+export const simInput: Readable<CalcInput | null> = derived(input, $input => {
+  if (!$input) return null
+  return { ...$input, workload: { ...$input.workload, concurrency: 1 } }
+})
+
+interface SimComputed { result: CalcResult | null; error: string | null }
+
+const simComputed: Readable<SimComputed> = derived(simInput, $input => {
+  if (!$input) return { result: null, error: null }
+  try { return { result: calculate($input), error: null } }
+  catch (err) { return { result: null, error: (err as Error).message } }
+})
+
+export const simResult: Readable<CalcResult | null> = derived(simComputed, $c => $c.result)
+export const simError:  Readable<string | null>      = derived(simComputed, $c => $c.error)
