@@ -16,6 +16,21 @@
   $: hasOverlay = geom.kvOverlay !== undefined
   $: totalH = ROW_H + (hasOverlay ? ROW_GAP + OVERLAY_H : 0) + 30  // +30 for axis labels
 
+  // Adaptive anchor so "first token" stays inside the viewBox even when the
+  // marker sits near the left edge (common for non-disagg: TTFT = prefill,
+  // and prefill is a small fraction of total at typical output lengths).
+  // ~32px half-width covers "first token" at 11px bold system-ui.
+  const LABEL_HALF_W = 32
+  $: markerPx = PADDING + geom.markerX * pxPerS
+  $: markerLabelAnchor =
+    markerPx < PADDING + LABEL_HALF_W ? 'start'
+    : markerPx > W - PADDING - LABEL_HALF_W ? 'end'
+    : 'middle'
+  $: markerLabelX =
+    markerLabelAnchor === 'start' ? PADDING
+    : markerLabelAnchor === 'end' ? W - PADDING
+    : markerPx
+
   function ms(s: number): string {
     if (s >= 1)    return `${(s).toFixed(2)} s`
     if (s >= 1e-3) return `${(s * 1e3).toFixed(0)} ms`
@@ -63,9 +78,9 @@
   />
   <text
     class="marker-label"
-    x={PADDING + geom.markerX * pxPerS}
+    x={markerLabelX}
     y={ROW_H + (hasOverlay ? ROW_GAP + OVERLAY_H : 0) + 14}
-    text-anchor="middle"
+    text-anchor={markerLabelAnchor}
   >first token</text>
 
   <!-- Axis ticks: 0 and Total. (TTFT is shown by the marker line and label above.) -->
