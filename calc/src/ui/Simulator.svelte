@@ -17,6 +17,12 @@
     if (s >= 1e-6)  return `${sig3(s * 1e6)} µs`
     return `${sig3(s * 1e9)} ns`
   }
+  function rate(tps: number): string {
+    if (tps >= 1e9) return `${sig3(tps / 1e9)} G tok/s`
+    if (tps >= 1e6) return `${sig3(tps / 1e6)} M tok/s`
+    if (tps >= 1e3) return `${sig3(tps / 1e3)} k tok/s`
+    return `${sig3(tps)} tok/s`
+  }
 
   // The simulator follows the same op-point the calc tab is showing. Since
   // op-point isn't currently URL state, "the same" reduces to "show every
@@ -52,12 +58,13 @@
         <div class="label">TTFT</div>
         <div class="value">{ms(tier.ttftS)}</div>
         <div class="badge regime-{tier.prefill.regime}">{tier.prefill.regime}-bound prefill</div>
+        <div class="caption">{rate(tier.inputTokenRate)} input</div>
       </div>
       <div class="kpi">
         <div class="label">TPOT</div>
         <div class="value">{ms(tier.decode.timePerTokenS)}</div>
         <div class="badge regime-{tier.decode.regime}">{tier.decode.regime}-bound decode</div>
-        <div class="caption">{sig3(1 / tier.decode.timePerTokenS)} tok/s</div>
+        <div class="caption">{rate(1 / tier.decode.timePerTokenS)} output</div>
       </div>
       <div class="kpi">
         <div class="label">Total latency</div>
