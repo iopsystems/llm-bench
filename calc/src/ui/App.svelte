@@ -14,8 +14,10 @@
   // Reflow the page out from under the fixed derivation drawer by shrinking
   // body's content box while it's open. Fixed positioning is viewport-relative
   // so the drawer itself stays put; only the centered <main> reflows.
+  // The drawer is only rendered on the calc tab; gate the reflow on tab so
+  // sim/info tabs aren't shifted left when the drawer is open-but-hidden.
   $: if (typeof document !== 'undefined') {
-    document.body.classList.toggle('math-open', $showMath)
+    document.body.classList.toggle('math-open', $showMath && $route.tab === 'calc')
   }
 
   let copied = false
