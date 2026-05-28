@@ -6,6 +6,7 @@
   import DerivationDrawer from './DerivationDrawer.svelte'
   import TabBar from './TabBar.svelte'
   import InfoPanel from './InfoPanel.svelte'
+  import Simulator from './Simulator.svelte'
   import { route } from './route'
   import { error, showMath } from './stores'
   import { buildShareUrl } from './share'
@@ -13,8 +14,10 @@
   // Reflow the page out from under the fixed derivation drawer by shrinking
   // body's content box while it's open. Fixed positioning is viewport-relative
   // so the drawer itself stays put; only the centered <main> reflows.
+  // The drawer is only rendered on the calc tab; gate the reflow on tab so
+  // sim/info tabs aren't shifted left when the drawer is open-but-hidden.
   $: if (typeof document !== 'undefined') {
-    document.body.classList.toggle('math-open', $showMath)
+    document.body.classList.toggle('math-open', $showMath && $route.tab === 'calc')
   }
 
   let copied = false
@@ -48,6 +51,8 @@
   <TabBar />
   {#if $route.tab === 'info'}
     <InfoPanel />
+  {:else if $route.tab === 'sim'}
+    <Simulator />
   {:else}
     <InputPanel />
     {#if $error}

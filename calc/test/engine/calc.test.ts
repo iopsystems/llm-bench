@@ -42,6 +42,39 @@ describe('calculate', () => {
   it('throws on unknown variant id', () => {
     expect(() => calculate({ ...testInput, acceleratorVariantId: 'nope' })).toThrow()
   })
+
+  it('exposes kvTransferS=0 in non-disagg config', () => {
+    const result = calculate(testInput)
+    for (const tier of Object.values(result.perf)) {
+      expect(tier.kvTransferS).toBe(0)
+    }
+  })
+
+  it('exposes a positive kvTransferS when a disagg fabric is configured', () => {
+    const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+    const llama70b = MODELS.find(m => m.id === 'llama-3.3-70b')!
+    const hgxH100 = SYSTEMS.find(s => s.id === 'hgx-h100-8')!
+    const inp: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: llama70b,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 },
+      multiDevice: {
+        system: hgxH100,
+        parallelism: ['tp'],
+        parallelismDegrees: { tp: 8 },
+        disaggKvTransferFabricId: 'ib-ndr',
+        disaggFirstTokenOnPrefill: false
+      }
+    }
+    const result = calculate(inp)
+    for (const tier of Object.values(result.perf)) {
+      expect(tier.kvTransferS).toBeGreaterThan(0)
+      // Sequential handoff: ttftS = prefill + kv transfer.
+      expect(tier.ttftS).toBeCloseTo(tier.prefill.timeS + tier.kvTransferS, 9)
+    }
+  })
 })
 
 describe('calculate — real data integration', () => {

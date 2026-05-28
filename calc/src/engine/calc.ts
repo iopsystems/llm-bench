@@ -74,6 +74,7 @@ export function calculate(input: CalcInput): CalcResult {
     perf[op.id] = {
       prefill, decode,
       ttftS,
+      kvTransferS,
       // inputTokenRate stays on prefill (cluster throughput); ttftS includes
       // disagg overhead (user-facing latency to first decoded token).
       inputTokenRate: input.workload.promptTokens / prefill.timeS,

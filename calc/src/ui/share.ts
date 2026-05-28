@@ -223,22 +223,29 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
 }
 
-// Extract the calculator payload from a raw location.hash. Supports the
-// current `#calc?<payload>` form and the legacy bare `#<payload>` form so
-// old shared links keep working. Info routes carry no payload.
-export function calcPayloadFromHash(hash: string): string {
+// Extract the per-tab payload from a raw location.hash. Supports the current
+// `#calc?<payload>` / `#sim?<payload>` forms and the legacy bare `#<payload>`
+// form (treated as calc-tab payload for backwards compatibility with old
+// shared links). Info routes carry no payload regardless of tab argument.
+export function tabPayloadFromHash(hash: string, tab: 'calc' | 'sim'): string {
   const h = hash.replace(/^#/, '')
-  if (h === '' || h === 'calc') return ''
-  if (h.startsWith('calc?')) return h.slice('calc?'.length)
-  if (h.startsWith('info')) return ''
-  return h // legacy: bare payload directly after '#'
+  if (h === '' || h === tab) return ''
+  if (h.startsWith(`${tab}?`)) return h.slice(tab.length + 1)
+  if (h.startsWith('calc') || h.startsWith('sim') || h.startsWith('info')) return ''
+  // Legacy bare payload: only honor it for the calc tab.
+  return tab === 'calc' ? h : ''
 }
 
 // Read `window.location.hash` and apply any encoded state to the stores.
 // Call once at startup, before mounting the app.
 export function readUrlIntoStores(): void {
   if (typeof window === 'undefined') return
-  const payload = calcPayloadFromHash(window.location.hash)
+  // Try both tab prefixes — share URLs can be either #calc?... or #sim?...
+  // and the recipient just lands on the corresponding tab. The payload itself
+  // is identical (shared state), so either tab can decode the other's URL.
+  const payload =
+    tabPayloadFromHash(window.location.hash, 'calc') ||
+    tabPayloadFromHash(window.location.hash, 'sim')
   if (!payload) return
   applyToStores(decodeState(payload))
 }
@@ -252,11 +259,11 @@ export function startUrlSync(): () => void {
   let ready = false
   const write = () => {
     if (!ready) return
-    // Don't clobber info deep-links with calc hash — only sync when on calc.
-    if (parseRoute(window.location.hash).tab !== 'calc') return
+    const tab = parseRoute(window.location.hash).tab
+    // Info tab carries no calc payload; never overwrite it.
+    if (tab !== 'calc' && tab !== 'sim') return
     const encoded = encodeState(readStoreState())
-    const next = `${window.location.pathname}${window.location.search}#calc?${encoded}`
-    // replaceState keeps the back button uncluttered; the URL still updates.
+    const next = `${window.location.pathname}${window.location.search}#${tab}?${encoded}`
     window.history.replaceState(window.history.state, '', next)
   }
 
@@ -281,10 +288,13 @@ export function startUrlSync(): () => void {
 }
 
 // Build a shareable absolute URL for the current store state. Used by the
-// "Copy link" button.
+// "Copy link" button. Hash prefix follows the current tab (calc/sim); the
+// info tab falls back to calc since info has no shareable payload anyway.
 export function buildShareUrl(): string {
   const encoded = encodeState(readStoreState())
   if (typeof window === 'undefined') return `#calc?${encoded}`
+  const tab = parseRoute(window.location.hash).tab
+  const prefix = tab === 'sim' ? 'sim' : 'calc'
   const { origin, pathname, search } = window.location
-  return `${origin}${pathname}${search}#calc?${encoded}`
+  return `${origin}${pathname}${search}#${prefix}?${encoded}`
 }

@@ -4,6 +4,7 @@
   // Compare / Cloud tabs are added by roadmap items #5 / #6.
   const tabs = [
     { id: 'calc' as const, label: 'Calculator' },
+    { id: 'sim'  as const, label: 'Simulator' },
     { id: 'info' as const, label: 'Info' },
   ]
 </script>
@@ -13,7 +14,7 @@
     <button
       type="button"
       class:active={$route.tab === t.id}
-      on:click={() => navigate(t.id === 'calc' ? { tab: 'calc' } : { tab: 'info' })}
+      on:click={() => navigate(t.id === 'info' ? { tab: 'info' } : { tab: t.id })}
     >{t.label}</button>
   {/each}
 </nav>

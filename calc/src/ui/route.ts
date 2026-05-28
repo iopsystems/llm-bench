@@ -5,6 +5,7 @@ import { writable } from 'svelte/store'
 
 export type Route =
   | { tab: 'calc' }
+  | { tab: 'sim' }
   | { tab: 'info' }
   | { tab: 'info'; detail: { kind: 'model' | 'sku'; id: string } }
 
@@ -13,16 +14,20 @@ export type Route =
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, '')
   if (h === '' || h === 'calc' || h.startsWith('calc?')) return { tab: 'calc' }
+  if (h === 'sim'  || h.startsWith('sim?'))  return { tab: 'sim' }
   if (h === 'info') return { tab: 'info' }
   const m = h.match(/^info\/(model|sku)\/(.+)$/)
   if (m) return { tab: 'info', detail: { kind: m[1] as 'model' | 'sku', id: m[2] } }
   return { tab: 'calc' }
 }
 
-// Serialize a Route to a hash string (with leading '#'). For the calc tab an
-// optional payload (the share.ts encodeState string) is appended as `?<payload>`.
-export function serializeRoute(route: Route, calcPayload = ''): string {
-  if (route.tab === 'calc') return calcPayload ? `#calc?${calcPayload}` : '#calc'
+// Serialize a Route to a hash string (with leading '#'). For the calc and sim
+// tabs an optional payload (the share.ts encodeState string) is appended as
+// `?<payload>`. Both tabs use the same encoded payload (shared state); the
+// hash prefix is what differentiates which tab the recipient lands on.
+export function serializeRoute(route: Route, payload = ''): string {
+  if (route.tab === 'calc') return payload ? `#calc?${payload}` : '#calc'
+  if (route.tab === 'sim')  return payload ? `#sim?${payload}`  : '#sim'
   if ('detail' in route) return `#info/${route.detail.kind}/${route.detail.id}`
   return '#info'
 }

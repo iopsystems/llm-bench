@@ -8,6 +8,8 @@
   import { parseTokenCount, formatTokenCount } from './parseTokens'
   import { orderModels, orderSkus } from './catalogOrder'
 
+  export let hideConcurrency = false
+
   // Disagg fabric options — scale-out fabrics (IB, EFA) are the realistic ones.
   // Filter to those entries in INTERCONNECTS.
   const disaggFabrics = INTERCONNECTS.filter(i => i.scale === 'scale-out')
@@ -217,20 +219,22 @@
           <span class="warn">⚠ invalid — use a positive integer (e.g. 512, 4k)</span>
         {/if}
       </label>
-      <label>
-        Concurrency
-        <input
-          type="text"
-          inputmode="numeric"
-          value={concurrencyInput}
-          on:input={onConcurrencyInput}
-          class:invalid={concurrencyInvalid}
-          title="Positive integer (≥1)"
-        />
-        {#if concurrencyInvalid}
-          <span class="warn">⚠ invalid — use a positive integer</span>
-        {/if}
-      </label>
+      {#if !hideConcurrency}
+        <label>
+          Concurrency
+          <input
+            type="text"
+            inputmode="numeric"
+            value={concurrencyInput}
+            on:input={onConcurrencyInput}
+            class:invalid={concurrencyInvalid}
+            title="Positive integer (≥1)"
+          />
+          {#if concurrencyInvalid}
+            <span class="warn">⚠ invalid — use a positive integer</span>
+          {/if}
+        </label>
+      {/if}
     </div>
   </fieldset>
 </section>
