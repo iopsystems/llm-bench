@@ -1,11 +1,17 @@
 <!-- calc/src/ui/TabBar.svelte -->
 <script lang="ts">
-  import { route, navigate } from './route'
+  import { route, navigate, type Route } from './route'
   // Compare / Cloud tabs are added by roadmap items #5 / #6.
   const tabs = [
     { id: 'calc' as const, label: 'Calculator' },
+    { id: 'sim'  as const, label: 'Simulator' },
     { id: 'info' as const, label: 'Info' },
   ]
+  // Bare-tab navigation. Route's `info` variant has a `detail`-bearing twin,
+  // so TS can't pick the bare form from `{ tab: t.id }` alone — cast it.
+  function go(id: 'calc' | 'sim' | 'info') {
+    navigate({ tab: id } as Route)
+  }
 </script>
 
 <nav class="tabbar">
@@ -13,7 +19,7 @@
     <button
       type="button"
       class:active={$route.tab === t.id}
-      on:click={() => navigate(t.id === 'calc' ? { tab: 'calc' } : { tab: 'info' })}
+      on:click={() => go(t.id)}
     >{t.label}</button>
   {/each}
 </nav>

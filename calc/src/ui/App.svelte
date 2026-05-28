@@ -6,6 +6,7 @@
   import DerivationDrawer from './DerivationDrawer.svelte'
   import TabBar from './TabBar.svelte'
   import InfoPanel from './InfoPanel.svelte'
+  import Simulator from './Simulator.svelte'
   import { route } from './route'
   import { error, showMath } from './stores'
   import { buildShareUrl } from './share'
@@ -48,6 +49,8 @@
   <TabBar />
   {#if $route.tab === 'info'}
     <InfoPanel />
+  {:else if $route.tab === 'sim'}
+    <Simulator />
   {:else}
     <InputPanel />
     {#if $error}
