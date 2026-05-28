@@ -91,8 +91,10 @@
 <style>
   .gantt { width: 100%; height: auto; display: block; }
   .seg { stroke: #fff; stroke-width: 1; }
-  .seg.regime-compute { fill: #2b6cb0; }
-  .seg.regime-memory  { fill: #c05621; }
+  /* Regime palette matches the Calculator tab: compute=warm/orange,
+     memory=cool/blue. */
+  .seg.regime-compute { fill: #c05621; }
+  .seg.regime-memory  { fill: #2b6cb0; }
   .seg.regime-comms   { fill: #6b46c1; }
   .seg.overlay { stroke-dasharray: 3 2; opacity: 0.85; }
   .marker { stroke: #111; stroke-width: 1.5; stroke-dasharray: 2 2; }

@@ -143,8 +143,12 @@
     display: inline-block; margin-top: 0.4rem; padding: 0.1rem 0.45rem;
     font-size: 0.75rem; border-radius: 0.2rem; color: #fff;
   }
-  .badge.regime-compute { background: #2b6cb0; }
-  .badge.regime-memory  { background: #c05621; }
+  /* Regime palette matches the Calculator tab: compute=warm/orange,
+     memory=cool/blue. (Calc uses pastel-on-dark-text; here we use saturated
+     fills + white text for the badge form, but the warm/cool mapping is the
+     same so users don't see compute and memory swap colors across tabs.) */
+  .badge.regime-compute { background: #c05621; }
+  .badge.regime-memory  { background: #2b6cb0; }
   .badge.regime-comms   { background: #6b46c1; }
   .kpi .caption { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
   .gantt-wrap h4 { margin: 0 0 0.4rem; font-size: 0.85rem; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
