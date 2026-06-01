@@ -61,6 +61,7 @@ export const INTERCONNECTS: InterconnectSpec[] = [
     topology: 'switched',
     scale: 'scale-up',
     maxScaleUpGpus: 256,
+    compatibleAcceleratorIds: ['h100', 'h200'],
     sources: ['nvidia-nvlink'],
     notes: 'External NVLink Switch trays extend NVLink 4 to 256 GPUs; per-GPU bandwidth unchanged but the non-blocking domain is much larger than an HGX baseboard.'
   },
@@ -89,6 +90,7 @@ export const INTERCONNECTS: InterconnectSpec[] = [
     topology: 'switched',
     scale: 'scale-up',
     maxScaleUpGpus: 72,
+    compatibleAcceleratorIds: ['gb200', 'b100', 'b200'],
     sources: ['nvidia-nvlink'],
     notes: 'GB200 NVL72 — 72 Blackwell GPUs in one NVLink switch domain. Aggregate switch bandwidth: 130 TB/s.'
   },
@@ -119,6 +121,7 @@ export const INTERCONNECTS: InterconnectSpec[] = [
     topology: '3d-torus',
     scale: 'scale-up',
     maxScaleUpGpus: 8960,
+    compatibleAcceleratorIds: ['tpu-v5p'],
     sources: ['google-tpu-v5p-docs'],
     notes: 'Per-chip bidirectional ICI bandwidth; 8960 chips per pod with full 3D torus wrap-around at 4×4×4 slices and larger.'
   },
@@ -132,6 +135,7 @@ export const INTERCONNECTS: InterconnectSpec[] = [
     topology: '2d-torus',
     scale: 'scale-up',
     maxScaleUpGpus: 256,
+    compatibleAcceleratorIds: ['tpu-trillium'],
     sources: ['google-tpu-v6e-docs'],
     notes: 'Per-chip bidirectional ICI bandwidth; 4 ICI ports per chip. Pod aggregate all-reduce bandwidth: 102.4 TB/s across 256 chips.'
   },
@@ -268,5 +272,64 @@ export const INTERCONNECTS: InterconnectSpec[] = [
     topology: 'fat-tree',
     scale: 'scale-out',
     notes: 'Per-NIC scale-out for P5/Trn2 instances. SRD transport, not lossless IB; collective performance depends on Neuron / NCCL EFA plugin.'
+  },
+
+  // === RoCEv2 (Ethernet scale-out) ===
+  {
+    id: 'roce-200',
+    name: 'RoCEv2 200 GbE',
+    vendor: 'IBTA / Ethernet',
+    generation: 'ConnectX-6 / 200 GbE',
+    perGpuBandwidthGBs: 50,
+    perDirectionGBs: 25,
+    topology: 'fat-tree',
+    scale: 'scale-out',
+    notes: 'Same physical layer as IB-HDR (200 Gb/s SerDes); different transport (RoCEv2 lossy IP). Pairs with ConnectX-6.'
+  },
+  {
+    id: 'roce-400',
+    name: 'RoCEv2 400 GbE',
+    vendor: 'IBTA / Ethernet',
+    generation: 'ConnectX-7 / 400 GbE',
+    perGpuBandwidthGBs: 100,
+    perDirectionGBs: 50,
+    topology: 'fat-tree',
+    scale: 'scale-out',
+    notes: 'ConnectX-7 generation. The modal Ethernet AI fabric in production today — most non-HPC NVIDIA deployments use RoCEv2 over Ethernet rather than IB.'
+  },
+  {
+    id: 'roce-800',
+    name: 'RoCEv2 800 GbE',
+    vendor: 'IBTA / Ethernet',
+    generation: 'ConnectX-8 / 800 GbE',
+    perGpuBandwidthGBs: 200,
+    perDirectionGBs: 100,
+    topology: 'fat-tree',
+    scale: 'scale-out',
+    notes: 'ConnectX-8 generation. Matches IB-XDR per-port BW; same SerDes.'
+  },
+
+  // === NVIDIA Spectrum-X (lossless Ethernet for AI) ===
+  {
+    id: 'spectrum-x-400',
+    name: 'NVIDIA Spectrum-X 400G',
+    vendor: 'NVIDIA',
+    generation: 'Spectrum-X SN5000 / 400 GbE',
+    perGpuBandwidthGBs: 100,
+    perDirectionGBs: 50,
+    topology: 'fat-tree',
+    scale: 'scale-out',
+    notes: 'RoCEv2 + adaptive routing + Spectrum-X congestion control. Same peak BW as vanilla RoCE-400; differs in tail latency / contention behavior (not modeled by the engine today).'
+  },
+  {
+    id: 'spectrum-x-800',
+    name: 'NVIDIA Spectrum-X 800G',
+    vendor: 'NVIDIA',
+    generation: 'Spectrum-X SN5600 / 800 GbE',
+    perGpuBandwidthGBs: 200,
+    perDirectionGBs: 100,
+    topology: 'fat-tree',
+    scale: 'scale-out',
+    notes: 'SN5600 + ConnectX-8. Blackwell-era pairing for AI clusters opting into Ethernet over IB.'
   }
 ]

@@ -75,14 +75,14 @@ describe('encodeState', () => {
     expect(encodeState(off)).toContain('df=0')
   })
 
-  it('drops disagg keys entirely when no system is selected', () => {
+  it('encodes disagg keys for single-chip mode too', () => {
     const s = encodeState({
       ...singleChipState,
       disaggKvTransferFabricId: 'ib-ndr',
       disaggFirstTokenOnPrefill: false,
     })
-    expect(s).not.toContain('dk=')
-    expect(s).not.toContain('df=')
+    expect(s).toContain('dk=ib-ndr')
+    expect(s).toContain('df=0')
   })
 })
 

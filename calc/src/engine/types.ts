@@ -78,6 +78,13 @@ export interface InterconnectSpec {
   scale: InterconnectScale
   maxScaleUpGpus?: number      // size of the largest non-blocking domain
 
+  // PD-disagg eligibility: which accelerator families can host this fabric as
+  // the wire between prefill and decode clusters. Only populated for scale-up
+  // fabrics whose use as a disagg medium implies a specific accelerator
+  // family (e.g. NVL72 requires Blackwell). Scale-out fabrics leave this
+  // undefined — any GPU can be on IB/EFA/RoCE.
+  compatibleAcceleratorIds?: string[]
+
   // Round-trip latency for a single hop, ns. Optional; many vendors don't disclose.
   hopLatencyNs?: number
 
@@ -398,16 +405,6 @@ export interface MultiDeviceConfig {
   system: MultiAcceleratorSystem
   parallelism: ParallelismMode['id'][]
   parallelismDegrees: Partial<Record<ParallelismMode['id'], number>>
-  // Disaggregated serving: prefill cluster ships KV cache to decode cluster
-  // over this fabric. References InterconnectSpec.id. Undefined = integrated
-  // serving (prefill and decode on the same hardware, no transfer cost).
-  disaggKvTransferFabricId?: string
-  // When disagg is active, whether the prefill node emits the first decoded
-  // token locally while KV transfer streams in parallel. Production-standard
-  // optimization (DeepSeek PD, NVIDIA Dynamo, vLLM disagg, Mooncake). Default
-  // true. Setting false models the worst-case sequential handoff for
-  // comparison.
-  disaggFirstTokenOnPrefill?: boolean
 }
 
 export interface CalcInput {
@@ -417,6 +414,14 @@ export interface CalcInput {
   quant: Quantization
   workload: Workload
   multiDevice?: MultiDeviceConfig
+  // PD-disagg: prefill ships KV to decode over this fabric (InterconnectSpec.id).
+  // Undefined = integrated serving (no transfer cost). Independent of multiDevice
+  // — disagg is a deployment topology, not a property of one cluster's parallelism.
+  disaggKvTransferFabricId?: string
+  // When disagg is active, whether prefill emits the first decoded token locally
+  // while KV transfer streams in parallel. Defaults true; setting false models the
+  // worst-case sequential handoff.
+  disaggFirstTokenOnPrefill?: boolean
 }
 
 export interface MemoryResult {

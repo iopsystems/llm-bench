@@ -69,7 +69,7 @@ export function encodeState(state: ShareableState): string {
   if (state.parallelismOverride) {
     p.set('p', encodeParallelism(state.parallelismOverride))
   }
-  if (state.systemId && state.disaggKvTransferFabricId) {
+  if (state.disaggKvTransferFabricId) {
     p.set('dk', state.disaggKvTransferFabricId)
     // `df=1` is the default — only emit when the user opted into the
     // worst-case sequential handoff.

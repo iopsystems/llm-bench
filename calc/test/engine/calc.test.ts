@@ -64,14 +64,28 @@ describe('calculate', () => {
         system: hgxH100,
         parallelism: ['tp'],
         parallelismDegrees: { tp: 8 },
-        disaggKvTransferFabricId: 'ib-ndr',
-        disaggFirstTokenOnPrefill: false
-      }
+      },
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: false,
     }
     const result = calculate(inp)
     for (const tier of Object.values(result.perf)) {
       expect(tier.kvTransferS).toBeGreaterThan(0)
       // Sequential handoff: ttftS = prefill + kv transfer.
+      expect(tier.ttftS).toBeCloseTo(tier.prefill.timeS + tier.kvTransferS, 9)
+    }
+  })
+
+  it('disagg works without a multiDevice config (single-chip + scale-out fabric)', () => {
+    // Two single-chip nodes connected by a scale-out fabric — no system selected.
+    const inp = {
+      ...testInput,
+      disaggKvTransferFabricId: 'roce-400',
+      disaggFirstTokenOnPrefill: false,
+    }
+    const result = calculate(inp)
+    for (const tier of Object.values(result.perf)) {
+      expect(tier.kvTransferS).toBeGreaterThan(0)
       expect(tier.ttftS).toBeCloseTo(tier.prefill.timeS + tier.kvTransferS, 9)
     }
   })
@@ -803,9 +817,9 @@ describe('calculate — disaggregated serving (KV transfer TTFT bump)', () => {
         system: hgxH100,
         parallelism: ['tp'],
         parallelismDegrees: { tp: 8 },
-        ...(disaggFabric && { disaggKvTransferFabricId: disaggFabric }),
-        ...(firstTokenOnPrefill !== undefined && { disaggFirstTokenOnPrefill: firstTokenOnPrefill })
-      }
+      },
+      ...(disaggFabric && { disaggKvTransferFabricId: disaggFabric }),
+      ...(firstTokenOnPrefill !== undefined && { disaggFirstTokenOnPrefill: firstTokenOnPrefill }),
     }
   }
 
