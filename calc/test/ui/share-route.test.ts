@@ -92,3 +92,26 @@ describe('URL with model but no quant → quant seeded from native', () => {
     }
   })
 })
+
+describe('disagg URL encoding (single-chip + scale-out fabric)', () => {
+  it('encodes dk/df when no system is selected', () => {
+    const state = {
+      acceleratorId: 'h100', variantId: 'sxm-80', systemId: '', modelId: 'llama-3.3-70b',
+      quant: { weights: 'bf16', kv: 'fp16', activations: 'bf16' } as const,
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
+      parallelismOverride: null,
+      disaggKvTransferFabricId: 'roce-400',
+      disaggFirstTokenOnPrefill: false,
+    }
+    const enc = encodeState(state)
+    expect(enc).toContain('dk=roce-400')
+    expect(enc).toContain('df=0')
+  })
+
+  it('round-trips single-chip + disagg state through decode', () => {
+    const enc = 'a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1&dk=roce-400'
+    const decoded = decodeState(enc)
+    expect(decoded.disaggKvTransferFabricId).toBe('roce-400')
+    expect(decoded.disaggFirstTokenOnPrefill).toBe(true)   // omitted from URL → default true
+  })
+})
