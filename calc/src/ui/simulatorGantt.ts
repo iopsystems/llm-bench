@@ -37,6 +37,14 @@ export interface GanttGeometry {
   kvOverlay?: { x: number; width: number }
   markerX: number
   totalS: number
+  // Only set in the disagg + firstTokenOnPrefill=true case (B). Captures the
+  // gap between the prefill cluster emitting token #1 (at TTFT) and the
+  // decode cluster being ready to emit token #2 (at prefill + kvTransferS).
+  //   stutterS = max(0, kvTransferS - tpotS)
+  // Zero when KV transfer finishes within one decode step (no perceptible
+  // pause); positive when transfer outlasts the first decode step — the
+  // user sees token #1, waits stutterS, then steady cadence from token #2 on.
+  stutterS?: number
 }
 
 export function computeGanttGeometry(input: GanttInput): GanttGeometry {
@@ -82,5 +90,6 @@ export function computeGanttGeometry(input: GanttInput): GanttGeometry {
     kvOverlay: { x: prefillS, width: kvTransferS },
     markerX: ttftS,
     totalS,
+    stutterS: Math.max(0, kvTransferS - tpotS),
   }
 }

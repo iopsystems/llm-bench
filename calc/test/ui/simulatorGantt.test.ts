@@ -93,3 +93,38 @@ describe('computeGanttGeometry — disagg overlap (case B, firstTokenOnPrefill=t
     expect(r(geom.totalS)).toBe(r(0.287 + 0.042 * 512))
   })
 })
+
+describe('computeGanttGeometry — stutterS', () => {
+  // Stutter = gap between token #1 (emitted by prefill cluster at TTFT) and
+  // token #2 (emitted by decode cluster once KV has finished transferring).
+  // Only meaningful in case B (disagg + firstTokenOnPrefill=true); undefined
+  // elsewhere.
+  const base = {
+    prefillS: 0.287, tpotS: 0.042, outputTokens: 512,
+    prefillRegime: 'compute' as const, decodeRegime: 'memory' as const,
+  }
+  it('undefined for non-disagg (case A)', () => {
+    const geom = computeGanttGeometry({
+      ...base, kvTransferS: 0, firstTokenOnPrefill: true, ttftS: 0.287,
+    })
+    expect(geom.stutterS).toBeUndefined()
+  })
+  it('undefined for disagg sequential (case C)', () => {
+    const geom = computeGanttGeometry({
+      ...base, kvTransferS: 0.213, firstTokenOnPrefill: false, ttftS: 0.287 + 0.213,
+    })
+    expect(geom.stutterS).toBeUndefined()
+  })
+  it('zero for disagg overlap when kvTransferS ≤ tpotS (fast fabric)', () => {
+    const geom = computeGanttGeometry({
+      ...base, kvTransferS: 0.010, firstTokenOnPrefill: true, ttftS: 0.287 + 0.042,
+    })
+    expect(geom.stutterS).toBe(0)
+  })
+  it('= kvTransferS - tpotS for disagg overlap when kvTransferS > tpotS (slow fabric)', () => {
+    const geom = computeGanttGeometry({
+      ...base, kvTransferS: 0.213, firstTokenOnPrefill: true, ttftS: 0.287 + 0.042,
+    })
+    expect(geom.stutterS).toBeCloseTo(0.213 - 0.042, 9)
+  })
+})

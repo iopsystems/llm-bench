@@ -16,26 +16,36 @@
   $: hasOverlay = geom.kvOverlay !== undefined
   $: totalH = ROW_H + (hasOverlay ? ROW_GAP + OVERLAY_H : 0) + 30  // +30 for axis labels
 
-  // Adaptive anchor so "first token" stays inside the viewBox even when the
-  // marker sits near the left edge (common for non-disagg: TTFT = prefill,
-  // and prefill is a small fraction of total at typical output lengths).
-  // ~32px half-width covers "first token" at 11px bold system-ui.
-  const LABEL_HALF_W = 32
-  $: markerPx = PADDING + geom.markerX * pxPerS
-  $: markerLabelAnchor =
-    markerPx < PADDING + LABEL_HALF_W ? 'start'
-    : markerPx > W - PADDING - LABEL_HALF_W ? 'end'
-    : 'middle'
-  $: markerLabelX =
-    markerLabelAnchor === 'start' ? PADDING
-    : markerLabelAnchor === 'end' ? W - PADDING
-    : markerPx
-
   function ms(s: number): string {
     if (s >= 1)    return `${(s).toFixed(2)} s`
     if (s >= 1e-3) return `${(s * 1e3).toFixed(0)} ms`
     return `${(s * 1e6).toFixed(0)} µs`
   }
+
+  // Marker label varies with the disagg-overlap stutter:
+  //   • case A/C → "first token"
+  //   • case B, kvTransferS ≤ tpotS → "first token (no stutter)"
+  //   • case B, kvTransferS > tpotS → "first token (stutter: 171 ms)"
+  $: markerLabel = geom.stutterS === undefined
+    ? 'first token'
+    : geom.stutterS === 0
+      ? 'first token (no stutter)'
+      : `first token (stutter: ${ms(geom.stutterS)})`
+
+  // Adaptive anchor so the label stays inside the viewBox even when the marker
+  // sits near the left edge (common for non-disagg: TTFT = prefill, and prefill
+  // is a small fraction of total at typical output lengths). Half-width widens
+  // when the label carries the stutter parenthetical.
+  $: labelHalfW = geom.stutterS !== undefined ? 80 : 32
+  $: markerPx = PADDING + geom.markerX * pxPerS
+  $: markerLabelAnchor =
+    markerPx < PADDING + labelHalfW ? 'start'
+    : markerPx > W - PADDING - labelHalfW ? 'end'
+    : 'middle'
+  $: markerLabelX =
+    markerLabelAnchor === 'start' ? PADDING
+    : markerLabelAnchor === 'end' ? W - PADDING
+    : markerPx
 
   // Map a regime to a CSS class on the rect.
   const regimeClass = (r: 'compute' | 'memory' | 'comms') => `regime-${r}`
@@ -68,20 +78,22 @@
     </rect>
   {/if}
 
-  <!-- TTFT marker. -->
+  <!-- TTFT marker. Spans the main row only (consistent length across all three
+       cases) so the overlay band's presence doesn't bump the line's apparent
+       length when disagg+overlap is active. -->
   <line
     class="marker"
     x1={PADDING + geom.markerX * pxPerS}
     y1={0}
     x2={PADDING + geom.markerX * pxPerS}
-    y2={ROW_H + (hasOverlay ? ROW_GAP + OVERLAY_H : 0)}
+    y2={ROW_H}
   />
   <text
     class="marker-label"
     x={markerLabelX}
     y={ROW_H + (hasOverlay ? ROW_GAP + OVERLAY_H : 0) + 14}
     text-anchor={markerLabelAnchor}
-  >first token</text>
+  >{markerLabel}</text>
 
   <!-- Axis ticks: 0 and Total. (TTFT is shown by the marker line and label above.) -->
   <text class="tick" x={PADDING}                                    y={totalH - 4} text-anchor="start">0</text>
