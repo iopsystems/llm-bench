@@ -48,8 +48,8 @@ export function calculate(input: CalcInput): CalcResult {
   // cluster over a separate fabric. Adds a one-shot transfer time to TTFT.
   // For integrated serving (single cluster) this is 0.
   let kvTransferS = 0
-  if (input.multiDevice?.disaggKvTransferFabricId) {
-    const fab = INTERCONNECTS.find(i => i.id === input.multiDevice!.disaggKvTransferFabricId)
+  if (input.disaggKvTransferFabricId) {
+    const fab = INTERCONNECTS.find(i => i.id === input.disaggKvTransferFabricId)
     if (fab) {
       const bw = fab.perDirectionGBs ?? fab.perGpuBandwidthGBs / 2
       kvTransferS = memory.kvCachePerRequest / (bw * 1e9)
@@ -58,7 +58,7 @@ export function calculate(input: CalcInput): CalcResult {
   // Production-standard: prefill node emits the first decoded token locally
   // while KV transfer streams in parallel. Defaults true when disagg is on.
   const firstTokenOnPrefill =
-    input.multiDevice?.disaggFirstTokenOnPrefill ?? true
+    input.disaggFirstTokenOnPrefill ?? true
 
   const perf: Record<string, PerfTier> = {}
   for (const op of variant.operatingPoints) {

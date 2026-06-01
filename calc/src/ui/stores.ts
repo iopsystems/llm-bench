@@ -56,8 +56,8 @@ export const workload = writable<Workload>({
 })
 
 export const multiDevice: Readable<MultiDeviceConfig | undefined> = derived(
-  [systemId, modelId, parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill],
-  ([$systemId, $modelId, $override, $disagg, $firstTokenOnPrefill]) => {
+  [systemId, modelId, parallelismOverride],
+  ([$systemId, $modelId, $override]) => {
     if (!$systemId) return undefined
     const system = SYSTEMS.find(s => s.id === $systemId)
     const model = MODELS.find(m => m.id === $modelId)
@@ -67,17 +67,15 @@ export const multiDevice: Readable<MultiDeviceConfig | undefined> = derived(
       system,
       parallelism: pc.parallelism,
       parallelismDegrees: pc.parallelismDegrees,
-      ...($disagg && {
-        disaggKvTransferFabricId: $disagg,
-        disaggFirstTokenOnPrefill: $firstTokenOnPrefill,
-      })
     }
   }
 )
 
 export const input: Readable<CalcInput | null> = derived(
-  [acceleratorId, variantId, modelId, quant, workload, multiDevice, systemId],
-  ([$acceleratorId, $variantId, $modelId, $quant, $workload, $multiDevice, $systemId]) => {
+  [acceleratorId, variantId, modelId, quant, workload, multiDevice, systemId,
+   disaggKvTransferFabricId, disaggFirstTokenOnPrefill],
+  ([$acceleratorId, $variantId, $modelId, $quant, $workload, $multiDevice, $systemId,
+    $disagg, $firstTokenOnPrefill]) => {
     // When a system is selected, resolve accelerator from the system's chip ref.
     let accelerator
     let resolvedVariantId: string
@@ -97,7 +95,11 @@ export const input: Readable<CalcInput | null> = derived(
       model,
       quant: $quant,
       workload: $workload,
-      ...($multiDevice && { multiDevice: $multiDevice })
+      ...($multiDevice && { multiDevice: $multiDevice }),
+      ...($disagg && {
+        disaggKvTransferFabricId: $disagg,
+        disaggFirstTokenOnPrefill: $firstTokenOnPrefill,
+      }),
     }
   }
 )
