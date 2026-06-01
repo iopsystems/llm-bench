@@ -1,7 +1,7 @@
 <script lang="ts">
   import InputPanel from './InputPanel.svelte'
   import SimulatorGantt from './SimulatorGantt.svelte'
-  import { simResult, simError, workload, disaggFirstTokenOnPrefill } from './stores'
+  import { simResultMonolithic as simResult, simError, workload, disaggFirstTokenOnPrefill } from './stores'
   import type { GanttInput } from './simulatorGantt'
 
   // Same formatting helpers as PerfPanel; copied here to keep this file

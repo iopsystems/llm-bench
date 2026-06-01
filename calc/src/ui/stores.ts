@@ -116,22 +116,39 @@ export const result: Readable<CalcResult | null> = derived(computed, $c => $c.re
 export const error: Readable<string | null> = derived(computed, $c => $c.error)
 
 // --- Single-request simulator ---
-// The simulator tab consumes calculate() with concurrency forced to 1,
-// regardless of what the shared workload store carries. This keeps the
-// calc tab and sim tab sharing all other state without one clobbering
-// the other's mental model of "what is concurrency."
-export const simInput: Readable<CalcInput | null> = derived(input, $input => {
+// The simulator tab renders two stacked configurations (monolithic + disagg)
+// from the same shared inputs. Each block gets its own derived CalcInput +
+// CalcResult; the monolithic side nulls the disagg fields, the disagg side
+// passes them through. Concurrency is clamped to 1 in both (sim is by
+// definition single-request, regardless of what the shared workload carries).
+export const simInputMonolithic: Readable<CalcInput | null> = derived(input, $input => {
+  if (!$input) return null
+  return {
+    ...$input,
+    workload: { ...$input.workload, concurrency: 1 },
+    disaggKvTransferFabricId: undefined,
+    disaggFirstTokenOnPrefill: undefined,
+  }
+})
+
+export const simInputDisagg: Readable<CalcInput | null> = derived(input, $input => {
   if (!$input) return null
   return { ...$input, workload: { ...$input.workload, concurrency: 1 } }
+  // disagg fields flow through from $input as-is
 })
 
 interface SimComputed { result: CalcResult | null; error: string | null }
-
-const simComputed: Readable<SimComputed> = derived(simInput, $input => {
+function safeCalc($input: CalcInput | null): SimComputed {
   if (!$input) return { result: null, error: null }
   try { return { result: calculate($input), error: null } }
   catch (err) { return { result: null, error: (err as Error).message } }
-})
+}
 
-export const simResult: Readable<CalcResult | null> = derived(simComputed, $c => $c.result)
-export const simError:  Readable<string | null>      = derived(simComputed, $c => $c.error)
+const simComputedMonolithic: Readable<SimComputed> = derived(simInputMonolithic, safeCalc)
+const simComputedDisagg:     Readable<SimComputed> = derived(simInputDisagg,     safeCalc)
+
+export const simResultMonolithic: Readable<CalcResult | null> = derived(simComputedMonolithic, $c => $c.result)
+export const simResultDisagg:     Readable<CalcResult | null> = derived(simComputedDisagg,     $c => $c.result)
+// Errors don't differ between the two variants (same hw/model/quant); surface
+// monolithic's error as the canonical one.
+export const simError: Readable<string | null> = derived(simComputedMonolithic, $c => $c.error)
