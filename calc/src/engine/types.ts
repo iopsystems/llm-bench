@@ -78,6 +78,13 @@ export interface InterconnectSpec {
   scale: InterconnectScale
   maxScaleUpGpus?: number      // size of the largest non-blocking domain
 
+  // PD-disagg eligibility: which accelerator families can host this fabric as
+  // the wire between prefill and decode clusters. Only populated for scale-up
+  // fabrics whose use as a disagg medium implies a specific accelerator
+  // family (e.g. NVL72 requires Blackwell). Scale-out fabrics leave this
+  // undefined — any GPU can be on IB/EFA/RoCE.
+  compatibleAcceleratorIds?: string[]
+
   // Round-trip latency for a single hop, ns. Optional; many vendors don't disclose.
   hopLatencyNs?: number
 

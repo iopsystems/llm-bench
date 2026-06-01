@@ -80,7 +80,7 @@ describe('calculate', () => {
     // Two single-chip nodes connected by a scale-out fabric — no system selected.
     const inp = {
       ...testInput,
-      disaggKvTransferFabricId: 'ib-ndr',
+      disaggKvTransferFabricId: 'roce-400',
       disaggFirstTokenOnPrefill: false,
     }
     const result = calculate(inp)
