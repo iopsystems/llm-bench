@@ -1,18 +1,15 @@
 <script lang="ts">
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
-  import { INTERCONNECTS } from '../data/interconnects'
   import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
   import { orderModels, orderSkus } from './catalogOrder'
+  import { groupedDisaggFabrics, formatFabricLabel } from './disaggFabrics'
 
   export let hideConcurrency = false
-
-  // Disagg fabric options — scale-out fabrics (IB, EFA) are the realistic ones.
-  // Filter to those entries in INTERCONNECTS.
-  const disaggFabrics = INTERCONNECTS.filter(i => i.scale === 'scale-out')
+  export let hideDisagg = false
 
   const DTYPES: Dtype[] = ['fp32', 'fp16', 'bf16', 'fp8', 'fp4', 'int8', 'int4']
 
@@ -48,6 +45,9 @@
 
   $: accelerator = ACCELERATORS.find(a => a.id === $acceleratorId)
   $: variants = accelerator?.variants ?? []
+
+  // Disagg fabric options grouped by scale and filtered by accelerator family.
+  $: disaggGroups = groupedDisaggFabrics($acceleratorId)
   $: if (accelerator && !variants.find(v => v.id === $variantId)) {
        variantId.set(variants[0]?.id ?? '')
      }
@@ -128,14 +128,23 @@
         </label>
       {/if}
       <ParallelismPicker />
-      {#if $systemId}
+      {#if !hideDisagg}
         <label>
           Disagg KV transfer
           <select bind:value={$disaggKvTransferFabricId}>
             <option value="">— integrated —</option>
-            {#each disaggFabrics as f}
-              <option value={f.id}>{f.name}</option>
-            {/each}
+            {#if disaggGroups.scaleUp.length > 0}
+              <optgroup label="Intra-domain (scale-up)">
+                {#each disaggGroups.scaleUp as f}
+                  <option value={f.id}>{formatFabricLabel(f)}</option>
+                {/each}
+              </optgroup>
+            {/if}
+            <optgroup label="Cross-rack (scale-out)">
+              {#each disaggGroups.scaleOut as f}
+                <option value={f.id}>{formatFabricLabel(f)}</option>
+              {/each}
+            </optgroup>
           </select>
         </label>
         {#if $disaggKvTransferFabricId}
