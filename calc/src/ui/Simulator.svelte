@@ -1,12 +1,14 @@
 <script lang="ts">
   import InputPanel from './InputPanel.svelte'
+  import DisaggInputPanel from './DisaggInputPanel.svelte'
   import SimulatorGantt from './SimulatorGantt.svelte'
-  import { simResultMonolithic as simResult, simError, workload, disaggFirstTokenOnPrefill } from './stores'
+  import {
+    simResultMonolithic, simResultDisagg, simError,
+    workload, disaggFirstTokenOnPrefill, disaggKvTransferFabricId
+  } from './stores'
   import type { GanttInput } from './simulatorGantt'
+  import type { CalcResult } from '../engine/types'
 
-  // Same formatting helpers as PerfPanel; copied here to keep this file
-  // self-contained for v1 (extract into a shared module when a third view
-  // wants them).
   function sig3(n: number): string {
     if (n === 0) return '0'
     return parseFloat(n.toPrecision(3)).toString()
@@ -24,16 +26,11 @@
     return `${sig3(tps)} tok/s`
   }
 
-  // Gate results on memory fit: per-rank when parallelism shards the model
-  // across devices, top-level otherwise. The calc tab shows perf anyway
-  // ("what would it look like if it fit"); the simulator's framing is
-  // user-experience-of-this-request, which is moot if the model can't load.
-  $: memory = $simResult?.memory
+  // Memory fit is identical between monolithic and disagg (symmetric hw both
+  // sides), so a single check applies to both blocks.
+  $: memory = $simResultMonolithic?.memory
   $: fits = memory ? (memory.perRank?.fits ?? memory.fits) : false
 
-  // Build a row per operating point and sort by Total latency ascending
-  // (fast → slow, i.e. peak → achievable when both are present). Each row
-  // carries everything the cards + gantt need.
   interface OpRow {
     id: string
     ttftS: number
@@ -44,29 +41,80 @@
     decodeRegime: 'compute' | 'memory' | 'comms'
     gantt: GanttInput
   }
-  $: rows = ($simResult ? Object.entries($simResult.perf).map(([id, t]): OpRow => ({
-    id,
-    ttftS: t.ttftS,
-    tpotS: t.decode.timePerTokenS,
-    totalS: t.ttftS + t.decode.timePerTokenS * ($workload.outputTokens - 1),
-    inputTokenRate: t.inputTokenRate,
-    prefillRegime: t.prefill.regime,
-    decodeRegime: t.decode.regime,
-    gantt: {
-      prefillS: t.prefill.timeS,
-      kvTransferS: t.kvTransferS,
-      tpotS: t.decode.timePerTokenS,
-      outputTokens: $workload.outputTokens,
-      firstTokenOnPrefill: $disaggFirstTokenOnPrefill,
+
+  function rowsFrom(result: CalcResult | null, firstTokenOnPrefill: boolean, outputTokens: number): OpRow[] {
+    if (!result) return []
+    return Object.entries(result.perf).map(([id, t]): OpRow => ({
+      id,
       ttftS: t.ttftS,
+      tpotS: t.decode.timePerTokenS,
+      totalS: t.ttftS + t.decode.timePerTokenS * (outputTokens - 1),
+      inputTokenRate: t.inputTokenRate,
       prefillRegime: t.prefill.regime,
       decodeRegime: t.decode.regime,
-    },
-  })) : []).sort((a, b) => a.totalS - b.totalS)
+      gantt: {
+        prefillS: t.prefill.timeS,
+        kvTransferS: t.kvTransferS,
+        tpotS: t.decode.timePerTokenS,
+        outputTokens,
+        firstTokenOnPrefill,
+        ttftS: t.ttftS,
+        prefillRegime: t.prefill.regime,
+        decodeRegime: t.decode.regime,
+      },
+    })).sort((a, b) => a.totalS - b.totalS)
+  }
+
+  $: rowsMonolithic = rowsFrom($simResultMonolithic, $disaggFirstTokenOnPrefill, $workload.outputTokens)
+  $: rowsDisagg     = rowsFrom($simResultDisagg,     $disaggFirstTokenOnPrefill, $workload.outputTokens)
 </script>
 
+{#snippet resultBlock(rows: OpRow[])}
+  <div class="kpis">
+    <div class="kpi">
+      <div class="label">TTFT</div>
+      {#each rows as row, i}
+        <div class="op" class:secondary={i > 0}>
+          {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+          <div class="value">{ms(row.ttftS)}</div>
+          <div class="badge regime-{row.prefillRegime}">{row.prefillRegime}-bound prefill</div>
+          <div class="caption">{rate(row.inputTokenRate)} input</div>
+        </div>
+      {/each}
+    </div>
+    <div class="kpi">
+      <div class="label">TPOT</div>
+      {#each rows as row, i}
+        <div class="op" class:secondary={i > 0}>
+          {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+          <div class="value">{ms(row.tpotS)}</div>
+          <div class="badge regime-{row.decodeRegime}">{row.decodeRegime}-bound decode</div>
+          <div class="caption">{rate(1 / row.tpotS)} output</div>
+        </div>
+      {/each}
+    </div>
+    <div class="kpi">
+      <div class="label">Total latency</div>
+      {#each rows as row, i}
+        <div class="op" class:secondary={i > 0}>
+          {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+          <div class="value">{ms(row.totalS)}</div>
+          <div class="caption">{$workload.outputTokens} output tokens</div>
+        </div>
+      {/each}
+    </div>
+  </div>
+
+  {#each rows as row}
+    <div class="gantt-wrap">
+      <h4>Timeline{rows.length > 1 ? ` (${row.id})` : ''}</h4>
+      <SimulatorGantt input={row.gantt} />
+    </div>
+  {/each}
+{/snippet}
+
 <section class="simulator">
-  <InputPanel hideConcurrency={true} />
+  <InputPanel hideConcurrency={true} hideDisagg={true} />
 
   {#if $simError}
     <div class="error">⚠ {$simError}</div>
@@ -78,49 +126,22 @@
       workload (prompt/output tokens). See the Calculator tab's Memory panel
       for the breakdown.
     </div>
-  {:else if rows.length > 0}
+  {:else if rowsMonolithic.length > 0}
     <h3 class="config-header">Single request, monolithic</h3>
-    <div class="kpis">
-      <div class="kpi">
-        <div class="label">TTFT</div>
-        {#each rows as row, i}
-          <div class="op" class:secondary={i > 0}>
-            {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
-            <div class="value">{ms(row.ttftS)}</div>
-            <div class="badge regime-{row.prefillRegime}">{row.prefillRegime}-bound prefill</div>
-            <div class="caption">{rate(row.inputTokenRate)} input</div>
-          </div>
-        {/each}
-      </div>
-      <div class="kpi">
-        <div class="label">TPOT</div>
-        {#each rows as row, i}
-          <div class="op" class:secondary={i > 0}>
-            {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
-            <div class="value">{ms(row.tpotS)}</div>
-            <div class="badge regime-{row.decodeRegime}">{row.decodeRegime}-bound decode</div>
-            <div class="caption">{rate(1 / row.tpotS)} output</div>
-          </div>
-        {/each}
-      </div>
-      <div class="kpi">
-        <div class="label">Total latency</div>
-        {#each rows as row, i}
-          <div class="op" class:secondary={i > 0}>
-            {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
-            <div class="value">{ms(row.totalS)}</div>
-            <div class="caption">{$workload.outputTokens} output tokens</div>
-          </div>
-        {/each}
-      </div>
-    </div>
+    {@render resultBlock(rowsMonolithic)}
 
-    {#each rows as row}
-      <div class="gantt-wrap">
-        <h4>Timeline{rows.length > 1 ? ` (${row.id})` : ''}</h4>
-        <SimulatorGantt input={row.gantt} />
+    {#if $disaggKvTransferFabricId && rowsDisagg.length > 0}
+      <h3 class="config-header">Single request, PD-disagg</h3>
+      <DisaggInputPanel />
+      {@render resultBlock(rowsDisagg)}
+    {:else if !$disaggKvTransferFabricId}
+      <!-- Inline affordance for enabling disagg without going up to the
+           shared inputs above. Lives in its own placeholder block. -->
+      <div class="disagg-empty">
+        <DisaggInputPanel />
+        <p>Pick a KV transfer fabric above to add a PD-disagg comparison block.</p>
       </div>
-    {/each}
+    {/if}
   {/if}
 </section>
 
@@ -142,14 +163,15 @@
   .config-header {
     margin: 0.5rem 0 -0.25rem; font-size: 1rem; font-weight: 600; color: #333;
   }
+  .disagg-empty p {
+    margin: 0.25rem 0 0; font-size: 0.85rem; color: #666; font-style: italic;
+  }
   .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; align-items: start; }
   .kpi {
     border: 1px solid #d4d4d4; border-radius: 0.4rem; padding: 0.8rem 1rem;
     background: #fff;
   }
   .kpi .label { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; color: #888; }
-  /* Each op-point sub-block inside a card. The secondary modifier separates
-     subsequent rows with a hairline so the eye can scan top-down within one card. */
   .op { padding-top: 0.2rem; }
   .op.secondary {
     margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid #eee;
@@ -163,10 +185,6 @@
     display: inline-block; margin-top: 0.35rem; padding: 0.1rem 0.45rem;
     font-size: 0.75rem; border-radius: 0.2rem; color: #fff;
   }
-  /* Regime palette matches the Calculator tab: compute=warm/orange,
-     memory=cool/blue. (Calc uses pastel-on-dark-text; here we use saturated
-     fills + white text for the badge form, but the warm/cool mapping is the
-     same so users don't see compute and memory swap colors across tabs.) */
   .badge.regime-compute { background: #c05621; }
   .badge.regime-memory  { background: #2b6cb0; }
   .badge.regime-comms   { background: #6b46c1; }
