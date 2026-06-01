@@ -44,25 +44,33 @@
 
   function rowsFrom(result: CalcResult | null, firstTokenOnPrefill: boolean, outputTokens: number): OpRow[] {
     if (!result) return []
-    return Object.entries(result.perf).map(([id, t]): OpRow => ({
-      id,
-      ttftS: t.ttftS,
-      tpotS: t.decode.timePerTokenS,
-      totalS: t.ttftS + t.decode.timePerTokenS * (outputTokens - 1),
-      inputTokenRate: t.inputTokenRate,
-      prefillRegime: t.prefill.regime,
-      decodeRegime: t.decode.regime,
-      gantt: {
-        prefillS: t.prefill.timeS,
-        kvTransferS: t.kvTransferS,
-        tpotS: t.decode.timePerTokenS,
-        outputTokens,
-        firstTokenOnPrefill,
+    return Object.entries(result.perf).map(([id, t]): OpRow => {
+      // Stutter (case B disagg-overlap with slow fabric): kvTransferS > tpotS
+      // means token #2 waits for KV to arrive after token #1 is emitted, so
+      // total latency extends by (kvTransferS - tpotS). Keeps the KPI card's
+      // Total in sync with the gantt's timeline end (see simulatorGantt.ts).
+      const isOverlap = t.kvTransferS > 0 && firstTokenOnPrefill
+      const stutterS = isOverlap ? Math.max(0, t.kvTransferS - t.decode.timePerTokenS) : 0
+      return {
+        id,
         ttftS: t.ttftS,
+        tpotS: t.decode.timePerTokenS,
+        totalS: t.ttftS + t.decode.timePerTokenS * (outputTokens - 1) + stutterS,
+        inputTokenRate: t.inputTokenRate,
         prefillRegime: t.prefill.regime,
         decodeRegime: t.decode.regime,
-      },
-    })).sort((a, b) => a.totalS - b.totalS)
+        gantt: {
+          prefillS: t.prefill.timeS,
+          kvTransferS: t.kvTransferS,
+          tpotS: t.decode.timePerTokenS,
+          outputTokens,
+          firstTokenOnPrefill,
+          ttftS: t.ttftS,
+          prefillRegime: t.prefill.regime,
+          decodeRegime: t.decode.regime,
+        },
+      }
+    }).sort((a, b) => a.totalS - b.totalS)
   }
 
   $: rowsMonolithic = rowsFrom($simResultMonolithic, $disaggFirstTokenOnPrefill, $workload.outputTokens)
@@ -70,7 +78,7 @@
 </script>
 
 {#snippet resultBlock(rows: OpRow[])}
-  <div class="kpis">
+  <div class="kpis" style:--row-count={rows.length}>
     <div class="kpi">
       <div class="label">TTFT</div>
       {#each rows as row, i}
@@ -100,6 +108,17 @@
           {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
           <div class="value">{ms(row.totalS)}</div>
           <div class="caption">{$workload.outputTokens} output tokens</div>
+        </div>
+      {/each}
+    </div>
+    <div class="kpi">
+      <div class="label">Throughput</div>
+      {#each rows as row, i}
+        <div class="op" class:secondary={i > 0}>
+          {#if rows.length > 1}<div class="op-name">{row.id}</div>{/if}
+          <div class="tp-row"><span class="tp-label">Input</span><span class="tp-value">{rate(row.inputTokenRate)}</span></div>
+          <div class="tp-row"><span class="tp-label">Output</span><span class="tp-value">{rate(1 / row.tpotS)}</span></div>
+          <div class="tp-row"><span class="tp-label">Req</span><span class="tp-value">{sig3(1 / row.totalS)} req/s</span></div>
         </div>
       {/each}
     </div>
@@ -166,8 +185,19 @@
   .disagg-empty p {
     margin: 0.25rem 0 0; font-size: 0.85rem; color: #666; font-style: italic;
   }
-  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; align-items: start; }
+  /* Grid rows: one for the label, one per op-point. Each .kpi uses subgrid
+     so its children land on the same row tracks across all 4 cards — keeps
+     the .op.secondary border-tops (op-point dividers) horizontally aligned. */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto repeat(var(--row-count, 1), auto);
+    gap: 0.75rem;
+  }
   .kpi {
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span calc(var(--row-count, 1) + 1);
     border: 1px solid #d4d4d4; border-radius: 0.4rem; padding: 0.8rem 1rem;
     background: #fff;
   }
@@ -189,7 +219,19 @@
   .badge.regime-memory  { background: #2b6cb0; }
   .badge.regime-comms   { background: #6b46c1; }
   .op .caption { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
+  /* Throughput card rows: label/value pairs, two-column-ish alignment.
+     Smaller font than the headline values of the latency cards so the
+     three stacked metrics don't visually overpower the rest of the row. */
+  .tp-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 0.25rem;
+  }
+  .tp-label { font-size: 0.85rem; color: #666; }
+  .tp-value { font-size: 0.95rem; font-weight: 700; color: #222; }
   .gantt-wrap h4 { margin: 0 0 0.4rem; font-size: 0.85rem; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  @media (max-width: 900px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+  }
   @media (max-width: 640px) {
     .kpis { grid-template-columns: 1fr; }
   }
