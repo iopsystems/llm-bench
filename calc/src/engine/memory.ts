@@ -159,12 +159,12 @@ export function computeMemory(input: CalcInput): MemoryResult {
   const prefillSide = buildSide(
     weights, kvCacheTotal, activationsPeak,
     prefillVariant.hbmCapacityGB,
-    input.multiDevice, model, workload, kvCachePerRequest, activationsPeak
+    input.multiDevice, model, workload, kvCachePerRequest
   )
   const decodeSide = buildSide(
     weights, kvCacheTotal, decodeActivationsPeak,
     decodeVariant.hbmCapacityGB,
-    input.decodeMultiDevice ?? input.multiDevice, model, workload, kvCachePerRequest, decodeActivationsPeak
+    input.decodeMultiDevice ?? input.multiDevice, model, workload, kvCachePerRequest
   )
 
   return {
@@ -202,7 +202,6 @@ function buildSide(
   model: ModelArch,
   workload: Workload,
   kvCachePerRequest: number,
-  sideActivations: number,
 ): MemorySide {
   const total = weights + kvCacheTotal + activations
   const hbmCapacityBytes = hbmCapacityGB * BYTES_PER_GB
@@ -220,7 +219,7 @@ function buildSide(
     const perReplicaConcurrency = workload.concurrency / divisors.replicas
     const rankKvPerRequest = kvCachePerRequest / divisors.kv
     const rankKvTotal = rankKvPerRequest * perReplicaConcurrency
-    const rankActivations = sideActivations / divisors.activations
+    const rankActivations = activations / divisors.activations
     const rankTotal = rankWeights + rankKvTotal + rankActivations
     const rankHeadroom = hbmCapacityBytes - rankTotal
     perRank = {
