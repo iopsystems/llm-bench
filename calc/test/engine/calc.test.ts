@@ -89,6 +89,55 @@ describe('calculate', () => {
       expect(tier.ttftS).toBeCloseTo(tier.prefill.timeS + tier.kvTransferS, 9)
     }
   })
+
+  it('heterogeneous P/D: decode perf uses decode-side accelerator', () => {
+    // Build a fixture with decodeAccelerator different from prefill side.
+    const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+    const h200 = ACCELERATORS.find(a => a.id === 'h200')!
+    const inp = {
+      ...testInput,
+      accelerator: h100,
+      acceleratorVariantId: h100.variants[0].id,
+      decodeAccelerator: h200,
+      decodeAcceleratorVariantId: h200.variants[0].id,
+    }
+    const result = calculate(inp)
+    // h200 has higher HBM bandwidth → decode tpot should be lower than the symmetric h100 case.
+    const symmetric = calculate({ ...inp, decodeAccelerator: undefined, decodeAcceleratorVariantId: undefined })
+    const op = Object.keys(result.perf)[0]
+    expect(result.perf[op].decode.timePerTokenS).toBeLessThan(symmetric.perf[op].decode.timePerTokenS)
+  })
+
+  it('heterogeneous P/D with firstTokenOnPrefill=true: TTFT uses prefill-cluster decode-step time', () => {
+    const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+    const h200 = ACCELERATORS.find(a => a.id === 'h200')!
+    const inp = {
+      ...testInput,
+      accelerator: h100,
+      acceleratorVariantId: h100.variants[0].id,
+      decodeAccelerator: h200,
+      decodeAcceleratorVariantId: h200.variants[0].id,
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: true,
+    }
+    const result = calculate(inp)
+    const op = Object.keys(result.perf)[0]
+    // TTFT = prefill.timeS + (decode step on prefill cluster's hw, NOT decode cluster's).
+    const ttft = result.perf[op].ttftS
+    const prefillTime = result.perf[op].prefill.timeS
+    expect(ttft).toBeGreaterThan(prefillTime)
+    // TTFT must NOT equal prefill + decode-cluster-tpot (which would be h200's number).
+    // Relative check: H100 HBM (3.35 TB/s) is slower than H200 (4.8 TB/s) → the
+    // first decode step on the prefill cluster should be ~1.43× the h200 tpot.
+    const decodeClusterTpot = result.perf[op].decode.timePerTokenS
+    const firstStepS = ttft - prefillTime
+    expect(firstStepS / decodeClusterTpot).toBeGreaterThan(1.2)
+  })
+
+  it('symmetric (no decode fields) still works — backward compat', () => {
+    const result = calculate(testInput)
+    expect(Object.keys(result.perf).length).toBeGreaterThan(0)
+  })
 })
 
 describe('calculate — real data integration', () => {
