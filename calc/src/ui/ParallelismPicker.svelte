@@ -1,13 +1,28 @@
 <script lang="ts">
-  import { systemId, modelId, parallelismOverride } from './stores'
+  import {
+    systemId as prefillSystemId,
+    parallelismOverride as prefillParallelism,
+    decodeSystemId,
+    decodeParallelismOverride,
+    modelId,
+  } from './stores'
   import { SYSTEMS } from '../data/systems'
   import { MODELS } from '../data'
   import { defaultParallelism, type ParallelismConfig } from '../engine/parallelism'
 
-  $: system = SYSTEMS.find(s => s.id === $systemId)
+  // side='prefill' (default) reads/writes the shared prefill-side stores;
+  // side='decode' reads/writes the decode-side stores (used by the
+  // heterogeneous P/D block in DisaggInputPanel).
+  export let side: 'prefill' | 'decode' = 'prefill'
+
+  $: activeSystemIdValue = side === 'decode' ? $decodeSystemId : $prefillSystemId
+  $: activeParallelismValue = side === 'decode' ? $decodeParallelismOverride : $prefillParallelism
+  $: activeParallelismStore = side === 'decode' ? decodeParallelismOverride : prefillParallelism
+
+  $: system = SYSTEMS.find(s => s.id === activeSystemIdValue)
   $: model = MODELS.find(m => m.id === $modelId)
   $: defaults = system && model ? defaultParallelism(system, model) : null
-  $: active = $parallelismOverride ?? defaults
+  $: active = activeParallelismValue ?? defaults
 
   function candidates(sys: NonNullable<typeof system>, isMoE: boolean): ParallelismConfig[] {
     const N = sys.accelerator.count
@@ -41,9 +56,9 @@
   function onChange(e: Event) {
     const v = (e.target as HTMLSelectElement).value
     if (v === 'default') {
-      parallelismOverride.set(null)
+      activeParallelismStore.set(null)
     } else {
-      parallelismOverride.set(JSON.parse(v))
+      activeParallelismStore.set(JSON.parse(v))
     }
   }
 </script>
