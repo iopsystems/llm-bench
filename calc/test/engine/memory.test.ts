@@ -148,6 +148,46 @@ describe('computeMemory', () => {
     expect(m.kvCacheTotal).toBe(392)
   })
 
+  it('exposes decodeActivationsPeak much smaller than activationsPeak (prefill activations)', () => {
+    const m = computeMemory(testInput)
+    expect(m.decodeActivationsPeak).toBeLessThan(m.activationsPeak)
+    // decode activations are O(1 × hidden), prefill are O(promptTokens × hidden) — gap >> 10x in test config
+    expect(m.activationsPeak / m.decodeActivationsPeak).toBeGreaterThan(2)
+  })
+
+  it("prefillSide.total equals weights + kvCacheTotal + activationsPeak (= today's total)", () => {
+    const m = computeMemory(testInput)
+    expect(m.prefillSide.total).toBe(m.weights + m.kvCacheTotal + m.activationsPeak)
+    expect(m.prefillSide.total).toBe(m.total)
+  })
+
+  it('decodeSide.total uses decodeActivationsPeak instead of prefill activations', () => {
+    const m = computeMemory(testInput)
+    expect(m.decodeSide.total).toBe(m.weights + m.kvCacheTotal + m.decodeActivationsPeak)
+    expect(m.decodeSide.total).toBeLessThan(m.prefillSide.total)
+  })
+
+  it('hbmCapacityGB per side defaults to prefill variant when decodeAccelerator absent', () => {
+    const m = computeMemory(testInput)
+    expect(m.prefillSide.hbmCapacityGB).toBe(testInput.accelerator.variants[0].hbmCapacityGB)
+    expect(m.decodeSide.hbmCapacityGB).toBe(testInput.accelerator.variants[0].hbmCapacityGB)
+  })
+
+  it('per-side fits flags computed against their respective HBM capacities', () => {
+    const m = computeMemory(testInput)
+    const cap = testInput.accelerator.variants[0].hbmCapacityGB * 1024 * 1024 * 1024
+    expect(m.prefillSide.fits).toBe(m.prefillSide.total <= cap)
+    expect(m.decodeSide.fits).toBe(m.decodeSide.total <= cap)
+  })
+
+  it('backward-compat: total/fits/headroom/hbmCapacityGB mirror prefillSide', () => {
+    const m = computeMemory(testInput)
+    expect(m.total).toBe(m.prefillSide.total)
+    expect(m.fits).toBe(m.prefillSide.fits)
+    expect(m.headroom).toBe(m.prefillSide.headroom)
+    expect(m.hbmCapacityGB).toBe(m.prefillSide.hbmCapacityGB)
+  })
+
   it('kvCachePerRequest for csa-hca-hybrid sums sliding + CSA + HCA contributions', () => {
     // testModel base: prompt+output=15, fp16, concurrency=2.
     // csa-hca-hybrid with layers=3 (1 sliding + 1 CSA + 1 HCA):
