@@ -61,6 +61,8 @@ describe('URL with model but no quant → quant seeded from native', () => {
       quant: { weights: 'fp8', kv: 'fp16', activations: 'fp8' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
       parallelismOverride: null, disaggKvTransferFabricId: '', disaggFirstTokenOnPrefill: true,
+      heterogeneous: false, decodeAcceleratorId: '', decodeVariantId: '',
+      decodeSystemId: '', decodeParallelismOverride: null,
     })
     expect(enc).not.toContain('ld=')   // no more ld key
     expect(decodeState(enc).quant).toEqual({ weights: 'fp8', kv: 'fp16', activations: 'fp8' })
@@ -102,6 +104,9 @@ describe('disagg URL encoding (single-chip + scale-out fabric)', () => {
       parallelismOverride: null,
       disaggKvTransferFabricId: 'roce-400',
       disaggFirstTokenOnPrefill: false,
+      heterogeneous: false,
+      decodeAcceleratorId: '', decodeVariantId: '',
+      decodeSystemId: '', decodeParallelismOverride: null,
     }
     const enc = encodeState(state)
     expect(enc).toContain('dk=roce-400')
@@ -113,5 +118,60 @@ describe('disagg URL encoding (single-chip + scale-out fabric)', () => {
     const decoded = decodeState(enc)
     expect(decoded.disaggKvTransferFabricId).toBe('roce-400')
     expect(decoded.disaggFirstTokenOnPrefill).toBe(true)   // omitted from URL → default true
+  })
+})
+
+describe('heterogeneous P/D URL state', () => {
+  const base = {
+    acceleratorId: 'h100', variantId: 'sxm-80', systemId: '', modelId: 'llama-3.3-70b',
+    quant: { weights: 'bf16', kv: 'fp16', activations: 'bf16' } as const,
+    workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
+    parallelismOverride: null,
+    disaggKvTransferFabricId: 'roce-400',
+    disaggFirstTokenOnPrefill: true,
+  }
+
+  it('omits all decode-side keys when heterogeneous=false', () => {
+    const enc = encodeState({ ...base, heterogeneous: false,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141',
+      decodeSystemId: '', decodeParallelismOverride: null })
+    expect(enc).not.toContain('het=')
+    expect(enc).not.toContain('a2=')
+    expect(enc).not.toContain('v2=')
+  })
+
+  it('emits het=1 + a2/v2 when heterogeneous=true with single-chip decode side', () => {
+    const enc = encodeState({ ...base, heterogeneous: true,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141',
+      decodeSystemId: '', decodeParallelismOverride: null })
+    expect(enc).toContain('het=1')
+    expect(enc).toContain('a2=h200')
+    expect(enc).toContain('v2=sxm-141')
+    expect(enc).not.toContain('s2=')
+  })
+
+  it('emits s2 instead of a2/v2 when decode side is multi-device', () => {
+    const enc = encodeState({ ...base, heterogeneous: true,
+      decodeAcceleratorId: '', decodeVariantId: '',
+      decodeSystemId: 'hgx-h200-8', decodeParallelismOverride: null })
+    expect(enc).toContain('s2=hgx-h200-8')
+    expect(enc).not.toMatch(/(^|&)a2=/)
+    expect(enc).not.toMatch(/(^|&)v2=/)
+  })
+
+  it('round-trips: encode then decode preserves heterogeneous state', () => {
+    const original = { ...base, heterogeneous: true,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141',
+      decodeSystemId: '', decodeParallelismOverride: null }
+    const round = decodeState(encodeState(original))
+    expect(round.heterogeneous).toBe(true)
+    expect(round.decodeAcceleratorId).toBe('h200')
+    expect(round.decodeVariantId).toBe('sxm-141')
+  })
+
+  it('URL without het keys decodes to non-heterogeneous (no decode-side state)', () => {
+    const round = decodeState('a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1')
+    expect(round.heterogeneous).toBeUndefined()
+    expect(round.decodeAcceleratorId).toBeUndefined()
   })
 })

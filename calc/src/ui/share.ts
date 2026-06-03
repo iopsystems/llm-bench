@@ -14,7 +14,9 @@ import { get } from 'svelte/store'
 import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  quant, workload
+  quant, workload,
+  heterogeneous, decodeAcceleratorId, decodeVariantId, decodeSystemId,
+  decodeParallelismOverride,
 } from './stores'
 import { parseRoute } from './route'
 import { ACCELERATORS, MODELS } from '../data'
@@ -46,6 +48,13 @@ export interface ShareableState {
   parallelismOverride: ParallelismConfig | null
   disaggKvTransferFabricId: string
   disaggFirstTokenOnPrefill: boolean
+
+  // Heterogeneous PD-disagg — only encoded when heterogeneous is true.
+  heterogeneous: boolean
+  decodeAcceleratorId: string
+  decodeVariantId: string
+  decodeSystemId: string
+  decodeParallelismOverride: ParallelismConfig | null
 }
 
 // Encode state to a URL-search-style string (no leading `#`).
@@ -74,6 +83,18 @@ export function encodeState(state: ShareableState): string {
     // `df=1` is the default — only emit when the user opted into the
     // worst-case sequential handoff.
     if (!state.disaggFirstTokenOnPrefill) p.set('df', '0')
+  }
+  if (state.heterogeneous) {
+    p.set('het', '1')
+    if (state.decodeSystemId) {
+      p.set('s2', state.decodeSystemId)
+    } else if (state.decodeAcceleratorId) {
+      p.set('a2', state.decodeAcceleratorId)
+      if (state.decodeVariantId) p.set('v2', state.decodeVariantId)
+    }
+    if (state.decodeParallelismOverride) {
+      p.set('p2', encodeParallelism(state.decodeParallelismOverride))
+    }
   }
   return p.toString()
 }
@@ -159,6 +180,33 @@ export function decodeState(hash: string): Partial<ShareableState> {
     }
   }
 
+  if (params.get('het') === '1') {
+    out.heterogeneous = true
+    const s2 = params.get('s2')
+    if (s2 !== null) {
+      const sys = SYSTEMS.find(x => x.id === s2)
+      if (sys) {
+        out.decodeSystemId = s2
+        out.decodeAcceleratorId = sys.accelerator.id
+        out.decodeVariantId = sys.accelerator.variantId
+      }
+    } else if (params.has('a2')) {
+      const a2 = params.get('a2')!
+      const accel = ACCELERATORS.find(x => x.id === a2)
+      if (accel) {
+        out.decodeSystemId = ''
+        out.decodeAcceleratorId = a2
+        const v2 = params.get('v2')
+        out.decodeVariantId = v2 && accel.variants.find(x => x.id === v2)
+          ? v2 : accel.variants[0].id
+      }
+    }
+    if (params.has('p2')) {
+      const pc = decodeParallelism(params.get('p2')!)
+      out.decodeParallelismOverride = pc ?? null
+    }
+  }
+
   return out
 }
 
@@ -197,6 +245,11 @@ function readStoreState(): ShareableState {
     parallelismOverride: get(parallelismOverride),
     disaggKvTransferFabricId: get(disaggKvTransferFabricId),
     disaggFirstTokenOnPrefill: get(disaggFirstTokenOnPrefill),
+    heterogeneous: get(heterogeneous),
+    decodeAcceleratorId: get(decodeAcceleratorId),
+    decodeVariantId: get(decodeVariantId),
+    decodeSystemId: get(decodeSystemId),
+    decodeParallelismOverride: get(decodeParallelismOverride),
   }
 }
 
@@ -221,6 +274,13 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.parallelismOverride !== undefined) parallelismOverride.set(partial.parallelismOverride)
   if (partial.disaggKvTransferFabricId !== undefined) disaggKvTransferFabricId.set(partial.disaggKvTransferFabricId)
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
+
+  // Heterogeneous fields.
+  if (partial.heterogeneous !== undefined) heterogeneous.set(partial.heterogeneous)
+  if (partial.decodeAcceleratorId !== undefined) decodeAcceleratorId.set(partial.decodeAcceleratorId)
+  if (partial.decodeVariantId !== undefined) decodeVariantId.set(partial.decodeVariantId)
+  if (partial.decodeSystemId !== undefined) decodeSystemId.set(partial.decodeSystemId)
+  if (partial.decodeParallelismOverride !== undefined) decodeParallelismOverride.set(partial.decodeParallelismOverride)
 }
 
 // Extract the per-tab payload from a raw location.hash. Supports the current
@@ -280,6 +340,11 @@ export function startUrlSync(): () => void {
     disaggFirstTokenOnPrefill.subscribe(write),
     quant.subscribe(write),
     workload.subscribe(write),
+    heterogeneous.subscribe(write),
+    decodeAcceleratorId.subscribe(write),
+    decodeVariantId.subscribe(write),
+    decodeSystemId.subscribe(write),
+    decodeParallelismOverride.subscribe(write),
   ]
   ready = true
   write()
