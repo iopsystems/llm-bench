@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { get } from 'svelte/store'
 import {
   workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  simInputMonolithic, simInputDisagg, simResultMonolithic, simResultDisagg
+  simInputMonolithic, simInputDisagg, simResultMonolithic, simResultDisagg,
+  decodeAcceleratorId, decodeVariantId, decodeSystemId,
+  decodeParallelismOverride, heterogeneous
 } from '../../src/ui/stores'
 
 describe('simInputMonolithic / simInputDisagg', () => {
@@ -66,5 +68,42 @@ describe('simResultMonolithic / simResultDisagg', () => {
     // firstTokenOnPrefill=true: disagg ttft = prefill + 1 decode step;
     // mono ttft = prefill. So disagg > mono by exactly tpot.
     expect(disagg.perf[opId].ttftS).toBeGreaterThan(mono.perf[opId].ttftS)
+  })
+})
+
+describe('heterogeneous P/D — store wiring', () => {
+  beforeEach(() => {
+    heterogeneous.set(false)
+    decodeAcceleratorId.set('')
+    decodeVariantId.set('')
+    decodeSystemId.set('')
+    decodeParallelismOverride.set(null)
+    workload.set({ promptTokens: 2048, outputTokens: 512, concurrency: 1 })
+    disaggKvTransferFabricId.set('roce-400')
+    disaggFirstTokenOnPrefill.set(true)
+  })
+
+  it('when heterogeneous=false: simInputDisagg has no decode-side fields', () => {
+    const inp = get(simInputDisagg)!
+    expect(inp.decodeAccelerator).toBeUndefined()
+    expect(inp.decodeAcceleratorVariantId).toBeUndefined()
+    expect(inp.decodeMultiDevice).toBeUndefined()
+  })
+
+  it('when heterogeneous=true with no decode-side selections: falls back to prefill on every field', () => {
+    heterogeneous.set(true)
+    const inp = get(simInputDisagg)!
+    // Decode-side stores are empty → engine sees same accelerator as prefill.
+    expect(inp.decodeAccelerator).toBe(inp.accelerator)
+    expect(inp.decodeAcceleratorVariantId).toBe(inp.acceleratorVariantId)
+  })
+
+  it('when heterogeneous=true and decodeAcceleratorId set: decode side resolves to that accelerator', () => {
+    heterogeneous.set(true)
+    decodeAcceleratorId.set('h200')
+    decodeVariantId.set('sxm-141')
+    const inp = get(simInputDisagg)!
+    expect(inp.decodeAccelerator?.id).toBe('h200')
+    expect(inp.decodeAcceleratorVariantId).toBe('sxm-141')
   })
 })
