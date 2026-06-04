@@ -328,6 +328,30 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.decodeVariantId !== undefined) decodeVariantId.set(partial.decodeVariantId)
   if (partial.decodeSystemId !== undefined) decodeSystemId.set(partial.decodeSystemId)
   if (partial.decodeParallelismOverride !== undefined) decodeParallelismOverride.set(partial.decodeParallelismOverride)
+
+  // Invariant: when het=on, both cluster overrides must be non-empty —
+  // otherwise the disagg block reactively follows the shared (monolithic)
+  // stores and the user can no longer change them independently. Old URLs
+  // with het=1 but missing a1/v1 land here (decode side only was emitted
+  // pre-decoupling). Seed from shared so subsequent edits decouple cleanly.
+  if (get(heterogeneous)) {
+    if (!get(prefillAcceleratorId) && !get(prefillSystemId)) {
+      prefillAcceleratorId.set(get(acceleratorId))
+      prefillVariantId.set(get(variantId))
+      prefillSystemId.set(get(systemId))
+      if (get(prefillParallelismOverride) === null) {
+        prefillParallelismOverride.set(get(parallelismOverride))
+      }
+    }
+    if (!get(decodeAcceleratorId) && !get(decodeSystemId)) {
+      decodeAcceleratorId.set(get(acceleratorId))
+      decodeVariantId.set(get(variantId))
+      decodeSystemId.set(get(systemId))
+      if (get(decodeParallelismOverride) === null) {
+        decodeParallelismOverride.set(get(parallelismOverride))
+      }
+    }
+  }
 }
 
 // Extract the per-tab payload from a raw location.hash. Supports the current

@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { get } from 'svelte/store'
 import { tabPayloadFromHash, encodeState, decodeState, readUrlIntoStores } from '../../src/ui/share'
-import { modelId, quant } from '../../src/ui/stores'
+import {
+  modelId, quant,
+  acceleratorId, variantId, systemId,
+  heterogeneous,
+  prefillAcceleratorId, prefillVariantId, prefillSystemId,
+  decodeAcceleratorId, decodeVariantId, decodeSystemId,
+} from '../../src/ui/stores'
 import { MODELS } from '../../src/data'
 
 describe('tabPayloadFromHash', () => {
@@ -245,5 +251,67 @@ describe('heterogeneous P/D URL state', () => {
     expect(round.heterogeneous).toBe(true)
     expect(round.decodeAcceleratorId).toBe('h200')
     expect(round.prefillAcceleratorId).toBeUndefined()
+  })
+})
+
+describe('readUrlIntoStores seeds prefill+decode overrides when het=1', () => {
+  // Without this seeding, an old-format URL like het=1&a2=X (no a1) leaves the
+  // prefill-override stores empty; the disagg block then reactively follows
+  // the shared (monolithic) hw and the user can no longer change them
+  // independently. The bug we're locking out: monolithic edits coupling to
+  // disagg prefill display + calculation.
+  beforeEach(() => {
+    acceleratorId.set('h100')
+    variantId.set('sxm-80')
+    systemId.set('')
+    heterogeneous.set(false)
+    prefillAcceleratorId.set('')
+    prefillVariantId.set('')
+    prefillSystemId.set('')
+    decodeAcceleratorId.set('')
+    decodeVariantId.set('')
+    decodeSystemId.set('')
+  })
+
+  it('het=1 URL with only decode keys seeds prefill from shared', () => {
+    const w = globalThis as { window?: { location: { hash: string } } }
+    w.window = { location: { hash: '#sim?a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1&dk=roce-400&het=1&a2=h200&v2=sxm-141' } }
+    try {
+      readUrlIntoStores()
+      expect(get(heterogeneous)).toBe(true)
+      // Prefill seeded from shared (= a/v from URL).
+      expect(get(prefillAcceleratorId)).toBe('h100')
+      expect(get(prefillVariantId)).toBe('sxm-80')
+      // Decode came from a2/v2.
+      expect(get(decodeAcceleratorId)).toBe('h200')
+      expect(get(decodeVariantId)).toBe('sxm-141')
+    } finally {
+      delete w.window
+    }
+  })
+
+  it('het=1 URL with explicit a1/v1 keeps URL-provided values (no overwrite)', () => {
+    const w = globalThis as { window?: { location: { hash: string } } }
+    w.window = { location: { hash: '#sim?a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1&dk=roce-400&het=1&a1=mi300x&v1=oam-192&a2=h200&v2=sxm-141' } }
+    try {
+      readUrlIntoStores()
+      expect(get(prefillAcceleratorId)).toBe('mi300x')
+      expect(get(prefillVariantId)).toBe('oam-192')
+    } finally {
+      delete w.window
+    }
+  })
+
+  it('het=0 URL leaves overrides untouched (no seeding)', () => {
+    const w = globalThis as { window?: { location: { hash: string } } }
+    w.window = { location: { hash: '#sim?a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1' } }
+    try {
+      readUrlIntoStores()
+      expect(get(heterogeneous)).toBe(false)
+      expect(get(prefillAcceleratorId)).toBe('')
+      expect(get(decodeAcceleratorId)).toBe('')
+    } finally {
+      delete w.window
+    }
   })
 })

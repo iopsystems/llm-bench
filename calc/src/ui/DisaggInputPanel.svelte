@@ -19,11 +19,14 @@
   $: groups = groupedDisaggFabrics($acceleratorId)
   $: skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
 
-  // Prefill cluster (= prefill-override stores).
+  // Prefill cluster (= prefill-override stores). Once het is on the seed
+  // handler / URL apply guarantees these are populated, so no fallback to
+  // shared — that fallback is what made the menu reactively follow the
+  // monolithic block.
   $: prefillComboValue = $prefillSystemId
     ? `sys:${$prefillSystemId}`
-    : `chip:${$prefillAcceleratorId || $acceleratorId}`
-  $: prefillAcceleratorObj = ACCELERATORS.find(a => a.id === ($prefillAcceleratorId || $acceleratorId))
+    : `chip:${$prefillAcceleratorId}`
+  $: prefillAcceleratorObj = ACCELERATORS.find(a => a.id === $prefillAcceleratorId)
   $: prefillVariants = prefillAcceleratorObj?.variants ?? []
 
   function onPrefillComboChange(e: Event) {
@@ -39,11 +42,11 @@
     }
   }
 
-  // Decode cluster (= decode-override stores).
+  // Decode cluster (= decode-override stores). Same invariant as prefill.
   $: decodeComboValue = $decodeSystemId
     ? `sys:${$decodeSystemId}`
-    : `chip:${$decodeAcceleratorId || $prefillAcceleratorId || $acceleratorId}`
-  $: decodeAcceleratorObj = ACCELERATORS.find(a => a.id === ($decodeAcceleratorId || $prefillAcceleratorId || $acceleratorId))
+    : `chip:${$decodeAcceleratorId}`
+  $: decodeAcceleratorObj = ACCELERATORS.find(a => a.id === $decodeAcceleratorId)
   $: decodeVariants = decodeAcceleratorObj?.variants ?? []
 
   function onDecodeComboChange(e: Event) {
