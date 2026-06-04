@@ -29,6 +29,24 @@ export const disaggKvTransferFabricId = writable<string>('')
 // KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
 export const disaggFirstTokenOnPrefill = writable<boolean>(true)
 
+// Heterogeneous PD-disagg — separate hw + parallelism per cluster, fully
+// decoupled from the monolithic (shared) stores. When `heterogeneous` is
+// false these are ignored and the disagg block reuses the shared hw (symmetric
+// comparison). When true, both clusters get their own overrides; the
+// DisaggInputPanel seeds them from shared on toggle-on, so the user starts
+// symmetric and changes one side at a time. Empty/null fields fall back to
+// the shared (monolithic) values — that's the path old het=1 URLs without
+// a1/v1 follow, and what we render before the toggle-on seed lands.
+export const prefillAcceleratorId       = writable<string>('')
+export const prefillVariantId           = writable<string>('')
+export const prefillSystemId            = writable<string>('')
+export const prefillParallelismOverride = writable<ParallelismConfig | null>(null)
+export const decodeAcceleratorId        = writable<string>('')
+export const decodeVariantId            = writable<string>('')
+export const decodeSystemId             = writable<string>('')
+export const decodeParallelismOverride  = writable<ParallelismConfig | null>(null)
+export const heterogeneous              = writable<boolean>(false)
+
 // Initial quant follows the default model's native precision; KV defaults to
 // fp16 because cache quant is an independent serving-side axis, not a
 // property of how the weights ship.
@@ -60,6 +78,38 @@ export const multiDevice: Readable<MultiDeviceConfig | undefined> = derived(
   ([$systemId, $modelId, $override]) => {
     if (!$systemId) return undefined
     const system = SYSTEMS.find(s => s.id === $systemId)
+    const model = MODELS.find(m => m.id === $modelId)
+    if (!system || !model) return undefined
+    const pc = $override ?? defaultParallelism(system, model)
+    return {
+      system,
+      parallelism: pc.parallelism,
+      parallelismDegrees: pc.parallelismDegrees,
+    }
+  }
+)
+
+export const prefillMultiDevice: Readable<MultiDeviceConfig | undefined> = derived(
+  [prefillSystemId, modelId, prefillParallelismOverride],
+  ([$prefillSystemId, $modelId, $override]) => {
+    if (!$prefillSystemId) return undefined
+    const system = SYSTEMS.find(s => s.id === $prefillSystemId)
+    const model = MODELS.find(m => m.id === $modelId)
+    if (!system || !model) return undefined
+    const pc = $override ?? defaultParallelism(system, model)
+    return {
+      system,
+      parallelism: pc.parallelism,
+      parallelismDegrees: pc.parallelismDegrees,
+    }
+  }
+)
+
+export const decodeMultiDevice: Readable<MultiDeviceConfig | undefined> = derived(
+  [decodeSystemId, modelId, decodeParallelismOverride],
+  ([$decodeSystemId, $modelId, $override]) => {
+    if (!$decodeSystemId) return undefined
+    const system = SYSTEMS.find(s => s.id === $decodeSystemId)
     const model = MODELS.find(m => m.id === $modelId)
     if (!system || !model) return undefined
     const pc = $override ?? defaultParallelism(system, model)
@@ -131,11 +181,80 @@ export const simInputMonolithic: Readable<CalcInput | null> = derived(input, $in
   }
 })
 
-export const simInputDisagg: Readable<CalcInput | null> = derived(input, $input => {
-  if (!$input) return null
-  return { ...$input, workload: { ...$input.workload, concurrency: 1 } }
-  // disagg fields flow through from $input as-is
-})
+export const simInputDisagg: Readable<CalcInput | null> = derived(
+  [input, heterogeneous,
+   prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillMultiDevice,
+   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeMultiDevice],
+  ([$input, $het,
+    $prefillAcceleratorId, $prefillVariantId, $prefillSystemId, $prefillMultiDevice,
+    $decodeAcceleratorId, $decodeVariantId, $decodeSystemId, $decodeMultiDevice]) => {
+    if (!$input) return null
+    const base: CalcInput = {
+      ...$input,
+      workload: { ...$input.workload, concurrency: 1 },
+    }
+    if (!$het) return base
+    // Heterogeneous: both clusters can override the shared (monolithic) hw.
+    // Empty override stores fall back to shared, so old het=1 URLs (which
+    // only carried decode-side keys) keep working — disagg prefill =
+    // monolithic in that case, identical to pre-decoupling behavior.
+    //
+    // "Override active" is signaled by *either* system or accelerator being
+    // set; we need this distinction so that picking a single-chip override
+    // on a side that originally had a multiDevice doesn't accidentally
+    // inherit the shared multiDevice.
+    const prefillOverride = !!$prefillSystemId || !!$prefillAcceleratorId
+    let prefillAccelerator = $input.accelerator
+    let prefillVariantIdResolved = $input.acceleratorVariantId
+    let prefillMD = $input.multiDevice
+    if (prefillOverride) {
+      if ($prefillSystemId && $prefillMultiDevice) {
+        prefillAccelerator = ACCELERATORS.find(a => a.id === $prefillMultiDevice.system.accelerator.id) ?? $input.accelerator
+        prefillVariantIdResolved = $prefillMultiDevice.system.accelerator.variantId
+        prefillMD = $prefillMultiDevice
+      } else if ($prefillAcceleratorId) {
+        const found = ACCELERATORS.find(a => a.id === $prefillAcceleratorId)
+        if (found) {
+          prefillAccelerator = found
+          prefillVariantIdResolved = $prefillVariantId || found.variants[0].id
+        }
+        prefillMD = undefined
+      }
+    }
+
+    // Decode side falls back to the (possibly-overridden) prefill cluster,
+    // not the shared monolithic — so changing only the prefill cluster
+    // propagates to decode until decode is itself explicitly overridden.
+    const decodeOverride = !!$decodeSystemId || !!$decodeAcceleratorId
+    let decodeAccelerator = prefillAccelerator
+    let decodeAcceleratorVariantId = prefillVariantIdResolved
+    let decodeMD = prefillMD
+    if (decodeOverride) {
+      if ($decodeSystemId && $decodeMultiDevice) {
+        decodeAccelerator = ACCELERATORS.find(a => a.id === $decodeMultiDevice.system.accelerator.id) ?? prefillAccelerator
+        decodeAcceleratorVariantId = $decodeMultiDevice.system.accelerator.variantId
+        decodeMD = $decodeMultiDevice
+      } else if ($decodeAcceleratorId) {
+        const found = ACCELERATORS.find(a => a.id === $decodeAcceleratorId)
+        if (found) {
+          decodeAccelerator = found
+          decodeAcceleratorVariantId = $decodeVariantId || found.variants[0].id
+        }
+        decodeMD = undefined
+      }
+    }
+
+    return {
+      ...base,
+      accelerator: prefillAccelerator,
+      acceleratorVariantId: prefillVariantIdResolved,
+      multiDevice: prefillMD,
+      decodeAccelerator,
+      decodeAcceleratorVariantId,
+      ...(decodeMD && { decodeMultiDevice: decodeMD }),
+    }
+  }
+)
 
 interface SimComputed { result: CalcResult | null; error: string | null }
 function safeCalc($input: CalcInput | null): SimComputed {
@@ -149,6 +268,8 @@ const simComputedDisagg:     Readable<SimComputed> = derived(simInputDisagg,    
 
 export const simResultMonolithic: Readable<CalcResult | null> = derived(simComputedMonolithic, $c => $c.result)
 export const simResultDisagg:     Readable<CalcResult | null> = derived(simComputedDisagg,     $c => $c.result)
-// Errors don't differ between the two variants (same hw/model/quant); surface
-// monolithic's error as the canonical one.
-export const simError: Readable<string | null> = derived(simComputedMonolithic, $c => $c.error)
+export const simError:       Readable<string | null> = derived(simComputedMonolithic, $c => $c.error)
+// Disagg can error independently of monolithic — e.g. heterogeneous decode hw
+// lacks the workload's activations dtype. Surface separately so the disagg
+// block can render an inline error instead of silently disappearing.
+export const simErrorDisagg: Readable<string | null> = derived(simComputedDisagg,     $c => $c.error)

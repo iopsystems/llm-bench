@@ -3,7 +3,7 @@
   import DisaggInputPanel from './DisaggInputPanel.svelte'
   import SimulatorGantt from './SimulatorGantt.svelte'
   import {
-    simResultMonolithic, simResultDisagg, simError,
+    simResultMonolithic, simResultDisagg, simError, simErrorDisagg,
     workload, disaggFirstTokenOnPrefill, disaggKvTransferFabricId
   } from './stores'
   import type { GanttInput } from './simulatorGantt'
@@ -26,10 +26,26 @@
     return `${sig3(tps)} tok/s`
   }
 
-  // Memory fit is identical between monolithic and disagg (symmetric hw both
-  // sides), so a single check applies to both blocks.
-  $: memory = $simResultMonolithic?.memory
-  $: fits = memory ? (memory.perRank?.fits ?? memory.fits) : false
+  // Monolithic block: today's combined-total check (mirrors prefill side).
+  $: monolithicMemory = $simResultMonolithic?.memory
+  $: monolithicFits = monolithicMemory
+    ? (monolithicMemory.perRank?.fits ?? monolithicMemory.fits)
+    : false
+
+  // Disagg block: two-sided per-cluster check. Heterogeneous SKUs mean each
+  // side has its own capacity, so we report which side(s) bust.
+  $: disaggMemory = $simResultDisagg?.memory
+  $: disaggPrefillFits = disaggMemory
+    ? (disaggMemory.prefillSide.perRank?.fits ?? disaggMemory.prefillSide.fits)
+    : true
+  $: disaggDecodeFits = disaggMemory
+    ? (disaggMemory.decodeSide.perRank?.fits ?? disaggMemory.decodeSide.fits)
+    : true
+  $: disaggFits = disaggPrefillFits && disaggDecodeFits
+  $: disaggFailingSides =
+    !disaggPrefillFits && !disaggDecodeFits ? 'both' :
+    !disaggPrefillFits ? 'prefill' :
+    !disaggDecodeFits  ? 'decode'  : null
 
   interface OpRow {
     id: string
@@ -137,7 +153,7 @@
 
   {#if $simError}
     <div class="error">⚠ {$simError}</div>
-  {:else if memory && !fits}
+  {:else if monolithicMemory && !monolithicFits}
     <div class="oom">
       <strong>✗ Out of memory.</strong>
       Model + KV cache + activations exceed HBM capacity on the selected
@@ -149,10 +165,26 @@
     <h3 class="config-header">Single request, monolithic</h3>
     {@render resultBlock(rowsMonolithic)}
 
-    {#if $disaggKvTransferFabricId && rowsDisagg.length > 0}
+    {#if $disaggKvTransferFabricId}
       <h3 class="config-header">Single request, PD-disagg</h3>
       <DisaggInputPanel />
-      {@render resultBlock(rowsDisagg)}
+      {#if $simErrorDisagg}
+        <div class="error">⚠ {$simErrorDisagg}</div>
+      {:else if disaggMemory && !disaggFits}
+        <div class="oom">
+          <strong>✗ Out of memory on {disaggFailingSides} cluster{disaggFailingSides === 'both' ? 's' : ''}.</strong>
+          {#if !disaggPrefillFits}
+            Prefill side: weights + prefill activations exceed HBM. Try a larger prefill SKU
+            or trim promptTokens (prefill activations scale with prompt × hidden).
+          {/if}
+          {#if !disaggDecodeFits}
+            Decode side: weights + KV cache exceed HBM. Try a larger decode SKU,
+            add parallelism on the decode cluster, or reduce maxContext-bound KV growth.
+          {/if}
+        </div>
+      {:else if rowsDisagg.length > 0}
+        {@render resultBlock(rowsDisagg)}
+      {/if}
     {:else if !$disaggKvTransferFabricId}
       <!-- Inline affordance for enabling disagg without going up to the
            shared inputs above. Lives in its own placeholder block. -->

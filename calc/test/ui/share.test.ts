@@ -20,6 +20,15 @@ const singleChipState: ShareableState = {
   parallelismOverride: null,
   disaggKvTransferFabricId: '',
   disaggFirstTokenOnPrefill: true,
+  heterogeneous: false,
+  prefillAcceleratorId: '',
+  prefillVariantId: '',
+  prefillSystemId: '',
+  prefillParallelismOverride: null,
+  decodeAcceleratorId: '',
+  decodeVariantId: '',
+  decodeSystemId: '',
+  decodeParallelismOverride: null,
 }
 
 const multiDeviceState: ShareableState = {
@@ -35,6 +44,15 @@ const multiDeviceState: ShareableState = {
   },
   disaggKvTransferFabricId: '',
   disaggFirstTokenOnPrefill: true,
+  heterogeneous: false,
+  prefillAcceleratorId: '',
+  prefillVariantId: '',
+  prefillSystemId: '',
+  prefillParallelismOverride: null,
+  decodeAcceleratorId: '',
+  decodeVariantId: '',
+  decodeSystemId: '',
+  decodeParallelismOverride: null,
 }
 
 describe('encodeState', () => {

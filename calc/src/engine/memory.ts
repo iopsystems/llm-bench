@@ -1,4 +1,7 @@
-import type { CalcInput, Dtype, AcceleratorVariant, MemoryResult, ModelArch } from './types'
+import type {
+  CalcInput, Dtype, AcceleratorVariant, MemoryResult, MemorySide,
+  MultiDeviceConfig, ModelArch, Workload
+} from './types'
 import { bytesOf } from './dtypes'
 import { perRankMemoryDivisors } from './parallelism'
 
@@ -125,7 +128,7 @@ function findVariant(input: CalcInput): AcceleratorVariant {
 
 export function computeMemory(input: CalcInput): MemoryResult {
   const { model, quant, workload } = input
-  const variant = findVariant(input)
+  const prefillVariant = findVariant(input)
   const seqlen = workload.promptTokens + workload.outputTokens
 
   const weights = model.paramCount * bytesOf(quant.weights)
@@ -137,50 +140,106 @@ export function computeMemory(input: CalcInput): MemoryResult {
     + deltaStateBytes(model, quant.kv)
   const kvCacheTotal = kvCachePerRequest * workload.concurrency
 
-  // Coarse: one layer's attention + FFN buffer × small constant.
-  // Assumes FlashAttention-style kernels (no materialized S×S matrix).
+  // Prefill activations: one big batched pass, scales with promptTokens × hidden.
   const activationsPeak =
     workload.concurrency * workload.promptTokens *
     (model.hiddenDim + model.intermediateDim) * bytesOf(quant.activations) * 2
 
-  const total = weights + kvCacheTotal + activationsPeak
-  const hbmCapacityBytes = variant.hbmCapacityGB * BYTES_PER_GB
-  const headroom = hbmCapacityBytes - total
-  const fits = headroom >= 0
+  // Decode activations: single-token forward pass per layer; orders of magnitude smaller.
+  const decodeActivationsPeak =
+    workload.concurrency * 1 *
+    (model.hiddenDim + model.intermediateDim) * bytesOf(quant.activations) * 2
 
-  let perRank: MemoryResult['perRank'] = undefined
-  if (input.multiDevice) {
-    const divisors = perRankMemoryDivisors(
-      input.multiDevice.parallelism,
-      input.multiDevice.parallelismDegrees,
-      model
-    )
-    const rankWeights = weights / divisors.weights
-    const perReplicaConcurrency = workload.concurrency / divisors.replicas
-    const rankKvPerRequest = kvCachePerRequest / divisors.kv
-    const rankKvTotal = rankKvPerRequest * perReplicaConcurrency
-    const rankActivations = activationsPeak / divisors.activations
-    const rankTotal = rankWeights + rankKvTotal + rankActivations
-    const rankHeadroom = hbmCapacityBytes - rankTotal
-    perRank = {
-      weights: rankWeights,
-      kvCachePerRequest: rankKvPerRequest,
-      activationsPeak: rankActivations,
-      total: rankTotal,
-      headroom: rankHeadroom,
-      fits: rankHeadroom >= 0
-    }
-  }
+  // Resolve decode-side variant; falls back to prefill when asymmetric fields absent.
+  const decodeAccelerator = input.decodeAccelerator ?? input.accelerator
+  const decodeVariantId = input.decodeAcceleratorVariantId ?? input.acceleratorVariantId
+  const decodeVariant =
+    decodeAccelerator.variants.find(v => v.id === decodeVariantId) ?? prefillVariant
+
+  const prefillSide = buildSide(
+    weights, kvCacheTotal, activationsPeak,
+    prefillVariant.hbmCapacityGB,
+    input.multiDevice, model, workload, kvCachePerRequest
+  )
+  const decodeSide = buildSide(
+    weights, kvCacheTotal, decodeActivationsPeak,
+    decodeVariant.hbmCapacityGB,
+    input.decodeMultiDevice ?? input.multiDevice, model, workload, kvCachePerRequest
+  )
 
   return {
     weights,
     kvCachePerRequest,
     kvCacheTotal,
     activationsPeak,
+    decodeActivationsPeak,
+    prefillSide,
+    decodeSide,
+    // Backward-compat: mirror prefillSide
+    total: prefillSide.total,
+    hbmCapacityGB: prefillSide.hbmCapacityGB,
+    headroom: prefillSide.headroom,
+    fits: prefillSide.fits,
+    ...(prefillSide.perRank && {
+      perRank: {
+        weights: prefillSide.perRank.weights,
+        kvCachePerRequest: prefillSide.perRank.kvCachePerRequest,
+        activationsPeak: prefillSide.perRank.activations,
+        total: prefillSide.perRank.total,
+        headroom: prefillSide.perRank.headroom,
+        fits: prefillSide.perRank.fits,
+      }
+    })
+  }
+}
+
+function buildSide(
+  weights: number,
+  kvCacheTotal: number,
+  activations: number,
+  hbmCapacityGB: number,
+  multiDevice: MultiDeviceConfig | undefined,
+  model: ModelArch,
+  workload: Workload,
+  kvCachePerRequest: number,
+): MemorySide {
+  const total = weights + kvCacheTotal + activations
+  const hbmCapacityBytes = hbmCapacityGB * BYTES_PER_GB
+  const headroom = hbmCapacityBytes - total
+  const fits = headroom >= 0
+
+  let perRank: MemorySide['perRank'] = undefined
+  if (multiDevice) {
+    const divisors = perRankMemoryDivisors(
+      multiDevice.parallelism,
+      multiDevice.parallelismDegrees,
+      model
+    )
+    const rankWeights = weights / divisors.weights
+    const perReplicaConcurrency = workload.concurrency / divisors.replicas
+    const rankKvPerRequest = kvCachePerRequest / divisors.kv
+    const rankKvTotal = rankKvPerRequest * perReplicaConcurrency
+    const rankActivations = activations / divisors.activations
+    const rankTotal = rankWeights + rankKvTotal + rankActivations
+    const rankHeadroom = hbmCapacityBytes - rankTotal
+    perRank = {
+      weights: rankWeights,
+      kvCachePerRequest: rankKvPerRequest,
+      activations: rankActivations,
+      total: rankTotal,
+      headroom: rankHeadroom,
+      fits: rankHeadroom >= 0,
+    }
+  }
+
+  return {
+    weights,
+    activations,
+    kvCache: kvCacheTotal,
     total,
-    hbmCapacityGB: variant.hbmCapacityGB,
+    hbmCapacityGB,
     headroom,
     fits,
-    ...(perRank && { perRank })
+    ...(perRank && { perRank }),
   }
 }

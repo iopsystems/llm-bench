@@ -414,6 +414,13 @@ export interface CalcInput {
   quant: Quantization
   workload: Workload
   multiDevice?: MultiDeviceConfig
+
+  // Decode cluster, used in heterogeneous PD-disagg. Absent ⇒ engine reuses
+  // prefill side for both phases (= v1 symmetric). Populated by Task 3+.
+  decodeAccelerator?: AcceleratorSpec
+  decodeAcceleratorVariantId?: string
+  decodeMultiDevice?: MultiDeviceConfig
+
   // PD-disagg: prefill ships KV to decode over this fabric (InterconnectSpec.id).
   // Undefined = integrated serving (no transfer cost). Independent of multiDevice
   // — disagg is a deployment topology, not a property of one cluster's parallelism.
@@ -424,11 +431,33 @@ export interface CalcInput {
   disaggFirstTokenOnPrefill?: boolean
 }
 
+export interface MemorySide {
+  weights: number
+  activations: number         // prefillActivationsPeak or decodeActivationsPeak
+  kvCache: number             // = kvCacheTotal on both sides (prefill builds it; decode holds it)
+  total: number               // sum of the above
+  hbmCapacityGB: number       // capacity of this side's accelerator variant
+  headroom: number
+  fits: boolean
+  perRank?: {
+    weights: number
+    kvCachePerRequest: number
+    activations: number
+    total: number
+    headroom: number
+    fits: boolean
+  }
+}
+
 export interface MemoryResult {
   weights: number
   kvCachePerRequest: number
   kvCacheTotal: number
-  activationsPeak: number
+  activationsPeak: number              // = prefill activations (existing; scales with prompt)
+  decodeActivationsPeak: number        // NEW: decode-side activations (scales with 1×hidden)
+  prefillSide: MemorySide
+  decodeSide: MemorySide
+  // Backward-compat fields (= prefillSide values). Existing callers keep working.
   total: number
   hbmCapacityGB: number
   headroom: number

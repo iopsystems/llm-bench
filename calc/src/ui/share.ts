@@ -14,7 +14,10 @@ import { get } from 'svelte/store'
 import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  quant, workload
+  quant, workload,
+  heterogeneous,
+  prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
+  decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
 } from './stores'
 import { parseRoute } from './route'
 import { ACCELERATORS, MODELS } from '../data'
@@ -46,6 +49,19 @@ export interface ShareableState {
   parallelismOverride: ParallelismConfig | null
   disaggKvTransferFabricId: string
   disaggFirstTokenOnPrefill: boolean
+
+  // Heterogeneous PD-disagg — only encoded when heterogeneous is true.
+  // Prefill-side overrides (a1/v1/s1/p1) are emitted only when explicitly
+  // set; empty fields fall back to the shared (monolithic) hw on decode.
+  heterogeneous: boolean
+  prefillAcceleratorId: string
+  prefillVariantId: string
+  prefillSystemId: string
+  prefillParallelismOverride: ParallelismConfig | null
+  decodeAcceleratorId: string
+  decodeVariantId: string
+  decodeSystemId: string
+  decodeParallelismOverride: ParallelismConfig | null
 }
 
 // Encode state to a URL-search-style string (no leading `#`).
@@ -74,6 +90,27 @@ export function encodeState(state: ShareableState): string {
     // `df=1` is the default — only emit when the user opted into the
     // worst-case sequential handoff.
     if (!state.disaggFirstTokenOnPrefill) p.set('df', '0')
+  }
+  if (state.heterogeneous) {
+    p.set('het', '1')
+    if (state.prefillSystemId) {
+      p.set('s1', state.prefillSystemId)
+    } else if (state.prefillAcceleratorId) {
+      p.set('a1', state.prefillAcceleratorId)
+      if (state.prefillVariantId) p.set('v1', state.prefillVariantId)
+    }
+    if (state.prefillParallelismOverride) {
+      p.set('p1', encodeParallelism(state.prefillParallelismOverride))
+    }
+    if (state.decodeSystemId) {
+      p.set('s2', state.decodeSystemId)
+    } else if (state.decodeAcceleratorId) {
+      p.set('a2', state.decodeAcceleratorId)
+      if (state.decodeVariantId) p.set('v2', state.decodeVariantId)
+    }
+    if (state.decodeParallelismOverride) {
+      p.set('p2', encodeParallelism(state.decodeParallelismOverride))
+    }
   }
   return p.toString()
 }
@@ -159,6 +196,56 @@ export function decodeState(hash: string): Partial<ShareableState> {
     }
   }
 
+  if (params.get('het') === '1') {
+    out.heterogeneous = true
+    const s1 = params.get('s1')
+    if (s1 !== null) {
+      const sys = SYSTEMS.find(x => x.id === s1)
+      if (sys) {
+        out.prefillSystemId = s1
+        out.prefillAcceleratorId = sys.accelerator.id
+        out.prefillVariantId = sys.accelerator.variantId
+      }
+    } else if (params.has('a1')) {
+      const a1 = params.get('a1')!
+      const accel = ACCELERATORS.find(x => x.id === a1)
+      if (accel) {
+        out.prefillSystemId = ''
+        out.prefillAcceleratorId = a1
+        const v1 = params.get('v1')
+        out.prefillVariantId = v1 && accel.variants.find(x => x.id === v1)
+          ? v1 : accel.variants[0].id
+      }
+    }
+    if (params.has('p1')) {
+      const pc = decodeParallelism(params.get('p1')!)
+      out.prefillParallelismOverride = pc ?? null
+    }
+    const s2 = params.get('s2')
+    if (s2 !== null) {
+      const sys = SYSTEMS.find(x => x.id === s2)
+      if (sys) {
+        out.decodeSystemId = s2
+        out.decodeAcceleratorId = sys.accelerator.id
+        out.decodeVariantId = sys.accelerator.variantId
+      }
+    } else if (params.has('a2')) {
+      const a2 = params.get('a2')!
+      const accel = ACCELERATORS.find(x => x.id === a2)
+      if (accel) {
+        out.decodeSystemId = ''
+        out.decodeAcceleratorId = a2
+        const v2 = params.get('v2')
+        out.decodeVariantId = v2 && accel.variants.find(x => x.id === v2)
+          ? v2 : accel.variants[0].id
+      }
+    }
+    if (params.has('p2')) {
+      const pc = decodeParallelism(params.get('p2')!)
+      out.decodeParallelismOverride = pc ?? null
+    }
+  }
+
   return out
 }
 
@@ -197,6 +284,15 @@ function readStoreState(): ShareableState {
     parallelismOverride: get(parallelismOverride),
     disaggKvTransferFabricId: get(disaggKvTransferFabricId),
     disaggFirstTokenOnPrefill: get(disaggFirstTokenOnPrefill),
+    heterogeneous: get(heterogeneous),
+    prefillAcceleratorId: get(prefillAcceleratorId),
+    prefillVariantId: get(prefillVariantId),
+    prefillSystemId: get(prefillSystemId),
+    prefillParallelismOverride: get(prefillParallelismOverride),
+    decodeAcceleratorId: get(decodeAcceleratorId),
+    decodeVariantId: get(decodeVariantId),
+    decodeSystemId: get(decodeSystemId),
+    decodeParallelismOverride: get(decodeParallelismOverride),
   }
 }
 
@@ -221,6 +317,41 @@ function applyToStores(partial: Partial<ShareableState>): void {
   if (partial.parallelismOverride !== undefined) parallelismOverride.set(partial.parallelismOverride)
   if (partial.disaggKvTransferFabricId !== undefined) disaggKvTransferFabricId.set(partial.disaggKvTransferFabricId)
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
+
+  // Heterogeneous fields.
+  if (partial.heterogeneous !== undefined) heterogeneous.set(partial.heterogeneous)
+  if (partial.prefillAcceleratorId !== undefined) prefillAcceleratorId.set(partial.prefillAcceleratorId)
+  if (partial.prefillVariantId !== undefined) prefillVariantId.set(partial.prefillVariantId)
+  if (partial.prefillSystemId !== undefined) prefillSystemId.set(partial.prefillSystemId)
+  if (partial.prefillParallelismOverride !== undefined) prefillParallelismOverride.set(partial.prefillParallelismOverride)
+  if (partial.decodeAcceleratorId !== undefined) decodeAcceleratorId.set(partial.decodeAcceleratorId)
+  if (partial.decodeVariantId !== undefined) decodeVariantId.set(partial.decodeVariantId)
+  if (partial.decodeSystemId !== undefined) decodeSystemId.set(partial.decodeSystemId)
+  if (partial.decodeParallelismOverride !== undefined) decodeParallelismOverride.set(partial.decodeParallelismOverride)
+
+  // Invariant: when het=on, both cluster overrides must be non-empty —
+  // otherwise the disagg block reactively follows the shared (monolithic)
+  // stores and the user can no longer change them independently. Old URLs
+  // with het=1 but missing a1/v1 land here (decode side only was emitted
+  // pre-decoupling). Seed from shared so subsequent edits decouple cleanly.
+  if (get(heterogeneous)) {
+    if (!get(prefillAcceleratorId) && !get(prefillSystemId)) {
+      prefillAcceleratorId.set(get(acceleratorId))
+      prefillVariantId.set(get(variantId))
+      prefillSystemId.set(get(systemId))
+      if (get(prefillParallelismOverride) === null) {
+        prefillParallelismOverride.set(get(parallelismOverride))
+      }
+    }
+    if (!get(decodeAcceleratorId) && !get(decodeSystemId)) {
+      decodeAcceleratorId.set(get(acceleratorId))
+      decodeVariantId.set(get(variantId))
+      decodeSystemId.set(get(systemId))
+      if (get(decodeParallelismOverride) === null) {
+        decodeParallelismOverride.set(get(parallelismOverride))
+      }
+    }
+  }
 }
 
 // Extract the per-tab payload from a raw location.hash. Supports the current
@@ -280,6 +411,15 @@ export function startUrlSync(): () => void {
     disaggFirstTokenOnPrefill.subscribe(write),
     quant.subscribe(write),
     workload.subscribe(write),
+    heterogeneous.subscribe(write),
+    prefillAcceleratorId.subscribe(write),
+    prefillVariantId.subscribe(write),
+    prefillSystemId.subscribe(write),
+    prefillParallelismOverride.subscribe(write),
+    decodeAcceleratorId.subscribe(write),
+    decodeVariantId.subscribe(write),
+    decodeSystemId.subscribe(write),
+    decodeParallelismOverride.subscribe(write),
   ]
   ready = true
   write()

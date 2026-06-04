@@ -5,21 +5,38 @@ import { computePrefill } from './prefill'
 import { computeDecode } from './decode'
 import { DerivationBuilder } from './derivation'
 import { INTERCONNECTS } from '../data/interconnects'
+import { pairOpPoints } from './opPoints'
 
 export function calculate(input: CalcInput): CalcResult {
-  const variant = input.accelerator.variants.find(v => v.id === input.acceleratorVariantId)
-  if (!variant) {
+  // Resolve both sides. Decode side falls back to prefill when fields absent.
+  const prefillVariant = input.accelerator.variants.find(v => v.id === input.acceleratorVariantId)
+  if (!prefillVariant) {
     throw new Error(`Variant ${input.acceleratorVariantId} not in ${input.accelerator.id}`)
   }
+  const decodeAccelerator = input.decodeAccelerator ?? input.accelerator
+  const decodeVariantId = input.decodeAcceleratorVariantId ?? input.acceleratorVariantId
+  const decodeVariant = decodeAccelerator.variants.find(v => v.id === decodeVariantId)
+  if (!decodeVariant) {
+    throw new Error(`Variant ${decodeVariantId} not in ${decodeAccelerator.id}`)
+  }
 
-  // Validate activations dtype against each operating point up front, so the
-  // error message names the actual accelerator and the supported alternatives
-  // instead of leaking engine vocabulary.
-  for (const op of variant.operatingPoints) {
+  // Validate activations dtype against both sides' operating points up front, so
+  // the error message names the accelerator and supported alternatives rather
+  // than leaking engine vocabulary.
+  for (const op of prefillVariant.operatingPoints) {
     if (op.tflops[input.quant.activations] === undefined) {
       const supported = Object.keys(op.tflops).join(', ')
       throw new Error(
-        `${input.accelerator.name} ${variant.label} has no ${input.quant.activations} ` +
+        `${input.accelerator.name} ${prefillVariant.label} has no ${input.quant.activations} ` +
+        `compute throughput. Try: ${supported}.`
+      )
+    }
+  }
+  for (const op of decodeVariant.operatingPoints) {
+    if (op.tflops[input.quant.activations] === undefined) {
+      const supported = Object.keys(op.tflops).join(', ')
+      throw new Error(
+        `${decodeAccelerator.name} ${decodeVariant.label} has no ${input.quant.activations} ` +
         `compute throughput. Try: ${supported}.`
       )
     }
@@ -38,14 +55,23 @@ export function calculate(input: CalcInput): CalcResult {
   d.add('kv per request', 'kv_per_token × (prompt + output)', memory.kvCachePerRequest, 'bytes')
   d.add('kv total', 'kv_per_request × concurrency', memory.kvCacheTotal, 'bytes')
   d.add(
-    'activations peak (coarse)',
+    'activations peak (prefill, coarse)',
     'concurrency × prompt × (hidden + intermediate) × bytes(act_dtype) × 2',
     memory.activationsPeak, 'bytes'
   )
-  d.add('memory total', 'weights + kv_total + activations_peak', memory.total, 'bytes')
+  d.add(
+    'activations peak (decode, coarse)',
+    'concurrency × 1 × (hidden + intermediate) × bytes(act_dtype) × 2',
+    memory.decodeActivationsPeak, 'bytes'
+  )
+  d.add('prefill side total', 'weights + kv_total + prefill_activations', memory.prefillSide.total, 'bytes')
+  d.add('decode side total',  'weights + kv_total + decode_activations',  memory.decodeSide.total,  'bytes')
+  // Backward-compat row: mirrors prefillSide so existing UI/tests that key off
+  // "memory total" keep working unchanged.
+  d.add('memory total', 'prefill_side.total', memory.total, 'bytes')
 
-  // Disaggregated serving: KV cache ships from prefill cluster to decode
-  // cluster over a separate fabric. Adds a one-shot transfer time to TTFT.
+  // Disaggregated serving: KV cache ships from prefill cluster to decode cluster
+  // over a separate fabric. Adds a one-shot transfer time to TTFT.
   // For integrated serving (single cluster) this is 0.
   let kvTransferS = 0
   if (input.disaggKvTransferFabricId) {
@@ -57,52 +83,59 @@ export function calculate(input: CalcInput): CalcResult {
   }
   // Production-standard: prefill node emits the first decoded token locally
   // while KV transfer streams in parallel. Defaults true when disagg is on.
-  const firstTokenOnPrefill =
-    input.disaggFirstTokenOnPrefill ?? true
+  const firstTokenOnPrefill = input.disaggFirstTokenOnPrefill ?? true
 
   const perf: Record<string, PerfTier> = {}
-  for (const op of variant.operatingPoints) {
-    const prefill = computePrefill(input, op, memory)
-    const decode = computeDecode(input, op, memory)
-    // TTFT composition under disagg:
-    //   firstTokenOnPrefill=true:  ttft = prefill + first decode step (transfer
-    //                               hidden in parallel with that decode step).
-    //   firstTokenOnPrefill=false: ttft = prefill + full kv transfer (worst case).
+  for (const pair of pairOpPoints(prefillVariant, decodeVariant)) {
+    // computePrefill uses input.multiDevice (prefill side); computeDecode uses
+    // input.decodeMultiDevice ?? input.multiDevice (decode side, falls back).
+    const prefill = computePrefill(input, pair.prefillOp, memory)
+    const decode  = computeDecode(input, pair.decodeOp,  memory)
+
+    // TTFT case-B (firstTokenOnPrefill=true): the first decode step runs on the
+    // PREFILL cluster, so the step time must reflect prefill-side TFLOPS/HBM —
+    // NOT the decode cluster's. Recompute decode on the prefill op + force
+    // multiDevice to the prefill cluster's parallelism config.
+    let firstStepOnPrefillS = decode.timePerTokenS  // fallback covers symmetric case
+    if (kvTransferS > 0 && firstTokenOnPrefill) {
+      const onPrefill = computeDecode(input, pair.prefillOp, memory, input.multiDevice)
+      firstStepOnPrefillS = onPrefill.timePerTokenS
+    }
+
+    // firstTokenOnPrefill=true:  ttft = prefill + first decode on prefill cluster
+    //                            (KV transfer streams in parallel, hidden).
+    // firstTokenOnPrefill=false: ttft = prefill + full KV transfer (worst case).
     const ttftS = kvTransferS > 0 && firstTokenOnPrefill
-      ? prefill.timeS + decode.timePerTokenS
+      ? prefill.timeS + firstStepOnPrefillS
       : prefill.timeS + kvTransferS
-    perf[op.id] = {
+
+    perf[pair.id] = {
       prefill, decode,
       ttftS,
       kvTransferS,
-      // inputTokenRate stays on prefill (cluster throughput); ttftS includes
-      // disagg overhead (user-facing latency to first decoded token).
+      // inputTokenRate stays on prefill (cluster throughput); ttftS already
+      // captures the disagg overhead (user-facing latency to first token).
       inputTokenRate: input.workload.promptTokens / prefill.timeS,
       outputTokenRate: decode.aggregateTokensPerS,
-      ...(op.tflopsSources && { tflopsSources: op.tflopsSources }),
-      ...(op.bandwidthSources && { bandwidthSources: op.bandwidthSources }),
-      ...(op.asOf && { asOf: op.asOf }),
-      ...(op.notes && { notes: op.notes })
+      // Provenance: echo from the prefill-side op point (the historically
+      // canonical source of these fields; decode-side may have its own asOf/notes
+      // that we don't surface yet to avoid breaking PerfTier shape).
+      ...(pair.prefillOp.tflopsSources && { tflopsSources: pair.prefillOp.tflopsSources }),
+      ...(pair.prefillOp.bandwidthSources && { bandwidthSources: pair.prefillOp.bandwidthSources }),
+      ...(pair.prefillOp.asOf && { asOf: pair.prefillOp.asOf }),
+      ...(pair.prefillOp.notes && { notes: pair.prefillOp.notes })
     }
-    d.add(
-      `prefill time @ ${op.id}`,
-      'max(prefill_flops / tflops, prefill_bytes / bw)',
-      prefill.timeS, 's'
-    )
+    d.add(`prefill time @ ${pair.id}`, 'max(prefill_flops / tflops, prefill_bytes / bw)', prefill.timeS, 's')
     if (kvTransferS > 0) {
       d.add(
-        `kv transfer time @ ${op.id}`,
+        `kv transfer time @ ${pair.id}`,
         firstTokenOnPrefill
           ? 'kv_cache_per_request / disagg_fabric_bw (overlapped with first decode)'
           : 'kv_cache_per_request / disagg_fabric_bw',
         kvTransferS, 's'
       )
     }
-    d.add(
-      `decode time per token @ ${op.id}`,
-      'max(decode_flops / tflops, decode_bytes / bw)',
-      decode.timePerTokenS, 's'
-    )
+    d.add(`decode time per token @ ${pair.id}`, 'max(decode_flops / tflops, decode_bytes / bw)', decode.timePerTokenS, 's')
   }
 
   // bytesOf re-exported so consumers can read the same dtype table.
