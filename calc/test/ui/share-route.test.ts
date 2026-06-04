@@ -61,7 +61,10 @@ describe('URL with model but no quant → quant seeded from native', () => {
       quant: { weights: 'fp8', kv: 'fp16', activations: 'fp8' },
       workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 },
       parallelismOverride: null, disaggKvTransferFabricId: '', disaggFirstTokenOnPrefill: true,
-      heterogeneous: false, decodeAcceleratorId: '', decodeVariantId: '',
+      heterogeneous: false,
+      prefillAcceleratorId: '', prefillVariantId: '',
+      prefillSystemId: '', prefillParallelismOverride: null,
+      decodeAcceleratorId: '', decodeVariantId: '',
       decodeSystemId: '', decodeParallelismOverride: null,
     })
     expect(enc).not.toContain('ld=')   // no more ld key
@@ -105,6 +108,8 @@ describe('disagg URL encoding (single-chip + scale-out fabric)', () => {
       disaggKvTransferFabricId: 'roce-400',
       disaggFirstTokenOnPrefill: false,
       heterogeneous: false,
+      prefillAcceleratorId: '', prefillVariantId: '',
+      prefillSystemId: '', prefillParallelismOverride: null,
       decodeAcceleratorId: '', decodeVariantId: '',
       decodeSystemId: '', decodeParallelismOverride: null,
     }
@@ -131,10 +136,17 @@ describe('heterogeneous P/D URL state', () => {
     disaggFirstTokenOnPrefill: true,
   }
 
+  const emptyOverrides = {
+    prefillAcceleratorId: '', prefillVariantId: '',
+    prefillSystemId: '', prefillParallelismOverride: null,
+    decodeAcceleratorId: '', decodeVariantId: '',
+    decodeSystemId: '', decodeParallelismOverride: null,
+  }
+
   it('omits all decode-side keys when heterogeneous=false', () => {
     const enc = encodeState({ ...base, heterogeneous: false,
-      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141',
-      decodeSystemId: '', decodeParallelismOverride: null })
+      ...emptyOverrides,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' })
     expect(enc).not.toContain('het=')
     expect(enc).not.toContain('a2=')
     expect(enc).not.toContain('v2=')
@@ -142,8 +154,8 @@ describe('heterogeneous P/D URL state', () => {
 
   it('emits het=1 + a2/v2 when heterogeneous=true with single-chip decode side', () => {
     const enc = encodeState({ ...base, heterogeneous: true,
-      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141',
-      decodeSystemId: '', decodeParallelismOverride: null })
+      ...emptyOverrides,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' })
     expect(enc).toContain('het=1')
     expect(enc).toContain('a2=h200')
     expect(enc).toContain('v2=sxm-141')
@@ -152,26 +164,86 @@ describe('heterogeneous P/D URL state', () => {
 
   it('emits s2 instead of a2/v2 when decode side is multi-device', () => {
     const enc = encodeState({ ...base, heterogeneous: true,
-      decodeAcceleratorId: '', decodeVariantId: '',
-      decodeSystemId: 'hgx-h200-8', decodeParallelismOverride: null })
+      ...emptyOverrides,
+      decodeSystemId: 'hgx-h200-8' })
     expect(enc).toContain('s2=hgx-h200-8')
     expect(enc).not.toMatch(/(^|&)a2=/)
     expect(enc).not.toMatch(/(^|&)v2=/)
   })
 
-  it('round-trips: encode then decode preserves heterogeneous state', () => {
+  it('emits a1/v1 when prefill cluster is overridden (single-chip)', () => {
+    const enc = encodeState({ ...base, heterogeneous: true,
+      ...emptyOverrides,
+      prefillAcceleratorId: 'mi300x', prefillVariantId: 'oam-192',
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' })
+    expect(enc).toContain('a1=mi300x')
+    expect(enc).toContain('v1=oam-192')
+    expect(enc).toContain('a2=h200')
+  })
+
+  it('emits s1 when prefill cluster is a multi-device override', () => {
+    const enc = encodeState({ ...base, heterogeneous: true,
+      ...emptyOverrides,
+      prefillSystemId: 'hgx-h100-8',
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' })
+    expect(enc).toContain('s1=hgx-h100-8')
+    expect(enc).not.toMatch(/(^|&)a1=/)
+    expect(enc).not.toMatch(/(^|&)v1=/)
+  })
+
+  it('emits p1 when prefill parallelism is overridden', () => {
+    const enc = encodeState({ ...base, heterogeneous: true,
+      ...emptyOverrides,
+      prefillSystemId: 'hgx-h100-8',
+      prefillParallelismOverride: { parallelism: ['tp', 'pp'], parallelismDegrees: { tp: 4, pp: 2 } } })
+    expect(enc).toContain('p1=tp4.pp2')
+  })
+
+  it('omits prefill-override keys when prefill side is empty (het=1 with only decode override)', () => {
+    const enc = encodeState({ ...base, heterogeneous: true,
+      ...emptyOverrides,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' })
+    expect(enc).toContain('het=1')
+    expect(enc).not.toMatch(/(^|&)a1=/)
+    expect(enc).not.toMatch(/(^|&)v1=/)
+    expect(enc).not.toMatch(/(^|&)s1=/)
+    expect(enc).not.toMatch(/(^|&)p1=/)
+  })
+
+  it('round-trips: prefill + decode overrides preserved', () => {
     const original = { ...base, heterogeneous: true,
-      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141',
-      decodeSystemId: '', decodeParallelismOverride: null }
+      ...emptyOverrides,
+      prefillAcceleratorId: 'mi300x', prefillVariantId: 'oam-192',
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' }
+    const round = decodeState(encodeState(original))
+    expect(round.heterogeneous).toBe(true)
+    expect(round.prefillAcceleratorId).toBe('mi300x')
+    expect(round.prefillVariantId).toBe('oam-192')
+    expect(round.decodeAcceleratorId).toBe('h200')
+    expect(round.decodeVariantId).toBe('sxm-141')
+  })
+
+  it('round-trips: encode then decode preserves heterogeneous decode-only state', () => {
+    const original = { ...base, heterogeneous: true,
+      ...emptyOverrides,
+      decodeAcceleratorId: 'h200', decodeVariantId: 'sxm-141' }
     const round = decodeState(encodeState(original))
     expect(round.heterogeneous).toBe(true)
     expect(round.decodeAcceleratorId).toBe('h200')
     expect(round.decodeVariantId).toBe('sxm-141')
   })
 
-  it('URL without het keys decodes to non-heterogeneous (no decode-side state)', () => {
+  it('URL without het keys decodes to non-heterogeneous (no override state)', () => {
     const round = decodeState('a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1')
     expect(round.heterogeneous).toBeUndefined()
+    expect(round.prefillAcceleratorId).toBeUndefined()
     expect(round.decodeAcceleratorId).toBeUndefined()
+  })
+
+  it('backward-compat: old het=1 URL with only decode keys decodes cleanly (prefill empty)', () => {
+    const round = decodeState('a=h100&v=sxm-80&m=llama-3.3-70b&w=bf16&kv=fp16&ac=bf16&pt=2048&ot=512&c=1&dk=roce-400&het=1&a2=h200&v2=sxm-141')
+    expect(round.heterogeneous).toBe(true)
+    expect(round.decodeAcceleratorId).toBe('h200')
+    expect(round.prefillAcceleratorId).toBeUndefined()
   })
 })

@@ -1,8 +1,9 @@
 <script lang="ts">
   import {
-    acceleratorId, variantId, systemId,
-    disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-    heterogeneous, decodeAcceleratorId, decodeVariantId, decodeSystemId,
+    acceleratorId, variantId, systemId, parallelismOverride,
+    disaggKvTransferFabricId, disaggFirstTokenOnPrefill, heterogeneous,
+    prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
+    decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
   } from './stores'
   import { groupedDisaggFabrics, formatFabricLabel } from './disaggFabrics'
   import { ACCELERATORS } from '../data'
@@ -10,37 +11,39 @@
   import { orderSkus } from './catalogOrder'
   import ParallelismPicker from './ParallelismPicker.svelte'
 
-  // V2: when $heterogeneous is on, two side-by-side menus — Prefill cluster
-  // (bound to the shared acceleratorId/variantId/systemId stores so changes
-  // also reflect in the monolithic block) and Decode cluster (bound to the
-  // decode-side stores). Each combo dropdown auto-picks the new accelerator's
-  // first variant when the user changes accelerator.
+  // V2 heterogeneous: when $heterogeneous is on, both clusters get their own
+  // overrides stores (prefill = a1/v1/s1/p1, decode = a2/v2/s2/p2) so the
+  // disagg block is fully decoupled from the monolithic block above. The
+  // toggle-on handler seeds both from shared so the user starts symmetric and
+  // changes one cluster at a time.
   $: groups = groupedDisaggFabrics($acceleratorId)
   $: skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
 
-  // Prefill cluster (= shared stores).
-  $: prefillComboValue = $systemId ? `sys:${$systemId}` : `chip:${$acceleratorId}`
-  $: prefillAcceleratorObj = ACCELERATORS.find(a => a.id === $acceleratorId)
+  // Prefill cluster (= prefill-override stores).
+  $: prefillComboValue = $prefillSystemId
+    ? `sys:${$prefillSystemId}`
+    : `chip:${$prefillAcceleratorId || $acceleratorId}`
+  $: prefillAcceleratorObj = ACCELERATORS.find(a => a.id === ($prefillAcceleratorId || $acceleratorId))
   $: prefillVariants = prefillAcceleratorObj?.variants ?? []
 
   function onPrefillComboChange(e: Event) {
     const v = (e.target as HTMLSelectElement).value
     if (v.startsWith('sys:')) {
-      systemId.set(v.slice(4))
+      prefillSystemId.set(v.slice(4))
     } else {
-      systemId.set('')
+      prefillSystemId.set('')
       const id = v.slice(5)
-      acceleratorId.set(id)
+      prefillAcceleratorId.set(id)
       const found = ACCELERATORS.find(a => a.id === id)
-      if (found) variantId.set(found.variants[0].id)
+      if (found) prefillVariantId.set(found.variants[0].id)
     }
   }
 
-  // Decode cluster (= decode-side stores).
+  // Decode cluster (= decode-override stores).
   $: decodeComboValue = $decodeSystemId
     ? `sys:${$decodeSystemId}`
-    : `chip:${$decodeAcceleratorId || $acceleratorId}`
-  $: decodeAcceleratorObj = ACCELERATORS.find(a => a.id === ($decodeAcceleratorId || $acceleratorId))
+    : `chip:${$decodeAcceleratorId || $prefillAcceleratorId || $acceleratorId}`
+  $: decodeAcceleratorObj = ACCELERATORS.find(a => a.id === ($decodeAcceleratorId || $prefillAcceleratorId || $acceleratorId))
   $: decodeVariants = decodeAcceleratorObj?.variants ?? []
 
   function onDecodeComboChange(e: Event) {
@@ -56,15 +59,25 @@
     }
   }
 
-  // Pre-populate decode-side stores from prefill on first toggle-on, so the
-  // user starts symmetric and transitions by changing one knob.
+  // Seed both clusters from shared on first toggle-on so the disagg block
+  // starts symmetric and visibly matches the monolithic block above; user
+  // then transitions by changing one knob at a time. Only seed when the
+  // override store is empty — preserves prior state on re-toggle.
   function onHetToggle(e: Event) {
     const on = (e.target as HTMLInputElement).checked
     heterogeneous.set(on)
-    if (on && !$decodeAcceleratorId && !$decodeSystemId) {
+    if (!on) return
+    if (!$prefillAcceleratorId && !$prefillSystemId) {
+      prefillAcceleratorId.set($acceleratorId)
+      prefillVariantId.set($variantId)
+      prefillSystemId.set($systemId)
+      prefillParallelismOverride.set($parallelismOverride)
+    }
+    if (!$decodeAcceleratorId && !$decodeSystemId) {
       decodeAcceleratorId.set($acceleratorId)
       decodeVariantId.set($variantId)
       decodeSystemId.set($systemId)
+      decodeParallelismOverride.set($parallelismOverride)
     }
   }
 </script>
@@ -95,7 +108,7 @@
     </label>
     <label class="inline">
       <input type="checkbox" checked={$heterogeneous} on:change={onHetToggle} />
-      <span>Use different hardware for decode cluster</span>
+      <span>Use different hardware for prefill and decode clusters</span>
     </label>
   {/if}
 </div>
@@ -121,10 +134,10 @@
             {/each}
           </select>
         </label>
-        {#if !$systemId}
+        {#if !$prefillSystemId}
           <label>
             Variant
-            <select bind:value={$variantId}>
+            <select bind:value={$prefillVariantId}>
               {#each prefillVariants as v}
                 <option value={v.id}>{v.label}</option>
               {/each}

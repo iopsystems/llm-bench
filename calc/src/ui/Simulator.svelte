@@ -3,7 +3,7 @@
   import DisaggInputPanel from './DisaggInputPanel.svelte'
   import SimulatorGantt from './SimulatorGantt.svelte'
   import {
-    simResultMonolithic, simResultDisagg, simError,
+    simResultMonolithic, simResultDisagg, simError, simErrorDisagg,
     workload, disaggFirstTokenOnPrefill, disaggKvTransferFabricId
   } from './stores'
   import type { GanttInput } from './simulatorGantt'
@@ -168,7 +168,9 @@
     {#if $disaggKvTransferFabricId}
       <h3 class="config-header">Single request, PD-disagg</h3>
       <DisaggInputPanel />
-      {#if disaggMemory && !disaggFits}
+      {#if $simErrorDisagg}
+        <div class="error">⚠ {$simErrorDisagg}</div>
+      {:else if disaggMemory && !disaggFits}
         <div class="oom">
           <strong>✗ Out of memory on {disaggFailingSides} cluster{disaggFailingSides === 'both' ? 's' : ''}.</strong>
           {#if !disaggPrefillFits}

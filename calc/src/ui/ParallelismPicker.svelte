@@ -1,7 +1,9 @@
 <script lang="ts">
   import {
-    systemId as prefillSystemId,
-    parallelismOverride as prefillParallelism,
+    systemId as sharedSystemId,
+    parallelismOverride as sharedParallelism,
+    prefillSystemId,
+    prefillParallelismOverride,
     decodeSystemId,
     decodeParallelismOverride,
     modelId,
@@ -10,14 +12,23 @@
   import { MODELS } from '../data'
   import { defaultParallelism, type ParallelismConfig } from '../engine/parallelism'
 
-  // side='prefill' (default) reads/writes the shared prefill-side stores;
-  // side='decode' reads/writes the decode-side stores (used by the
-  // heterogeneous P/D block in DisaggInputPanel).
-  export let side: 'prefill' | 'decode' = 'prefill'
+  // side='shared' (default) — monolithic / Calc-tab stores (a/v/s/p).
+  // side='prefill' — disagg prefill-cluster overrides (a1/v1/s1/p1).
+  // side='decode'  — disagg decode-cluster overrides (a2/v2/s2/p2).
+  export let side: 'shared' | 'prefill' | 'decode' = 'shared'
 
-  $: activeSystemIdValue = side === 'decode' ? $decodeSystemId : $prefillSystemId
-  $: activeParallelismValue = side === 'decode' ? $decodeParallelismOverride : $prefillParallelism
-  $: activeParallelismStore = side === 'decode' ? decodeParallelismOverride : prefillParallelism
+  $: activeSystemIdValue =
+    side === 'decode'  ? $decodeSystemId :
+    side === 'prefill' ? $prefillSystemId :
+                         $sharedSystemId
+  $: activeParallelismValue =
+    side === 'decode'  ? $decodeParallelismOverride :
+    side === 'prefill' ? $prefillParallelismOverride :
+                         $sharedParallelism
+  $: activeParallelismStore =
+    side === 'decode'  ? decodeParallelismOverride :
+    side === 'prefill' ? prefillParallelismOverride :
+                         sharedParallelism
 
   $: system = SYSTEMS.find(s => s.id === activeSystemIdValue)
   $: model = MODELS.find(m => m.id === $modelId)

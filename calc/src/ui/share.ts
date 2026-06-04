@@ -15,8 +15,9 @@ import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
   quant, workload,
-  heterogeneous, decodeAcceleratorId, decodeVariantId, decodeSystemId,
-  decodeParallelismOverride,
+  heterogeneous,
+  prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
+  decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
 } from './stores'
 import { parseRoute } from './route'
 import { ACCELERATORS, MODELS } from '../data'
@@ -50,7 +51,13 @@ export interface ShareableState {
   disaggFirstTokenOnPrefill: boolean
 
   // Heterogeneous PD-disagg — only encoded when heterogeneous is true.
+  // Prefill-side overrides (a1/v1/s1/p1) are emitted only when explicitly
+  // set; empty fields fall back to the shared (monolithic) hw on decode.
   heterogeneous: boolean
+  prefillAcceleratorId: string
+  prefillVariantId: string
+  prefillSystemId: string
+  prefillParallelismOverride: ParallelismConfig | null
   decodeAcceleratorId: string
   decodeVariantId: string
   decodeSystemId: string
@@ -86,6 +93,15 @@ export function encodeState(state: ShareableState): string {
   }
   if (state.heterogeneous) {
     p.set('het', '1')
+    if (state.prefillSystemId) {
+      p.set('s1', state.prefillSystemId)
+    } else if (state.prefillAcceleratorId) {
+      p.set('a1', state.prefillAcceleratorId)
+      if (state.prefillVariantId) p.set('v1', state.prefillVariantId)
+    }
+    if (state.prefillParallelismOverride) {
+      p.set('p1', encodeParallelism(state.prefillParallelismOverride))
+    }
     if (state.decodeSystemId) {
       p.set('s2', state.decodeSystemId)
     } else if (state.decodeAcceleratorId) {
@@ -182,6 +198,29 @@ export function decodeState(hash: string): Partial<ShareableState> {
 
   if (params.get('het') === '1') {
     out.heterogeneous = true
+    const s1 = params.get('s1')
+    if (s1 !== null) {
+      const sys = SYSTEMS.find(x => x.id === s1)
+      if (sys) {
+        out.prefillSystemId = s1
+        out.prefillAcceleratorId = sys.accelerator.id
+        out.prefillVariantId = sys.accelerator.variantId
+      }
+    } else if (params.has('a1')) {
+      const a1 = params.get('a1')!
+      const accel = ACCELERATORS.find(x => x.id === a1)
+      if (accel) {
+        out.prefillSystemId = ''
+        out.prefillAcceleratorId = a1
+        const v1 = params.get('v1')
+        out.prefillVariantId = v1 && accel.variants.find(x => x.id === v1)
+          ? v1 : accel.variants[0].id
+      }
+    }
+    if (params.has('p1')) {
+      const pc = decodeParallelism(params.get('p1')!)
+      out.prefillParallelismOverride = pc ?? null
+    }
     const s2 = params.get('s2')
     if (s2 !== null) {
       const sys = SYSTEMS.find(x => x.id === s2)
@@ -246,6 +285,10 @@ function readStoreState(): ShareableState {
     disaggKvTransferFabricId: get(disaggKvTransferFabricId),
     disaggFirstTokenOnPrefill: get(disaggFirstTokenOnPrefill),
     heterogeneous: get(heterogeneous),
+    prefillAcceleratorId: get(prefillAcceleratorId),
+    prefillVariantId: get(prefillVariantId),
+    prefillSystemId: get(prefillSystemId),
+    prefillParallelismOverride: get(prefillParallelismOverride),
     decodeAcceleratorId: get(decodeAcceleratorId),
     decodeVariantId: get(decodeVariantId),
     decodeSystemId: get(decodeSystemId),
@@ -277,6 +320,10 @@ function applyToStores(partial: Partial<ShareableState>): void {
 
   // Heterogeneous fields.
   if (partial.heterogeneous !== undefined) heterogeneous.set(partial.heterogeneous)
+  if (partial.prefillAcceleratorId !== undefined) prefillAcceleratorId.set(partial.prefillAcceleratorId)
+  if (partial.prefillVariantId !== undefined) prefillVariantId.set(partial.prefillVariantId)
+  if (partial.prefillSystemId !== undefined) prefillSystemId.set(partial.prefillSystemId)
+  if (partial.prefillParallelismOverride !== undefined) prefillParallelismOverride.set(partial.prefillParallelismOverride)
   if (partial.decodeAcceleratorId !== undefined) decodeAcceleratorId.set(partial.decodeAcceleratorId)
   if (partial.decodeVariantId !== undefined) decodeVariantId.set(partial.decodeVariantId)
   if (partial.decodeSystemId !== undefined) decodeSystemId.set(partial.decodeSystemId)
@@ -341,6 +388,10 @@ export function startUrlSync(): () => void {
     quant.subscribe(write),
     workload.subscribe(write),
     heterogeneous.subscribe(write),
+    prefillAcceleratorId.subscribe(write),
+    prefillVariantId.subscribe(write),
+    prefillSystemId.subscribe(write),
+    prefillParallelismOverride.subscribe(write),
     decodeAcceleratorId.subscribe(write),
     decodeVariantId.subscribe(write),
     decodeSystemId.subscribe(write),
