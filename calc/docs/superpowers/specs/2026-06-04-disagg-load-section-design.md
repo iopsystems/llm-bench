@@ -77,6 +77,8 @@ interface LoadPoint {
 
 `prefillS` is computed once (prefill cluster runs serial, single-request prefill at the configured promptTokens). `tpotS(N)` reuses `computeDecode` with `workload.concurrency = N` — already exists, no new math needed. `loadCurve` internally constructs a per-iteration `CalcInput` with `workload.concurrency` overridden to `N` (the input passed in carries the simInputDisagg's clamp of 1; loadCurve unconditionally replaces it for each point on the sweep). `kvTransferS` reuses today's per-request fabric transfer cost.
 
+**Why prefill runs serially.** Prefill arithmetic intensity is `2 × tokens / bytes_per_weight` FLOPs/byte (the weights load is amortized across all tokens in the batch — concretely, an H200 hits its bf16 roofline crossover at ~200 tokens, fp8 at ~100). Above the crossover a single request already saturates the tensor cores, so batching multiple prefills together would not reduce wall time. Below the crossover the cluster is HBM-bound on the weight load and batching short prefills would amortize that bandwidth — but typical chat / code-gen prompts sit well above the crossover, so the v1 model assumes prefill is compute-bound and a single serial slot is the right abstraction. If we ever want to study sub-200-token regimes (autocomplete, classifiers), prefill batching becomes a knob — track in v2.
+
 Throughput is bottleneck-bounded across the two stations:
 - decode-side request rate = `N / (output_tokens × tpotS(N))` (N requests in batch, each takes that long to drain)
 - prefill-side request rate = `1 / prefillS` (single serial prefill slot)
@@ -216,3 +218,4 @@ This requires no other Calc-tab changes. The Memory panel and Throughput panels 
 - Variable / sampled workload distributions (would re-introduce the percentile sim)
 - P:D ratio as a third small chart (vs. just the KPI line)
 - Past-N_max behavior: today the slider caps at N_max; could add a "what if we had more HBM?" extrapolation
+- Prefill batching for short-prompt regimes (< ~200 tokens, where prefill is HBM-bound on weight load) — batched prefill amortizes the weight read across requests; today's serial assumption is wrong here. Would need a batch-size knob and revisit `prefillS` to scale with the per-batch token total instead of one request's promptTokens.
