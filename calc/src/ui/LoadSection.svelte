@@ -18,6 +18,13 @@
     return out
   })()
 
+  // `simInputDisagg` produces a new reference on every slider tick (the slider
+  // writes `concurrencyOverride` → `input` recomputes → `simInputDisagg`
+  // rebuilds). Its content is identical because `concurrency` is clamped to 1
+  // inside, but Svelte refires this derivation anyway. At nMax ≤ 256 the
+  // per-tick cost is ~256 cheap arithmetic `computeMemory` calls — sub-ms in
+  // practice. If this ever shows up in profiling, factor out a `curveInput`
+  // derived that ignores `concurrencyOverride`.
   $: points = ($simInputDisagg && ns.length > 0) ? loadCurve($simInputDisagg, ns) : []
 
   // Selected N: user's override (if set), else nMaxDecode (= run at the cap).
@@ -27,6 +34,9 @@
   $: selectedN = nMax > 0 ? Math.max(1, Math.min(nMax, rawSelected)) : 1
   $: clamped = ($concurrencyOverride !== null) && ($concurrencyOverride > nMax)
 
+  // When nMax > 256, `ns` is strided and `selectedN` likely won't be a sampled
+  // point — fall back to the nearest sampled neighbor. Readout still shows the
+  // slider's exact value; KPI shows the nearest sample. Drift is small.
   $: selectedPoint = points.find(p => p.n === selectedN)
     ?? (points.length > 0 ? points.reduce((acc, p) => (Math.abs(p.n - selectedN) < Math.abs(acc.n - selectedN) ? p : acc)) : null)
 
