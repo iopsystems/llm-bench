@@ -95,6 +95,53 @@ describe('loadCurve', () => {
     const aggregateDecode = p.decodeOutputTokPerSPerDevice * p.decodeDevices
     expect(aggregateDecode).toBeCloseTo(4 / p.tpotS, 6)
   })
+
+  it('ttftS in overlap mode matches engine: prefillS + firstStepOnPrefillS (single-cluster)', () => {
+    const input = {
+      ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: true,
+    }
+    // Symmetric cluster (no decode override): firstStepOnPrefillS equals the
+    // decode-step time on the prefill cluster at batch=1, computed via the same
+    // engine path calc.ts uses.
+    const [point] = loadCurve(input, [1])
+    expect(point.ttftS).toBeCloseTo(point.prefillS + point.tpotS, 12)
+    // Sanity: ttftS < totalS
+    expect(point.ttftS).toBeLessThan(point.totalS)
+  })
+
+  it('ttftS in sequential mode includes full kvTransferS', () => {
+    const input = {
+      ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: false,
+    }
+    const [point] = loadCurve(input, [4])
+    expect(point.ttftS).toBeCloseTo(point.prefillS + point.kvTransferS, 12)
+  })
+
+  it('ttftS for no-fabric case is just prefillS', () => {
+    const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+    // No disagg fabric → kvTransferS = 0 → ttftS = prefillS (no transfer, no overlap)
+    const [point] = loadCurve(input, [1])
+    expect(point.kvTransferS).toBe(0)
+    expect(point.ttftS).toBeCloseTo(point.prefillS, 12)
+  })
+
+  it('ttftS is independent of N (TTFT is per-request, not batched)', () => {
+    const input = {
+      ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: true,
+    }
+    const points = loadCurve(input, [1, 4, 16])
+    // All three points should have the same ttftS — the just-arrived request's
+    // first-token latency doesn't depend on what size batch the decode cluster
+    // is running concurrently.
+    expect(points[1].ttftS).toBeCloseTo(points[0].ttftS, 12)
+    expect(points[2].ttftS).toBeCloseTo(points[0].ttftS, 12)
+  })
 })
 
 // Hardware rationale shared by these tests: Llama-3.3-70B at bf16 needs

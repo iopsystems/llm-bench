@@ -49,6 +49,7 @@ export interface LoadPoint {
   tpotS: number
   prefillS: number
   kvTransferS: number
+  ttftS: number              // prefill + first-decode-step (overlap) | prefill + kvTransfer (sequential)
   totalS: number
   throughputTokS: number
   throughputReqS: number
@@ -99,6 +100,14 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     }
   }
 
+  // First-decode-step latency on the prefill cluster (used for overlap-mode
+  // TTFT). Computed at batch=1 — at TTFT time only the just-arrived request
+  // is decoding on the prefill cluster. Reuses the existing probeMem (same
+  // concurrency=1 probe). Mirrors calc.ts path. N-independent; computed once.
+  const probeInput1 = { ...input, workload: { ...input.workload, concurrency: 1 } }
+  const decodeOnPrefill1 = computeDecode(probeInput1, pair.prefillOp, probeMem, input.multiDevice)
+  const firstStepOnPrefillS = decodeOnPrefill1.timePerTokenS
+
   const outputTokens = input.workload.outputTokens
 
   // Disagg convention: input.multiDevice describes the prefill cluster, and
@@ -121,6 +130,9 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     const totalS = isOverlap
       ? prefillS + outputTokens * tpotS + stutterS
       : prefillS + kvTransferS + outputTokens * tpotS
+    const ttftS = isOverlap
+      ? prefillS + firstStepOnPrefillS
+      : prefillS + kvTransferS
     const throughputReqS = Math.min(n / (outputTokens * tpotS), 1 / prefillS)
     const throughputTokS = throughputReqS * outputTokens
     const pdRatio = pdInstanceRatio(prefillS, outputTokens, tpotS, n)
@@ -129,7 +141,7 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     const decodeOutputTokPerSPerDevice = n / (tpotS * decodeDevices)
 
     return {
-      n, tpotS, prefillS, kvTransferS, totalS,
+      n, tpotS, prefillS, kvTransferS, ttftS, totalS,
       throughputTokS, throughputReqS,
       pdRatio,
       prefillInputTokPerSPerDevice, decodeOutputTokPerSPerDevice,

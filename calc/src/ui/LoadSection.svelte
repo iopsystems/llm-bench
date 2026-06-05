@@ -92,9 +92,10 @@
         </div>
       </div>
       <div class="kpi">
-        <div class="label">Per-request total</div>
-        <div class="value">{fmt(selectedPoint.totalS, 's')}</div>
-        <div class="caption">TPOT {fmt(selectedPoint.tpotS, 's')}</div>
+        <div class="label">Per-request</div>
+        <div class="metric"><span class="m-label">TTFT</span><span class="m-value">{fmt(selectedPoint.ttftS, 's')}</span></div>
+        <div class="metric"><span class="m-label">Total</span><span class="m-value">{fmt(selectedPoint.totalS, 's')}</span></div>
+        <div class="metric"><span class="m-label">TPOT</span><span class="m-value">{fmt(selectedPoint.tpotS, 's')}</span></div>
       </div>
       <div class="kpi pd">
         <div class="label">P:D instance ratio</div>
@@ -142,6 +143,12 @@
   }
   .kpi .value { font-size: 1.4rem; font-weight: 700; color: #222; margin-top: 0.2rem; }
   .kpi .caption { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
+  .kpi .metric {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 0.3rem; font-size: 0.95rem;
+  }
+  .kpi .m-label { color: #666; font-size: 0.85rem; }
+  .kpi .m-value { font-weight: 700; color: #222; }
   .oom-hint {
     padding: 0.7rem 0.9rem;
     background: #fff7ec; color: #8a3f00;
