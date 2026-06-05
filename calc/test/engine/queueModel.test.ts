@@ -15,10 +15,11 @@ function inputFor(acceleratorId: string, variantId: string, modelId: string): Ca
   }
 }
 
+// Hardware rationale shared by these tests: Llama-3.3-70B at bf16 needs
+// ~140 GB for weights, so a single H100 SXM-80 can't fit it (boundBy=weights),
+// while an H200 SXM-141 has the headroom to fit weights + KV (boundBy=kv).
 describe('computeNMax', () => {
   it('returns a positive integer for a model that fits with headroom', () => {
-    // H100 SXM-80 (80 GB HBM), Llama-3.3-70B at bf16: weights ≈ 140 GB → doesn't fit
-    // single-chip; need multi-device or a bigger chip. Use H200 SXM-141 instead.
     const r = computeNMax(inputFor('h200', 'sxm-141', 'llama-3.3-70b'))
     expect(r.boundBy).toBe('kv')
     expect(r.nMax).toBeGreaterThan(0)
@@ -26,7 +27,6 @@ describe('computeNMax', () => {
   })
 
   it('returns {nMax: 0, boundBy: weights} when weights alone exceed HBM', () => {
-    // Llama-3.3-70B bf16 ≈ 140 GB > 80 GB on H100 SXM-80.
     const r = computeNMax(inputFor('h100', 'sxm-80', 'llama-3.3-70b'))
     expect(r.boundBy).toBe('weights')
     expect(r.nMax).toBe(0)
