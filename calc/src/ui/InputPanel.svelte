@@ -72,9 +72,17 @@
   let outputInvalid = false
   let concurrencyInvalid = false
 
-  // Keep the textbox in sync with the store when the store changes externally
-  // (e.g. URL load, LoadSection slider drag).
-  $: concurrencyInput = $concurrencyOverride === null ? '' : String($concurrencyOverride)
+  // Sync from store ONLY when the current text doesn't already parse to the
+  // store's value. Without this guard, typing "40k" round-trips through the
+  // store as 40000 and clobbers the user's "40k" mid-keystroke.
+  $: {
+    const storeStr = $concurrencyOverride === null ? '' : String($concurrencyOverride)
+    const trimmed = concurrencyInput.trim()
+    const inputParses = trimmed === '' ? null : parseTokenCount(trimmed)
+    if (inputParses !== $concurrencyOverride) {
+      concurrencyInput = storeStr
+    }
+  }
 
   function onPromptInput(e: Event) {
     const v = (e.target as HTMLInputElement).value
@@ -103,7 +111,7 @@
       return
     }
     const n = parseTokenCount(v)
-    if (n === null || n <= 0) { concurrencyInvalid = true; return }
+    if (n === null) { concurrencyInvalid = true; return }
     concurrencyInvalid = false
     concurrencyOverride.set(n)
   }
@@ -246,7 +254,7 @@
           <input
             type="text"
             value={concurrencyInput}
-            placeholder={`auto (${$nMaxCalc})`}
+            placeholder={$nMaxCalc > 0 ? `auto (${$nMaxCalc})` : 'auto'}
             class:invalid={concurrencyInvalid}
             on:input={onConcurrencyInput}
           />
