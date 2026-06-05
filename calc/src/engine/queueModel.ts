@@ -45,6 +45,8 @@ export interface LoadPoint {
   totalS: number
   throughputTokS: number
   throughputReqS: number
+  // < 1 ⇒ decode is the bottleneck (more prefill nodes than decode can fill);
+  // > 1 ⇒ prefill is the bottleneck (need more prefill nodes per decode node).
   pdRatio: number
 }
 
@@ -91,14 +93,12 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     const totalS = prefillS + kvTransferS + outputTokens * tpotS
     const throughputReqS = Math.min(n / (outputTokens * tpotS), 1 / prefillS)
     const throughputTokS = throughputReqS * outputTokens
-    const pdRatio = (n * prefillS) / (outputTokens * tpotS)
+    const pdRatio = pdInstanceRatio(prefillS, outputTokens, tpotS, n)
 
     return { n, tpotS, prefillS, kvTransferS, totalS, throughputTokS, throughputReqS, pdRatio }
   })
 }
 
-// Ratio of prefill-cluster time to decode-cluster time at batch size N.
-// Values < 1 mean decode is the bottleneck; > 1 means prefill is.
 export function pdInstanceRatio(prefillS: number, outputTokens: number, tpotS: number, n: number): number {
   return (n * prefillS) / (outputTokens * tpotS)
 }
