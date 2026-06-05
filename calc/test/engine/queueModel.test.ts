@@ -56,6 +56,28 @@ describe('loadCurve', () => {
     const expected = (8 * point.prefillS) / (512 * point.tpotS)
     expect(point.pdRatio).toBeCloseTo(expected, 12)
   })
+
+  it('totalS matches engine overlap-mode formula when disagg fabric is set', () => {
+    const input = {
+      ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: true,
+    }
+    const [point] = loadCurve(input, [1])
+    // Overlap: totalS = prefill + outputTokens × tpot + max(0, kvTransfer - tpot)
+    const stutter = Math.max(0, point.kvTransferS - point.tpotS)
+    expect(point.totalS).toBeCloseTo(point.prefillS + 512 * point.tpotS + stutter, 12)
+  })
+
+  it('totalS matches sequential formula when firstTokenOnPrefill is false', () => {
+    const input = {
+      ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+      disaggKvTransferFabricId: 'ib-ndr',
+      disaggFirstTokenOnPrefill: false,
+    }
+    const [point] = loadCurve(input, [1])
+    expect(point.totalS).toBeCloseTo(point.prefillS + point.kvTransferS + 512 * point.tpotS, 12)
+  })
 })
 
 // Hardware rationale shared by these tests: Llama-3.3-70B at bf16 needs

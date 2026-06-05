@@ -90,7 +90,14 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     const memN = computeMemory(inputN)
     const tpotS = computeDecode(inputN, pair.decodeOp, memN).timePerTokenS
 
-    const totalS = prefillS + kvTransferS + outputTokens * tpotS
+    // Mirrors calc.ts two-mode latency: overlap hides KV transfer behind first
+    // decode token emission; stutter only when transfer outlasts that first token.
+    // Sequential (firstTokenOnPrefill=false): no hiding, full serial cost.
+    const isOverlap = kvTransferS > 0 && (input.disaggFirstTokenOnPrefill ?? true)
+    const stutterS = isOverlap ? Math.max(0, kvTransferS - tpotS) : 0
+    const totalS = isOverlap
+      ? prefillS + outputTokens * tpotS + stutterS
+      : prefillS + kvTransferS + outputTokens * tpotS
     const throughputReqS = Math.min(n / (outputTokens * tpotS), 1 / prefillS)
     const throughputTokS = throughputReqS * outputTokens
     const pdRatio = pdInstanceRatio(prefillS, outputTokens, tpotS, n)
