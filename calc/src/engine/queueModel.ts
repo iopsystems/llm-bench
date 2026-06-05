@@ -55,6 +55,16 @@ export interface LoadPoint {
   // < 1 ⇒ decode is the bottleneck (more prefill nodes than decode can fill);
   // > 1 ⇒ prefill is the bottleneck (need more prefill nodes per decode node).
   pdRatio: number
+
+  // Per-device throughput surfaced separately for prefill and decode because
+  // disagg sizing is fundamentally about P:D node ratios — operators want to
+  // see "this prefill SKU does X input tok/s/device, this decode SKU does Y
+  // output tok/s/device" and pick the cluster mix from there. Device counts
+  // are included so callers can compute aggregate without re-deriving.
+  prefillInputTokPerSPerDevice: number   // promptTokens / (prefillS × prefillDevices)
+  decodeOutputTokPerSPerDevice: number   // n / (tpotS × decodeDevices)
+  prefillDevices: number                 // 1 for single-chip; system.accelerator.count otherwise
+  decodeDevices: number                  // falls back to prefillDevices in homogeneous mode
 }
 
 // Per-N KPIs computed by reusing the engine's prefill/decode primitives with
@@ -91,6 +101,12 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
 
   const outputTokens = input.workload.outputTokens
 
+  // Disagg convention: input.multiDevice describes the prefill cluster, and
+  // input.decodeMultiDevice (when set) describes the decode cluster. In the
+  // homogeneous case decodeMultiDevice is absent and we reuse prefill's count.
+  const prefillDevices = input.multiDevice?.system.accelerator.count ?? 1
+  const decodeDevices = input.decodeMultiDevice?.system.accelerator.count ?? prefillDevices
+
   return ns.map(n => {
     // Memory recomputes at each N because decode-step KV bytes scale with batch.
     const inputN = { ...input, workload: { ...input.workload, concurrency: n } }
@@ -109,7 +125,16 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     const throughputTokS = throughputReqS * outputTokens
     const pdRatio = pdInstanceRatio(prefillS, outputTokens, tpotS, n)
 
-    return { n, tpotS, prefillS, kvTransferS, totalS, throughputTokS, throughputReqS, pdRatio }
+    const prefillInputTokPerSPerDevice = input.workload.promptTokens / (prefillS * prefillDevices)
+    const decodeOutputTokPerSPerDevice = n / (tpotS * decodeDevices)
+
+    return {
+      n, tpotS, prefillS, kvTransferS, totalS,
+      throughputTokS, throughputReqS,
+      pdRatio,
+      prefillInputTokPerSPerDevice, decodeOutputTokPerSPerDevice,
+      prefillDevices, decodeDevices,
+    }
   })
 }
 

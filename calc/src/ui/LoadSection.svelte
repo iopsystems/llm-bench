@@ -78,9 +78,18 @@
 
     <div class="kpi-row">
       <div class="kpi">
-        <div class="label">Aggregate throughput</div>
-        <div class="value">{fmt(selectedPoint.throughputTokS, 'tok/s')}</div>
-        <div class="caption">{selectedPoint.throughputReqS.toPrecision(3)} req/s</div>
+        <div class="label">Prefill</div>
+        <div class="value">{fmt(selectedPoint.prefillInputTokPerSPerDevice, 'tok/s')}</div>
+        <div class="caption">
+          per device × {selectedPoint.prefillDevices} = {fmt(selectedPoint.prefillInputTokPerSPerDevice * selectedPoint.prefillDevices, 'tok/s')} input
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="label">Decode</div>
+        <div class="value">{fmt(selectedPoint.decodeOutputTokPerSPerDevice, 'tok/s')}</div>
+        <div class="caption">
+          per device × {selectedPoint.decodeDevices} = {fmt(selectedPoint.decodeOutputTokPerSPerDevice * selectedPoint.decodeDevices, 'tok/s')} output
+        </div>
       </div>
       <div class="kpi">
         <div class="label">Per-request total</div>
@@ -122,7 +131,7 @@
   .readout { font-size: 0.95rem; color: #333; min-width: 8rem; }
   .readout strong { font-size: 1.2rem; }
   .clamped { display: block; font-size: 0.75rem; color: #8a3f00; font-style: italic; }
-  .kpi-row { display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 0.75rem; }
+  .kpi-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   .kpi {
     padding: 0.6rem 0.9rem; background: #fff;
     border: 1px solid #d4d4d4; border-radius: 0.4rem;

@@ -78,6 +78,23 @@ describe('loadCurve', () => {
     const [point] = loadCurve(input, [1])
     expect(point.totalS).toBeCloseTo(point.prefillS + point.kvTransferS + 512 * point.tpotS, 12)
   })
+
+  it('per-device throughput fields scale correctly with device count', () => {
+    // Single-chip (count=1): per-device = aggregate.
+    const single = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+    const [pSingle] = loadCurve(single, [8])
+    expect(pSingle.prefillDevices).toBe(1)
+    expect(pSingle.decodeDevices).toBe(1)
+    expect(pSingle.prefillInputTokPerSPerDevice).toBeCloseTo(2048 / pSingle.prefillS, 6)
+    expect(pSingle.decodeOutputTokPerSPerDevice).toBeCloseTo(8 / pSingle.tpotS, 6)
+  })
+
+  it('per-device output tok/s × decodeDevices recovers aggregate decode rate', () => {
+    const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+    const [p] = loadCurve(input, [4])
+    const aggregateDecode = p.decodeOutputTokPerSPerDevice * p.decodeDevices
+    expect(aggregateDecode).toBeCloseTo(4 / p.tpotS, 6)
+  })
 })
 
 // Hardware rationale shared by these tests: Llama-3.3-70B at bf16 needs
