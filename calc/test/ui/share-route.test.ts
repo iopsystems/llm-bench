@@ -72,6 +72,7 @@ describe('URL with model but no quant → quant seeded from native', () => {
       prefillSystemId: '', prefillParallelismOverride: null,
       decodeAcceleratorId: '', decodeVariantId: '',
       decodeSystemId: '', decodeParallelismOverride: null,
+      concurrencyOverride: null,
     })
     expect(enc).not.toContain('ld=')   // no more ld key
     expect(decodeState(enc).quant).toEqual({ weights: 'fp8', kv: 'fp16', activations: 'fp8' })
@@ -118,6 +119,7 @@ describe('disagg URL encoding (single-chip + scale-out fabric)', () => {
       prefillSystemId: '', prefillParallelismOverride: null,
       decodeAcceleratorId: '', decodeVariantId: '',
       decodeSystemId: '', decodeParallelismOverride: null,
+      concurrencyOverride: null,
     }
     const enc = encodeState(state)
     expect(enc).toContain('dk=roce-400')
@@ -140,6 +142,7 @@ describe('heterogeneous P/D URL state', () => {
     parallelismOverride: null,
     disaggKvTransferFabricId: 'roce-400',
     disaggFirstTokenOnPrefill: true,
+    concurrencyOverride: null,
   }
 
   const emptyOverrides = {
