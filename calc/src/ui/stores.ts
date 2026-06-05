@@ -152,7 +152,7 @@ export const nMaxCalc: Readable<number> = derived(
       quant: $quant, workload: { ...$workload, concurrency: 1 },
       ...($multiDevice && { multiDevice: $multiDevice }),
     }
-    return computeNMax(probe).nMax
+    return computeNMax(probe, 'prefill').nMax
   }
 )
 

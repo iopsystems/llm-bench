@@ -11,21 +11,28 @@ export interface NMaxResult {
 }
 
 // KV-cap ceiling: how many concurrent in-flight requests can be served before
-// HBM exhausts. Per-rank granularity when multiDevice is configured.
-export function computeNMax(input: CalcInput): NMaxResult {
-  // Probe at concurrency=1: kvCachePerRequest and activations both scale
-  // linearly, so per-request bytes are stable regardless of what the caller
-  // passed in for concurrency.
+// HBM exhausts. The `side` parameter picks the constraining phase:
+//   'decode'  — decode-phase memory (kv + tiny decode activations). Correct
+//               when the cluster only runs decode (disagg decode cluster).
+//   'prefill' — prefill-phase memory (kv + large prefill activations).
+//               Correct when the cluster runs both phases monolithically;
+//               matches the existing memory-fit check used by the Calc tab.
+// Per-rank granularity when multiDevice is configured.
+export function computeNMax(input: CalcInput, side: 'prefill' | 'decode' = 'decode'): NMaxResult {
   const probe = { ...input, workload: { ...input.workload, concurrency: 1 } }
   const memory = computeMemory(probe)
-  const side = memory.decodeSide
+  const memSide = side === 'prefill' ? memory.prefillSide : memory.decodeSide
 
-  const capacityBytes  = side.hbmCapacityGB * 1024 * 1024 * 1024
-  const weightsBytes   = side.perRank?.weights           ?? side.weights
-  const perReqKvBytes  = side.perRank?.kvCachePerRequest ?? memory.kvCachePerRequest
-  // decodeActivationsPeak is at concurrency=1 (probed above); perRank.activations
-  // already incorporates the per-rank divisor when multiDevice is set.
-  const perReqActBytes = side.perRank?.activations       ?? memory.decodeActivationsPeak
+  const capacityBytes  = memSide.hbmCapacityGB * 1024 * 1024 * 1024
+  const weightsBytes   = memSide.perRank?.weights           ?? memSide.weights
+  const perReqKvBytes  = memSide.perRank?.kvCachePerRequest ?? memory.kvCachePerRequest
+  // Activations differ by phase: prefill side uses prompt × hidden activations
+  // (large, scales with promptTokens); decode side uses single-token activations
+  // (tiny). The Calc tab's memory-fit check uses prefill phase, so nMaxCalc
+  // must match. The LoadSection's decode cluster never runs prefill, so it
+  // correctly uses decode activations.
+  const perReqActBytes = memSide.perRank?.activations
+    ?? (side === 'prefill' ? memory.activationsPeak : memory.decodeActivationsPeak)
 
   const free = capacityBytes - weightsBytes
   if (free <= 0) return { nMax: 0, boundBy: 'weights' }

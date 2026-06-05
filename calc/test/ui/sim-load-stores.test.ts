@@ -66,8 +66,15 @@ describe('concurrencyOverride + effectiveConcurrency', () => {
 describe('nMaxDecode vs nMaxCalc under het=on', () => {
   beforeEach(resetStores)
 
-  it('with symmetric hw (het off), nMaxDecode tracks nMaxCalc', () => {
-    expect(get(nMaxDecode)).toBe(get(nMaxCalc))
+  it('with symmetric hw (het off), nMaxCalc < nMaxDecode (prefill activations are larger)', () => {
+    const calc = get(nMaxCalc)
+    const decode = get(nMaxDecode)
+    // Both positive (H200 + 70B fits)
+    expect(calc).toBeGreaterThan(0)
+    expect(decode).toBeGreaterThan(0)
+    // Prefill activations include promptTokens × hidden — strictly larger than
+    // decode activations, so prefill-bound nMax is smaller.
+    expect(calc).toBeLessThan(decode)
   })
 
   it('with het=on + smaller decode hw, nMaxDecode < nMaxCalc', () => {

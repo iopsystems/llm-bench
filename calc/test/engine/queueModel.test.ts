@@ -96,4 +96,27 @@ describe('computeNMax', () => {
     expect(r.boundBy).toBe('weights')
     expect(r.nMax).toBe(0)
   })
+
+  it('prefill side returns smaller nMax than decode side (prefill activations are larger)', () => {
+    const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+    const decodeSide = computeNMax(input)             // default 'decode'
+    const prefillSide = computeNMax(input, 'prefill')
+    expect(prefillSide.nMax).toBeLessThan(decodeSide.nMax)
+    expect(prefillSide.boundBy).toBe('kv')
+  })
+
+  it('prefill side honors prompt-token sensitivity', () => {
+    const small = { ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+                    workload: { promptTokens: 512, outputTokens: 512, concurrency: 1 } }
+    const big   = { ...inputFor('h200', 'sxm-141', 'llama-3.3-70b'),
+                    workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 } }
+    // Larger prompt → larger prefill activations → smaller nMax.
+    expect(computeNMax(big, 'prefill').nMax).toBeLessThan(computeNMax(small, 'prefill').nMax)
+  })
+
+  it('weights-bound case returns 0 for both phases', () => {
+    const input = inputFor('h100', 'sxm-80', 'llama-3.3-70b')  // 80 GB chip, 140 GB weights
+    expect(computeNMax(input).nMax).toBe(0)
+    expect(computeNMax(input, 'prefill').nMax).toBe(0)
+  })
 })
