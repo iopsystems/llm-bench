@@ -182,9 +182,9 @@ export function decodeState(hash: string): Partial<ShareableState> {
   }
 
   // concurrencyOverride: standalone top-level key (was nested in workload pre-decoupling).
-  const cRaw = params.get('c')
-  if (cRaw !== null) {
-    const n = parseInt(cRaw, 10)
+  const c = params.get('c')
+  if (c !== null) {
+    const n = parseInt(c, 10)
     if (Number.isFinite(n) && n > 0) out.concurrencyOverride = n
   }
 

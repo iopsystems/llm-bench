@@ -225,4 +225,10 @@ describe('concurrencyOverride URL encoding', () => {
   it('backward compat: old URL with c=1 sets override to 1', () => {
     expect(decodeState('c=1').concurrencyOverride).toBe(1)
   })
+
+  it('ignores invalid c= value', () => {
+    expect(decodeState('c=abc').concurrencyOverride).toBeUndefined()
+    expect(decodeState('c=0').concurrencyOverride).toBeUndefined()
+    expect(decodeState('c=-3').concurrencyOverride).toBeUndefined()
+  })
 })
