@@ -67,7 +67,7 @@
         </div>
       </div>
       <div class="chart-col">
-        <LoadCharts {points} {selectedN} {nMax} />
+        <LoadCharts {points} {selectedPoint} {nMax} />
       </div>
     </div>
 

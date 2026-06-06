@@ -2,7 +2,12 @@
   import type { LoadPoint } from '../engine/queueModel'
 
   export let points: LoadPoint[]
-  export let selectedN: number
+  // The selected operating point — parent owns the selection logic (incl. the
+  // nearest-neighbor fallback when nMax > 256 strides the ns sweep), so we
+  // just render whatever it hands us. Used to be `selectedN: number` and the
+  // chart did its own find/fallback, but that fallback was "rightmost point"
+  // which snapped the marker to N=nMax whenever the find failed.
+  export let selectedPoint: LoadPoint | null
   export let nMax: number
 
   // Single SVG with dual y-axes: throughput (left, blue) + latency (right, orange).
@@ -40,8 +45,6 @@
   $: latPath = points.map((p, i) =>
     `${i === 0 ? 'M' : 'L'}${xPx(p.n).toFixed(2)},${yPxLat(p.latencyS).toFixed(2)}`
   ).join(' ')
-
-  $: selectedPoint = points.find(p => p.n === selectedN) ?? points[points.length - 1]
 
   function fmtThru(v: number): string {
     if (v >= 1e6) return `${(v / 1e6).toPrecision(3)}M`
