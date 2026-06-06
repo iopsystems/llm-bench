@@ -83,7 +83,7 @@
     <!-- vertical marker + dots at selectedN -->
     {#if selectedPoint}
       <line x1={xPx(selectedPoint.n)} y1={MT} x2={xPx(selectedPoint.n)} y2={MT + PH}
-            stroke="#fcd34d" stroke-width="2.5" />
+            stroke="#888" stroke-width="2.5" />
       <circle cx={xPx(selectedPoint.n)} cy={yPxThru(selectedPoint.throughputTokS)}
               r="3.5" fill="#2b6cb0" />
       <circle cx={xPx(selectedPoint.n)} cy={yPxLat(selectedPoint.latencyS)}
