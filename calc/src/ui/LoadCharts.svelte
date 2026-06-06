@@ -101,9 +101,7 @@
 </div>
 
 <style>
-  .chart {
-    padding: 0.6rem 0.9rem;
-    background: #fff; border: 1px solid #d4d4d4; border-radius: 0.4rem;
-    width: 100%;
-  }
+  /* No border — parent (LoadSection) owns the wrapper border so the slider
+     and chart sit in one container. */
+  .chart { width: 100%; }
 </style>

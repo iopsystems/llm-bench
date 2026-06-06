@@ -30,6 +30,17 @@
   $: selectedPoint = points.find(p => p.n === selectedN)
     ?? (points.length > 0 ? points.reduce((acc, p) => (Math.abs(p.n - selectedN) < Math.abs(acc.n - selectedN) ? p : acc)) : null)
 
+  // Saturation N: smallest sampled N where throughputReqS first reaches 95% of
+  // the curve's max. Below that, adding concurrency still buys real throughput;
+  // beyond, the curve plateaus.
+  $: saturationN = (() => {
+    if (points.length === 0) return null
+    const maxReq = Math.max(...points.map(p => p.throughputReqS))
+    if (maxReq <= 0) return null
+    const sat = points.find(p => p.throughputReqS >= 0.95 * maxReq)
+    return sat?.n ?? null
+  })()
+
   function onSliderInput(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10)
     if (Number.isFinite(v) && v >= 1) {
@@ -65,6 +76,9 @@
             <span class="clamped">(override {$concurrencyOverride} clamped to decode-cluster cap)</span>
           {/if}
         </div>
+        {#if saturationN !== null}
+          <div class="saturation-hint">Throughput saturates around N = {saturationN}</div>
+        {/if}
       </div>
       <div class="chart-col">
         <LoadCharts {points} {selectedPoint} {nMax} />
@@ -147,17 +161,18 @@
   .top-row {
     display: grid; grid-template-columns: 1fr 2fr; gap: 1rem;
     align-items: stretch;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid #d4d4d4; border-radius: 0.4rem; background: #fff;
   }
   .slider-col {
     display: flex; flex-direction: column; justify-content: center;
-    padding: 0.6rem 0.9rem;
-    border: 1px solid #d4d4d4; border-radius: 0.4rem; background: #fff;
   }
   .slider-col .slider-label { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem; color: #555; }
   .slider-col .slider-label input[type=range] { width: 100%; }
   .slider-col .readout { margin-top: 0.6rem; font-size: 0.95rem; color: #333; }
   .slider-col .readout strong { font-size: 1.4rem; }
   .slider-col .clamped { display: block; font-size: 0.75rem; color: #8a3f00; font-style: italic; margin-top: 0.3rem; }
+  .slider-col .saturation-hint { margin-top: 0.5rem; font-size: 0.82rem; color: #555; font-style: italic; }
   .chart-col {
     display: flex; align-items: stretch;
   }
