@@ -164,11 +164,10 @@ describe('loadCurve', () => {
     expect(point.inputTokPerS).toBeCloseTo(point.throughputReqS * 2048, 6)
   })
 
-  it('latencyP50S and latencyP99S both equal totalS in v1 deterministic model', () => {
+  it('latencyS equals totalS in v1 deterministic model', () => {
     const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
     const [point] = loadCurve(input, [4])
-    expect(point.latencyP50S).toBe(point.totalS)
-    expect(point.latencyP99S).toBe(point.totalS)
+    expect(point.latencyS).toBe(point.totalS)
   })
 })
 

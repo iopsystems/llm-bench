@@ -97,15 +97,14 @@
       </div>
       <div class="kpi">
         <div class="label">Total latency</div>
-        <div class="metric"><span class="m-label">p50</span><span class="m-value">{fmt(selectedPoint.latencyP50S, 's')}</span></div>
-        <div class="metric"><span class="m-label">p99</span><span class="m-value">{fmt(selectedPoint.latencyP99S, 's')}</span></div>
-        <div class="caption">deterministic v1 — p50 = p99 (single workload)</div>
+        <div class="value">{fmt(selectedPoint.latencyS, 's')}</div>
+        <div class="caption">deterministic v1 (uniform arrivals, identical workload)</div>
       </div>
       <div class="kpi">
         <div class="label">Throughput</div>
-        <div class="metric"><span class="m-label">Input</span><span class="m-value">{fmt(selectedPoint.inputTokPerS, 'tok/s')}</span></div>
-        <div class="metric"><span class="m-label">Output</span><span class="m-value">{fmt(selectedPoint.throughputTokS, 'tok/s')}</span></div>
-        <div class="metric"><span class="m-label">Req</span><span class="m-value">{selectedPoint.throughputReqS.toPrecision(3)} req/s</span></div>
+        <div class="tp-row"><span class="tp-label">Input</span><span class="tp-value">{fmt(selectedPoint.inputTokPerS, 'tok/s')}</span></div>
+        <div class="tp-row"><span class="tp-label">Output</span><span class="tp-value">{fmt(selectedPoint.throughputTokS, 'tok/s')}</span></div>
+        <div class="tp-row"><span class="tp-label">Req</span><span class="tp-value">{selectedPoint.throughputReqS.toPrecision(3)} req/s</span></div>
       </div>
     </div>
 
@@ -124,7 +123,7 @@
           × {selectedPoint.decodeDevices} = {fmt(selectedPoint.decodeOutputTokPerSPerDevice * selectedPoint.decodeDevices, 'tok/s')} output
         </div>
       </div>
-      <div class="kpi pd">
+      <div class="kpi">
         <div class="label">P:D instance ratio</div>
         <div class="value">{selectedPoint.pdRatio.toPrecision(3)}</div>
         <div class="caption">
@@ -159,24 +158,32 @@
   .readout { font-size: 0.95rem; color: #333; min-width: 8rem; }
   .readout strong { font-size: 1.2rem; }
   .clamped { display: block; font-size: 0.75rem; color: #8a3f00; font-style: italic; }
-  .kpi-row.primary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
-  .kpi-row.disagg  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 0.5rem; }
+  .kpi-row.primary {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
+  }
+  .kpi-row.disagg {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
   .kpi {
-    padding: 0.6rem 0.9rem; background: #fff;
-    border: 1px solid #d4d4d4; border-radius: 0.4rem;
+    border: 1px solid #d4d4d4; border-radius: 0.4rem; padding: 0.8rem 1rem;
+    background: #fff;
   }
   .kpi .label {
-    font-size: 0.8rem; font-weight: 600; color: #888;
-    text-transform: uppercase; letter-spacing: 0.04em;
+    font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; color: #888;
   }
-  .kpi .value { font-size: 1.4rem; font-weight: 700; color: #222; margin-top: 0.2rem; }
-  .kpi .caption { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
-  .kpi .metric {
+  .kpi .value {
+    font-size: 1.5rem; font-weight: 700; line-height: 1.1; margin-top: 0.1rem;
+  }
+  .kpi .caption {
+    font-size: 0.78rem; color: #666; margin-top: 0.3rem;
+  }
+  .tp-row {
     display: flex; justify-content: space-between; align-items: baseline;
-    margin-top: 0.3rem; font-size: 0.95rem;
+    margin-top: 0.25rem;
   }
-  .kpi .m-label { color: #666; font-size: 0.85rem; }
-  .kpi .m-value { font-weight: 700; color: #222; }
+  .tp-label { font-size: 0.85rem; color: #666; }
+  .tp-value { font-size: 0.95rem; font-weight: 700; color: #222; }
   .oom-hint {
     padding: 0.7rem 0.9rem;
     background: #fff7ec; color: #8a3f00;
