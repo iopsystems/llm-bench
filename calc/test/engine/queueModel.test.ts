@@ -142,6 +142,19 @@ describe('loadCurve', () => {
     expect(points[1].ttftS).toBeCloseTo(points[0].ttftS, 12)
     expect(points[2].ttftS).toBeCloseTo(points[0].ttftS, 12)
   })
+
+  it('inputTokPerS = throughputReqS × promptTokens (aggregate input rate)', () => {
+    const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+    const [point] = loadCurve(input, [8])
+    expect(point.inputTokPerS).toBeCloseTo(point.throughputReqS * 2048, 6)
+  })
+
+  it('latencyP50S and latencyP99S both equal totalS in v1 deterministic model', () => {
+    const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+    const [point] = loadCurve(input, [4])
+    expect(point.latencyP50S).toBe(point.totalS)
+    expect(point.latencyP99S).toBe(point.totalS)
+  })
 })
 
 // Hardware rationale shared by these tests: Llama-3.3-70B at bf16 needs

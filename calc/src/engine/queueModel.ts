@@ -66,6 +66,17 @@ export interface LoadPoint {
   decodeOutputTokPerSPerDevice: number   // n / (tpotS × decodeDevices)
   prefillDevices: number                 // 1 for single-chip; system.accelerator.count otherwise
   decodeDevices: number                  // falls back to prefillDevices in homogeneous mode
+
+  // Latency percentiles. The v1 closed-loop identical-request model is
+  // deterministic — both equal totalS. Separate fields so the UI is ready for
+  // when v2 introduces real variance (variable workloads, discrete-event sim).
+  latencyP50S: number
+  latencyP99S: number
+
+  // Aggregate input-side throughput. throughputTokS is the output (decode) rate;
+  // inputTokPerS is the input (prompt) rate. Mirrors the monolithic "Input /
+  // Output / Req" throughput card breakdown.
+  inputTokPerS: number
 }
 
 // Per-N KPIs computed by reusing the engine's prefill/decode primitives with
@@ -139,6 +150,9 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
 
     const prefillInputTokPerSPerDevice = input.workload.promptTokens / (prefillS * prefillDevices)
     const decodeOutputTokPerSPerDevice = n / (tpotS * decodeDevices)
+    const latencyP50S = totalS
+    const latencyP99S = totalS
+    const inputTokPerS = throughputReqS * input.workload.promptTokens
 
     return {
       n, tpotS, prefillS, kvTransferS, ttftS, totalS,
@@ -146,6 +160,8 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
       pdRatio,
       prefillInputTokPerSPerDevice, decodeOutputTokPerSPerDevice,
       prefillDevices, decodeDevices,
+      latencyP50S, latencyP99S,
+      inputTokPerS,
     }
   })
 }

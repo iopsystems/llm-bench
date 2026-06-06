@@ -76,26 +76,51 @@
       </div>
     </div>
 
-    <div class="kpi-row">
+    <div class="kpi-row primary">
       <div class="kpi">
-        <div class="label">Prefill</div>
+        <div class="label">TTFT</div>
+        <div class="value">{fmt(selectedPoint.ttftS, 's')}</div>
+        <div class="caption">
+          {#if selectedPoint.kvTransferS > 0}
+            prefill + first decode step on prefill cluster
+          {:else}
+            prefill only (no disagg overhead)
+          {/if}
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="label">TPOT</div>
+        <div class="value">{fmt(selectedPoint.tpotS, 's')}</div>
+        <div class="caption">at N = {selectedN}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Total latency</div>
+        <div class="metric"><span class="m-label">p50</span><span class="m-value">{fmt(selectedPoint.latencyP50S, 's')}</span></div>
+        <div class="metric"><span class="m-label">p99</span><span class="m-value">{fmt(selectedPoint.latencyP99S, 's')}</span></div>
+        <div class="caption">deterministic v1 — p50 = p99 (single workload)</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Throughput</div>
+        <div class="metric"><span class="m-label">Input</span><span class="m-value">{fmt(selectedPoint.inputTokPerS, 'tok/s')}</span></div>
+        <div class="metric"><span class="m-label">Output</span><span class="m-value">{fmt(selectedPoint.throughputTokS, 'tok/s')}</span></div>
+        <div class="metric"><span class="m-label">Req</span><span class="m-value">{selectedPoint.throughputReqS.toPrecision(3)} req/s</span></div>
+      </div>
+    </div>
+
+    <div class="kpi-row disagg">
+      <div class="kpi">
+        <div class="label">Prefill (per device)</div>
         <div class="value">{fmt(selectedPoint.prefillInputTokPerSPerDevice, 'tok/s')}</div>
         <div class="caption">
-          per device × {selectedPoint.prefillDevices} = {fmt(selectedPoint.prefillInputTokPerSPerDevice * selectedPoint.prefillDevices, 'tok/s')} input
+          × {selectedPoint.prefillDevices} = {fmt(selectedPoint.prefillInputTokPerSPerDevice * selectedPoint.prefillDevices, 'tok/s')} input
         </div>
       </div>
       <div class="kpi">
-        <div class="label">Decode</div>
+        <div class="label">Decode (per device)</div>
         <div class="value">{fmt(selectedPoint.decodeOutputTokPerSPerDevice, 'tok/s')}</div>
         <div class="caption">
-          per device × {selectedPoint.decodeDevices} = {fmt(selectedPoint.decodeOutputTokPerSPerDevice * selectedPoint.decodeDevices, 'tok/s')} output
+          × {selectedPoint.decodeDevices} = {fmt(selectedPoint.decodeOutputTokPerSPerDevice * selectedPoint.decodeDevices, 'tok/s')} output
         </div>
-      </div>
-      <div class="kpi">
-        <div class="label">Per-request</div>
-        <div class="metric"><span class="m-label">TTFT</span><span class="m-value">{fmt(selectedPoint.ttftS, 's')}</span></div>
-        <div class="metric"><span class="m-label">Total</span><span class="m-value">{fmt(selectedPoint.totalS, 's')}</span></div>
-        <div class="metric"><span class="m-label">TPOT</span><span class="m-value">{fmt(selectedPoint.tpotS, 's')}</span></div>
       </div>
       <div class="kpi pd">
         <div class="label">P:D instance ratio</div>
@@ -132,7 +157,8 @@
   .readout { font-size: 0.95rem; color: #333; min-width: 8rem; }
   .readout strong { font-size: 1.2rem; }
   .clamped { display: block; font-size: 0.75rem; color: #8a3f00; font-style: italic; }
-  .kpi-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .kpi-row.primary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+  .kpi-row.disagg  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 0.5rem; }
   .kpi {
     padding: 0.6rem 0.9rem; background: #fff;
     border: 1px solid #d4d4d4; border-radius: 0.4rem;
@@ -156,6 +182,6 @@
     font-size: 0.9rem; line-height: 1.4;
   }
   @media (max-width: 700px) {
-    .kpi-row { grid-template-columns: 1fr; }
+    .kpi-row.primary, .kpi-row.disagg { grid-template-columns: 1fr; }
   }
 </style>
