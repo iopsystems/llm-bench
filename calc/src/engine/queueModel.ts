@@ -77,6 +77,11 @@ export interface LoadPoint {
   // inputTokPerS is the input (prompt) rate. Mirrors the monolithic "Input /
   // Output / Req" throughput card breakdown.
   inputTokPerS: number
+
+  // TTFT mode: 'overlap' (first decode step runs on prefill cluster while KV
+  // transfers), 'sequential' (KV transfer must complete before decode starts),
+  // or 'no-fabric' (single-cluster — kvTransferS=0, TTFT=prefillS).
+  ttftMode: 'overlap' | 'sequential' | 'no-fabric'
 }
 
 // Per-N KPIs computed by reusing the engine's prefill/decode primitives with
@@ -137,6 +142,10 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
     // decode token emission; stutter only when transfer outlasts that first token.
     // Sequential (firstTokenOnPrefill=false): no hiding, full serial cost.
     const isOverlap = kvTransferS > 0 && (input.disaggFirstTokenOnPrefill ?? true)
+    const ttftMode: 'overlap' | 'sequential' | 'no-fabric' =
+      kvTransferS === 0 ? 'no-fabric'
+      : isOverlap       ? 'overlap'
+                        : 'sequential'
     const stutterS = isOverlap ? Math.max(0, kvTransferS - tpotS) : 0
     const totalS = isOverlap
       ? prefillS + outputTokens * tpotS + stutterS
@@ -162,6 +171,7 @@ export function loadCurve(input: CalcInput, ns: number[]): LoadPoint[] {
       prefillDevices, decodeDevices,
       latencyP50S, latencyP99S,
       inputTokPerS,
+      ttftMode,
     }
   })
 }

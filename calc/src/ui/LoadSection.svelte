@@ -81,8 +81,10 @@
         <div class="label">TTFT</div>
         <div class="value">{fmt(selectedPoint.ttftS, 's')}</div>
         <div class="caption">
-          {#if selectedPoint.kvTransferS > 0}
-            prefill + first decode step on prefill cluster
+          {#if selectedPoint.ttftMode === 'overlap'}
+            prefill + first decode step on prefill cluster (KV streams in parallel)
+          {:else if selectedPoint.ttftMode === 'sequential'}
+            prefill + full KV transfer (no overlap)
           {:else}
             prefill only (no disagg overhead)
           {/if}

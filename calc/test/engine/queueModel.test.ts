@@ -143,6 +143,21 @@ describe('loadCurve', () => {
     expect(points[2].ttftS).toBeCloseTo(points[0].ttftS, 12)
   })
 
+  it('ttftMode classifies overlap / sequential / no-fabric correctly', () => {
+    const base = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
+
+    // No fabric → no-fabric mode
+    expect(loadCurve(base, [1])[0].ttftMode).toBe('no-fabric')
+
+    // Fabric + overlap (default) → overlap mode
+    const overlap = { ...base, disaggKvTransferFabricId: 'ib-ndr', disaggFirstTokenOnPrefill: true }
+    expect(loadCurve(overlap, [1])[0].ttftMode).toBe('overlap')
+
+    // Fabric + no overlap → sequential mode
+    const sequential = { ...base, disaggKvTransferFabricId: 'ib-ndr', disaggFirstTokenOnPrefill: false }
+    expect(loadCurve(sequential, [1])[0].ttftMode).toBe('sequential')
+  })
+
   it('inputTokPerS = throughputReqS × promptTokens (aggregate input rate)', () => {
     const input = inputFor('h200', 'sxm-141', 'llama-3.3-70b')
     const [point] = loadCurve(input, [8])
