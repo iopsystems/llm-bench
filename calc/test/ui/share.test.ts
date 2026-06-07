@@ -29,6 +29,7 @@ const singleChipState: ShareableState = {
   decodeVariantId: '',
   decodeSystemId: '',
   decodeParallelismOverride: null,
+  concurrencyOverride: null,
 }
 
 const multiDeviceState: ShareableState = {
@@ -53,6 +54,7 @@ const multiDeviceState: ShareableState = {
   decodeVariantId: '',
   decodeSystemId: '',
   decodeParallelismOverride: null,
+  concurrencyOverride: null,
 }
 
 describe('encodeState', () => {
@@ -112,7 +114,9 @@ describe('decodeState', () => {
     expect(round.systemId).toBe('')
     expect(round.modelId).toBe(model.id)
     expect(round.quant).toEqual(singleChipState.quant)
-    expect(round.workload).toEqual(singleChipState.workload)
+    // workload round-trips pt/ot only; concurrency is now owned by concurrencyOverride
+    expect(round.workload).toEqual({ promptTokens: 2048, outputTokens: 512 })
+    expect(round.concurrencyOverride).toBeUndefined() // null override → omitted from URL
     expect(round.parallelismOverride).toBeUndefined()
   })
 
@@ -190,5 +194,41 @@ describe('encodeState then decodeState', () => {
     const round = decodeState(encodeState(state))
     expect(round.disaggKvTransferFabricId).toBe('ib-ndr')
     expect(round.disaggFirstTokenOnPrefill).toBe(false)
+  })
+})
+
+describe('concurrencyOverride URL encoding', () => {
+  it('omits c= when override is null', () => {
+    const state: ShareableState = {
+      ...singleChipState,
+      concurrencyOverride: null,
+    }
+    expect(encodeState(state)).not.toMatch(/(^|&)c=/)
+  })
+
+  it('emits c=N when override is set', () => {
+    const state: ShareableState = {
+      ...singleChipState,
+      concurrencyOverride: 7,
+    }
+    expect(encodeState(state)).toContain('c=7')
+  })
+
+  it('decodes c=5 to concurrencyOverride=5', () => {
+    expect(decodeState('c=5').concurrencyOverride).toBe(5)
+  })
+
+  it('decodes missing c= to concurrencyOverride undefined (recipient default null)', () => {
+    expect(decodeState('a=h100&v=sxm-80').concurrencyOverride).toBeUndefined()
+  })
+
+  it('backward compat: old URL with c=1 sets override to 1', () => {
+    expect(decodeState('c=1').concurrencyOverride).toBe(1)
+  })
+
+  it('ignores invalid c= value', () => {
+    expect(decodeState('c=abc').concurrencyOverride).toBeUndefined()
+    expect(decodeState('c=0').concurrencyOverride).toBeUndefined()
+    expect(decodeState('c=-3').concurrencyOverride).toBeUndefined()
   })
 })

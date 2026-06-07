@@ -2,6 +2,7 @@
   import InputPanel from './InputPanel.svelte'
   import DisaggInputPanel from './DisaggInputPanel.svelte'
   import SimulatorGantt from './SimulatorGantt.svelte'
+  import LoadSection from './LoadSection.svelte'
   import {
     simResultMonolithic, simResultDisagg, simError, simErrorDisagg,
     workload, disaggFirstTokenOnPrefill, disaggKvTransferFabricId
@@ -184,6 +185,7 @@
         </div>
       {:else if rowsDisagg.length > 0}
         {@render resultBlock(rowsDisagg)}
+        <LoadSection />
       {/if}
     {:else if !$disaggKvTransferFabricId}
       <!-- Inline affordance for enabling disagg without going up to the

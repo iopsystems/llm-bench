@@ -4,6 +4,7 @@ import { SYSTEMS } from '../data/systems'
 import { calculate } from '../engine'
 import { defaultParallelism, type ParallelismConfig } from '../engine/parallelism'
 import type { CalcInput, CalcResult, MultiDeviceConfig, Quantization, Workload } from '../engine/types'
+import { computeNMax } from '../engine/queueModel'
 
 const defaultAccelerator = ACCELERATORS[0]
 const defaultModel = MODELS[0]
@@ -21,6 +22,12 @@ export const modelId = writable(defaultModel.id)
 
 // User overrides for parallelism. null means "use defaultParallelism".
 export const parallelismOverride = writable<ParallelismConfig | null>(null)
+
+// User override for in-flight count. null ⇒ "use computed nMax". The Calc-tab
+// concurrency input and the Sim-tab LoadSection slider both bind to this
+// store; their displayed defaults differ (nMaxCalc vs nMaxDecode) but the
+// override is shared.
+export const concurrencyOverride = writable<number | null>(null)
 
 // Disaggregated serving: id of the inter-cluster fabric used to ship KV cache
 // from prefill to decode. Empty string means integrated (no disagg).
@@ -121,11 +128,46 @@ export const decodeMultiDevice: Readable<MultiDeviceConfig | undefined> = derive
   }
 )
 
+// nMaxCalc: KV-cap ceiling computed against the Calc-tab (shared) input.
+// Drives the Calc-tab concurrency default. Derived from the raw stores (not
+// from `input`) to break the circular dep — `input` will consume
+// `effectiveConcurrency`, which derives from `nMaxCalc`.
+export const nMaxCalc: Readable<number> = derived(
+  [acceleratorId, variantId, modelId, quant, workload, multiDevice, systemId],
+  ([$acceleratorId, $variantId, $modelId, $quant, $workload, $multiDevice, $systemId]) => {
+    let accelerator
+    let resolvedVariantId: string
+    if ($systemId && $multiDevice) {
+      accelerator = ACCELERATORS.find(a => a.id === $multiDevice.system.accelerator.id)
+      resolvedVariantId = $multiDevice.system.accelerator.variantId
+    } else {
+      accelerator = ACCELERATORS.find(a => a.id === $acceleratorId)
+      resolvedVariantId = $variantId
+    }
+    const model = MODELS.find(m => m.id === $modelId)
+    if (!accelerator || !model) return 0
+    if (!accelerator.variants.find(v => v.id === resolvedVariantId)) return 0
+    const probe: CalcInput = {
+      accelerator, acceleratorVariantId: resolvedVariantId, model,
+      quant: $quant, workload: { ...$workload, concurrency: 1 },
+      ...($multiDevice && { multiDevice: $multiDevice }),
+    }
+    return computeNMax(probe, 'prefill').nMax
+  }
+)
+
+// Effective concurrency for Calc-tab consumers. Floor at 1 so the engine
+// never sees concurrency=0 (would zero out tokens-per-step math).
+export const effectiveConcurrency: Readable<number> = derived(
+  [concurrencyOverride, nMaxCalc],
+  ([$override, $nMax]) => $override ?? Math.max(1, $nMax)
+)
+
 export const input: Readable<CalcInput | null> = derived(
   [acceleratorId, variantId, modelId, quant, workload, multiDevice, systemId,
-   disaggKvTransferFabricId, disaggFirstTokenOnPrefill],
+   disaggKvTransferFabricId, disaggFirstTokenOnPrefill, effectiveConcurrency],
   ([$acceleratorId, $variantId, $modelId, $quant, $workload, $multiDevice, $systemId,
-    $disagg, $firstTokenOnPrefill]) => {
+    $disagg, $firstTokenOnPrefill, $effectiveConcurrency]) => {
     // When a system is selected, resolve accelerator from the system's chip ref.
     let accelerator
     let resolvedVariantId: string
@@ -144,7 +186,7 @@ export const input: Readable<CalcInput | null> = derived(
       acceleratorVariantId: resolvedVariantId,
       model,
       quant: $quant,
-      workload: $workload,
+      workload: { ...$workload, concurrency: $effectiveConcurrency },
       ...($multiDevice && { multiDevice: $multiDevice }),
       ...($disagg && {
         disaggKvTransferFabricId: $disagg,
@@ -254,6 +296,14 @@ export const simInputDisagg: Readable<CalcInput | null> = derived(
       ...(decodeMD && { decodeMultiDevice: decodeMD }),
     }
   }
+)
+
+// nMaxDecode: KV-cap ceiling for the disagg decode cluster (heterogeneity
+// aware via simInputDisagg, which already clamps concurrency=1 — no circular
+// dep). Drives the LoadSection slider default and clamp.
+export const nMaxDecode: Readable<number> = derived(
+  [simInputDisagg],
+  ([$d]) => $d ? computeNMax($d).nMax : 0
 )
 
 interface SimComputed { result: CalcResult | null; error: string | null }

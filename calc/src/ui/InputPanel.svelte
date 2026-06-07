@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
-  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill } from './stores'
+  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill, concurrencyOverride, nMaxCalc } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
@@ -64,10 +64,25 @@
   // invalid value never propagates NaN downstream and blanks the chart.
   let promptInput = formatTokenCount($workload.promptTokens)
   let outputInput = formatTokenCount($workload.outputTokens)
-  let concurrencyInput = String($workload.concurrency)
+  // Concurrency: override-based. When override is null, the input shows nMaxCalc
+  // as a placeholder-ish value (the "auto" default). User types → override sticks.
+  // Clearing the field → override resets to null → display reverts to nMaxCalc.
+  let concurrencyInput = $concurrencyOverride === null ? '' : String($concurrencyOverride)
   let promptInvalid = false
   let outputInvalid = false
   let concurrencyInvalid = false
+
+  // Sync from store ONLY when the current text doesn't already parse to the
+  // store's value. Without this guard, typing "40k" round-trips through the
+  // store as 40000 and clobbers the user's "40k" mid-keystroke.
+  $: {
+    const storeStr = $concurrencyOverride === null ? '' : String($concurrencyOverride)
+    const trimmed = concurrencyInput.trim()
+    const inputParses = trimmed === '' ? null : parseTokenCount(trimmed)
+    if (inputParses !== $concurrencyOverride) {
+      concurrencyInput = storeStr
+    }
+  }
 
   function onPromptInput(e: Event) {
     const v = (e.target as HTMLInputElement).value
@@ -90,10 +105,15 @@
   function onConcurrencyInput(e: Event) {
     const v = (e.target as HTMLInputElement).value
     concurrencyInput = v
+    if (v.trim() === '') {
+      concurrencyInvalid = false
+      concurrencyOverride.set(null)
+      return
+    }
     const n = parseTokenCount(v)
     if (n === null) { concurrencyInvalid = true; return }
     concurrencyInvalid = false
-    workload.update(w => ({ ...w, concurrency: n }))
+    concurrencyOverride.set(n)
   }
 </script>
 
@@ -233,11 +253,10 @@
           Concurrency
           <input
             type="text"
-            inputmode="numeric"
             value={concurrencyInput}
-            on:input={onConcurrencyInput}
+            placeholder={$nMaxCalc > 0 ? `auto (${$nMaxCalc})` : 'auto'}
             class:invalid={concurrencyInvalid}
-            title="Positive integer (≥1)"
+            on:input={onConcurrencyInput}
           />
           {#if concurrencyInvalid}
             <span class="warn">⚠ invalid — use a positive integer</span>

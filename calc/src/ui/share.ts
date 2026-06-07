@@ -14,7 +14,7 @@ import { get } from 'svelte/store'
 import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  quant, workload,
+  quant, workload, concurrencyOverride,
   heterogeneous,
   prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
@@ -62,6 +62,10 @@ export interface ShareableState {
   decodeVariantId: string
   decodeSystemId: string
   decodeParallelismOverride: ParallelismConfig | null
+
+  // Top-level override — null means "use auto/default". Decoupled from
+  // workload so the workload object stays stable for in-memory math.
+  concurrencyOverride: number | null
 }
 
 // Encode state to a URL-search-style string (no leading `#`).
@@ -81,7 +85,9 @@ export function encodeState(state: ShareableState): string {
   p.set('ac', state.quant.activations)
   p.set('pt', String(state.workload.promptTokens))
   p.set('ot', String(state.workload.outputTokens))
-  p.set('c', String(state.workload.concurrency))
+  if (state.concurrencyOverride !== null) {
+    p.set('c', String(state.concurrencyOverride))
+  }
   if (state.parallelismOverride) {
     p.set('p', encodeParallelism(state.parallelismOverride))
   }
@@ -162,8 +168,7 @@ export function decodeState(hash: string): Partial<ShareableState> {
 
   const pt = params.get('pt')
   const ot = params.get('ot')
-  const c = params.get('c')
-  if (pt !== null || ot !== null || c !== null) {
+  if (pt !== null || ot !== null) {
     const wl: Partial<Workload> = {}
     if (pt !== null) {
       const n = parseInt(pt, 10)
@@ -173,11 +178,14 @@ export function decodeState(hash: string): Partial<ShareableState> {
       const n = parseInt(ot, 10)
       if (Number.isFinite(n) && n > 0) wl.outputTokens = n
     }
-    if (c !== null) {
-      const n = parseInt(c, 10)
-      if (Number.isFinite(n) && n > 0) wl.concurrency = n
-    }
     if (Object.keys(wl).length > 0) out.workload = wl as Workload
+  }
+
+  // concurrencyOverride: standalone top-level key (was nested in workload pre-decoupling).
+  const c = params.get('c')
+  if (c !== null) {
+    const n = parseInt(c, 10)
+    if (Number.isFinite(n) && n > 0) out.concurrencyOverride = n
   }
 
   if (params.has('p')) {
@@ -293,6 +301,7 @@ function readStoreState(): ShareableState {
     decodeVariantId: get(decodeVariantId),
     decodeSystemId: get(decodeSystemId),
     decodeParallelismOverride: get(decodeParallelismOverride),
+    concurrencyOverride: get(concurrencyOverride),
   }
 }
 
@@ -314,6 +323,7 @@ function applyToStores(partial: Partial<ShareableState>): void {
     if (m) quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
   }
   if (partial.workload !== undefined) workload.set(partial.workload)
+  if (partial.concurrencyOverride !== undefined) concurrencyOverride.set(partial.concurrencyOverride)
   if (partial.parallelismOverride !== undefined) parallelismOverride.set(partial.parallelismOverride)
   if (partial.disaggKvTransferFabricId !== undefined) disaggKvTransferFabricId.set(partial.disaggKvTransferFabricId)
   if (partial.disaggFirstTokenOnPrefill !== undefined) disaggFirstTokenOnPrefill.set(partial.disaggFirstTokenOnPrefill)
@@ -411,6 +421,7 @@ export function startUrlSync(): () => void {
     disaggFirstTokenOnPrefill.subscribe(write),
     quant.subscribe(write),
     workload.subscribe(write),
+    concurrencyOverride.subscribe(write),
     heterogeneous.subscribe(write),
     prefillAcceleratorId.subscribe(write),
     prefillVariantId.subscribe(write),
