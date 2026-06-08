@@ -14,6 +14,7 @@ describe('WORKLOAD_PRESETS schema', () => {
       expect(() => new URL(p.sourceUrl), `preset ${p.id}: sourceUrl parses`).not.toThrow()
       expect(p.sourceAccessedAt, `preset ${p.id}: sourceAccessedAt YYYY-MM-DD`).toMatch(/^\d{4}-\d{2}-\d{2}$/)
       expect(p.description.length, `preset ${p.id}: description non-empty`).toBeGreaterThan(0)
+      expect(p.description.length, `preset ${p.id}: description ≤100 chars`).toBeLessThanOrEqual(100)
     }
   })
 

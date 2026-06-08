@@ -12,12 +12,16 @@ export interface WorkloadPreset {
   outputTokens: number          // sourced median, positive integer
   sourceUrl: string             // citation URL (HF dataset card or canonical paper)
   sourceAccessedAt: string      // YYYY-MM-DD when the source was fetched
-  description: string           // short one-line context, used as <option title>
+  description: string           // ≤100 chars; used as <option title>
 }
 
 // Pure helper — exported for testing. Returns the id of the preset whose
 // promptTokens AND outputTokens both exactly match the provided workload,
-// else 'custom'. The picker's reactive selection uses this.
+// else the sentinel string 'custom'. The picker's reactive selection uses
+// this. Note: return type is `string` rather than `WorkloadPreset['id'] |
+// 'custom'` because TS can't narrow a runtime-data array's ids without an
+// `as const` trick. Callers must treat any non-'custom' return as a live
+// registry id — never free text.
 export function matchPreset(
   workload: { promptTokens: number; outputTokens: number },
   presets: WorkloadPreset[]
