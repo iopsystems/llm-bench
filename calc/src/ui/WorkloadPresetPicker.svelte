@@ -11,9 +11,23 @@
   $: codeGenPresets = WORKLOAD_PRESETS.filter(p => p.group === 'code-gen')
   $: otherPresets   = WORKLOAD_PRESETS.filter(p => p.group === 'other')
 
+  // Default workload shape — kept in sync with the workload store's initial
+  // value in stores.ts. Selecting "Custom" resets to these so the user has a
+  // meaningful escape from any active preset (without it, the picker silently
+  // snaps back to whatever preset still matches the values).
+  const DEFAULT_PROMPT_TOKENS = 2048
+  const DEFAULT_OUTPUT_TOKENS = 512
+
   function onPresetChange(e: Event) {
     const id = (e.target as HTMLSelectElement).value
-    if (id === 'custom') return
+    if (id === 'custom') {
+      workload.update(w => ({
+        ...w,
+        promptTokens: DEFAULT_PROMPT_TOKENS,
+        outputTokens: DEFAULT_OUTPUT_TOKENS,
+      }))
+      return
+    }
     const preset = WORKLOAD_PRESETS.find(p => p.id === id)
     if (!preset) return
     workload.update(w => ({
