@@ -4,6 +4,7 @@
   import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill, concurrencyOverride, nMaxCalc } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
+  import WorkloadPresetPicker from './WorkloadPresetPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
   import { orderModels, orderSkus } from './catalogOrder'
   import { groupedDisaggFabrics, formatFabricLabel } from './disaggFabrics'
@@ -215,6 +216,7 @@
 
   <fieldset class="island">
     <legend>Workload</legend>
+    <WorkloadPresetPicker />
     <div class="row">
       <label>
         Prompt tokens
