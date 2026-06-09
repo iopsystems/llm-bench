@@ -68,6 +68,8 @@ Walk through these in order. First match wins.
 - **`linear-mla-hybrid`** — Kimi-Linear (linear attention + MLA). Per-layer counts must sum to `model.layers`.
 - **`csa-hca-hybrid`** — DeepSeek V4-Flash/Pro. Sliding + CSA (Compressed Sparse Attention) + HCA (Heavily Compressed Attention).
 - **`delta-hybrid`** — Qwen3.5 (Gated DeltaNet + Gated Attention).
+- **`mamba2-hybrid`** — Nemotron-H / Nemotron 3 (Mamba2 + attention + FFN-only blocks). Config is `model_type: nemotron_h` with `hybrid_override_pattern` (`*` = attention, `M` = Mamba2, `E`/`-` = FFN block) or `layers_block_type`. Note these are SEPARATE blocks in `num_hidden_layers`, not attention+FFN pairs; SSM state is cached fp32 (`mamba_ssm_cache_dtype`), independent of KV quant.
+- **`partial`** — NAS-pruned models (DeciLM / Llama-Nemotron Super). Config has `block_configs` with some `attention.no_op: true`; `numFullLayers` = blocks that kept attention. Requires uniform geometry on the surviving attention blocks (check `n_heads_in_group` is constant); variable FFN widths are absorbed by `paramCount`.
 
 If the model fits none of these, **stop**. Don't shoehorn into the closest variant — add a new variant to `AttentionConfig` in `types.ts` with engine integration in `memory.ts`, `prefill.ts`, `decode.ts`. Brainstorm with the user first; new attention is a meaningful design change, not a data update.
 

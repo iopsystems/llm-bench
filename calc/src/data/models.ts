@@ -828,6 +828,111 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 5_100_000_000
     }
   },
+  // === NVIDIA Nemotron ===
+  // NemotronH-family block hybrids: num_hidden_layers counts attention, Mamba2,
+  // and FFN blocks separately (see mamba2-hybrid in types.ts). Block counts
+  // parsed from hybrid_override_pattern / layers_block_type.
+  {
+    id: 'nemotron-h-56b', name: 'Nemotron-H 56B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
+    layers: 118, hiddenDim: 8192, intermediateDim: 32768,
+    numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 131072,
+    paramCount: 56_324_350_464,
+    maxContext: 8192,
+    numNextnLayers: 0,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 54, numFullLayers: 10, numFfnLayers: 54,
+      numMambaHeads: 256, mambaHeadDim: 64, ssmStateSize: 256
+    },
+    architecture: { type: 'dense' }
+  },
+  // Nemotron 3: Mamba2 hybrid + MoE with relu² (2-matrix) experts and a
+  // double-width shared expert. activeParamCount from each model card.
+  {
+    id: 'nemotron-3-nano-30b-a3b', name: 'Nemotron 3 Nano 30B-A3B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2025-12',
+    nativeDtype: 'bf16',
+    layers: 52, hiddenDim: 2688, intermediateDim: 1856,
+    numHeads: 32, numKvHeads: 2, headDim: 128, vocabSize: 131072,
+    paramCount: 31_577_937_344,
+    maxContext: 262144,
+    numNextnLayers: 0,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 23, numFullLayers: 6, numFfnLayers: 23,
+      numMambaHeads: 64, mambaHeadDim: 64, ssmStateSize: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 128,
+      numExpertsActive: 6,
+      numSharedExperts: 1,
+      activeParamCount: 3_500_000_000
+    }
+  },
+  {
+    id: 'nemotron-3-super-120b-a12b', name: 'Nemotron 3 Super 120B-A12B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2026-03',
+    nativeDtype: 'bf16',
+    layers: 88, hiddenDim: 4096, intermediateDim: 2688,
+    numHeads: 32, numKvHeads: 2, headDim: 128, vocabSize: 131072,
+    paramCount: 123_611_012_096,
+    maxContext: 262144,
+    numNextnLayers: 1,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 40, numFullLayers: 8, numFfnLayers: 40,
+      numMambaHeads: 128, mambaHeadDim: 64, ssmStateSize: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 512,
+      numExpertsActive: 22,
+      numSharedExperts: 1,
+      activeParamCount: 12_000_000_000
+    }
+  },
+  {
+    id: 'nemotron-3-ultra-550b-a55b', name: 'Nemotron 3 Ultra 550B-A55B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2026-06',
+    nativeDtype: 'bf16',
+    layers: 108, hiddenDim: 8192, intermediateDim: 5120,
+    numHeads: 64, numKvHeads: 2, headDim: 128, vocabSize: 131072,
+    paramCount: 560_524_578_816,
+    maxContext: 262144,
+    numNextnLayers: 1,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 48, numFullLayers: 12, numFfnLayers: 48,
+      numMambaHeads: 256, mambaHeadDim: 64, ssmStateSize: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 512,
+      numExpertsActive: 22,
+      numSharedExperts: 1,
+      activeParamCount: 55_000_000_000
+    }
+  },
+  // Puzzle-NAS derivative of Llama 3.3 70B: 31 of 80 blocks had attention
+  // removed (attention.no_op in block_configs); the 49 survivors share one
+  // GQA geometry (64 heads / 8 KV). FFN widths vary per block (ffn_mult 0.5
+  // to 5.25) — intermediateDim is the block average (activations estimate
+  // only); paramCount carries the weights truth.
+  {
+    id: 'llama-3.3-nemotron-super-49b', name: 'Llama-3.3-Nemotron-Super 49B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2025-03',
+    nativeDtype: 'bf16',
+    layers: 80, hiddenDim: 8192, intermediateDim: 30720,
+    numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 128256,
+    paramCount: 49_867_145_216,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'partial', numFullLayers: 49 },
+    architecture: { type: 'dense' }
+  },
   // === Xiaomi MiMo ===
   {
     id: 'mimo-7b', name: 'MiMo-7B', family: 'mimo',

@@ -1142,6 +1142,109 @@ describe('calculate — small dense additions (Qwen3-0.6B, MiMo-7B, Llama 3.1)',
   })
 })
 
+describe('calculate — Nemotron Mamba2 hybrids integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const input = (id: string, promptTokens: number, outputTokens = 0): CalcInput => ({
+    accelerator: h100,
+    acceleratorVariantId: 'sxm-80',
+    model: MODELS.find(x => x.id === id)!,
+    quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+    workload: { promptTokens, outputTokens, concurrency: 1 }
+  })
+
+  it('Nemotron 3 Nano at 32k: KV from 6 attention blocks + fp32 Mamba2 state', () => {
+    const r = calculate(input('nemotron-3-nano-30b-a3b', 32768))
+    // Attention KV: 2 × 2 kvHeads × 128 × 2 bytes × (6 attn blocks × 32768)
+    const kv = 2 * 2 * 128 * 2 * 6 * 32768
+    // SSM state: 23 mamba blocks × 64 heads × 64 headDim × 128 stateSize × 4 (fp32)
+    const state = 23 * 64 * 64 * 128 * 4
+    expect(r.memory.kvCachePerRequest).toBe(kv + state)
+    // 31.6B × 2 bytes ≈ 63 GB fits a single H100 SXM-80
+    expect(r.memory.weights / 1e9).toBeCloseTo(63.2, 0)
+    expect(r.memory.fits).toBe(true)
+  })
+
+  it('Nemotron 3 Nano decode reads 3.5B active params', () => {
+    const r = calculate(input('nemotron-3-nano-30b-a3b', 2048, 512))
+    const activeBytes = 3_500_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 1e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+
+  it('Nemotron-H 56B at 8k: SSM state dominates KV; state bytes ignore KV quant (fp32 cache)', () => {
+    const rFp16 = calculate(input('nemotron-h-56b', 8192))
+    const kv = 2 * 8 * 128 * 2 * 10 * 8192          // 10 attention blocks
+    const state = 54 * 256 * 64 * 256 * 4            // 54 mamba blocks, fp32
+    expect(rFp16.memory.kvCachePerRequest).toBe(kv + state)
+    // Halving KV dtype halves only the attention-KV term, not the SSM state.
+    const rFp8 = calculate({
+      ...input('nemotron-h-56b', 8192),
+      quant: { weights: 'fp16', kv: 'fp8', activations: 'fp16' }
+    })
+    expect(rFp8.memory.kvCachePerRequest).toBe(kv / 2 + state)
+  })
+
+  it('Nemotron 3 Ultra: 1.12 TB weights at fp16; 55B active decode; MTP depth 1', () => {
+    const m = MODELS.find(x => x.id === 'nemotron-3-ultra-550b-a55b')!
+    const r = calculate(input('nemotron-3-ultra-550b-a55b', 2048, 512))
+    expect(r.memory.weights / 1e12).toBeCloseTo(1.12, 1)
+    expect(r.memory.fits).toBe(false)
+    expect(m.numNextnLayers).toBe(1)
+    const activeBytes = 55_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 5e9)
+  })
+
+  it('Nemotron 3 Super: block counts sum to layers; 12B active', () => {
+    const m = MODELS.find(x => x.id === 'nemotron-3-super-120b-a12b')!
+    expect(m.attention.type).toBe('mamba2-hybrid')
+    if (m.attention.type === 'mamba2-hybrid') {
+      expect(m.attention.numMambaLayers + m.attention.numFullLayers + m.attention.numFfnLayers)
+        .toBe(m.layers)
+    }
+    if (m.architecture.type === 'moe') {
+      expect(m.architecture.activeParamCount).toBe(12_000_000_000)
+    }
+  })
+
+  it('throws when mamba2-hybrid block counts do not sum to layers', () => {
+    const m = MODELS.find(x => x.id === 'nemotron-3-nano-30b-a3b')!
+    const broken = { ...m, layers: m.layers + 1 }
+    expect(() => calculate({ ...input('nemotron-3-nano-30b-a3b', 2048), model: broken })).toThrow()
+  })
+})
+
+describe('calculate — Llama-3.3-Nemotron-Super 49B (partial attention) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const input = (promptTokens: number, outputTokens = 0): CalcInput => ({
+    accelerator: h100,
+    acceleratorVariantId: 'sxm-80',
+    model: MODELS.find(x => x.id === 'llama-3.3-nemotron-super-49b')!,
+    quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+    workload: { promptTokens, outputTokens, concurrency: 1 }
+  })
+
+  it('at 32k prompt: KV cache counts only the 49 blocks with attention', () => {
+    const r = calculate(input(32768))
+    // 2 × 8 × 128 × 2 × (49 × 32768); the 31 NAS-pruned blocks contribute none
+    expect(r.memory.kvCachePerRequest).toBe(2 * 8 * 128 * 2 * 49 * 32768)
+  })
+
+  it('weights 99.7 GB at fp16 do not fit a single H100', () => {
+    const r = calculate(input(2048, 512))
+    expect(r.memory.weights / 1e9).toBeCloseTo(99.7, 0)
+    expect(r.memory.fits).toBe(false)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+
+  it('throws when partial numFullLayers exceeds model.layers', () => {
+    const m = MODELS.find(x => x.id === 'llama-3.3-nemotron-super-49b')!
+    const broken = { ...m, attention: { type: 'partial' as const, numFullLayers: m.layers + 1 } }
+    expect(() => calculate({ ...input(2048), model: broken })).toThrow()
+  })
+})
+
 describe('models data — every entry produces finite results', () => {
   const h100 = ACCELERATORS.find(a => a.id === 'h100')!
 

@@ -85,6 +85,26 @@ export function attendedSeqlenSummedOverLayers(model: ModelArch, seqlen: number,
          + att.numCsaLayers * (csaCount + att.slidingWindow)
          + att.numHcaLayers * (seqlen / att.hcaCompressionM + att.slidingWindow)
   }
+  if (att.type === 'mamba2-hybrid') {
+    if (att.numMambaLayers + att.numFullLayers + att.numFfnLayers !== model.layers) {
+      throw new Error(
+        `mamba2-hybrid block counts must sum to model.layers: ` +
+        `${att.numMambaLayers} + ${att.numFullLayers} + ${att.numFfnLayers} ≠ ${model.layers}`
+      )
+    }
+    // Mamba2 blocks: constant-time state update; FFN blocks: no attention.
+    return att.numFullLayers * seqlen
+  }
+  if (att.type === 'partial') {
+    if (att.numFullLayers > model.layers) {
+      throw new Error(
+        `partial numFullLayers must not exceed model.layers: ` +
+        `${att.numFullLayers} > ${model.layers}`
+      )
+    }
+    // NAS-pruned blocks have no attention at all.
+    return att.numFullLayers * seqlen
+  }
   if (att.type === 'mla-dsa') return model.layers * (forKv ? seqlen : Math.min(seqlen, att.topK))
   const perLayer = att.type === 'sliding' ? Math.min(seqlen, att.window) : seqlen
   return model.layers * perLayer
@@ -110,6 +130,26 @@ export function deltaStateBytes(model: ModelArch, kvDtype: Dtype): number {
   if (att.type !== 'delta-hybrid') return 0
   // State matrix per DeltaNet layer: numDeltaNetHeads × deltaHeadDim²
   return att.numDeltaNetLayers * att.numDeltaNetHeads * att.deltaHeadDim * att.deltaHeadDim * bytesOf(kvDtype)
+}
+
+// Constant per-request Mamba2 SSM state bytes. Zero for non-Mamba models.
+// Cached in fp32 regardless of the user's KV quant — NemotronH configs pin
+// mamba_ssm_cache_dtype: float32 — so this takes no dtype parameter.
+// The depthwise-conv state ((expand·hidden + 2·groups·state) × (kernel−1)
+// elements) is ~1000× smaller and omitted.
+export function mambaStateBytes(model: ModelArch): number {
+  const att = model.attention
+  if (att.type !== 'mamba2-hybrid') return 0
+  return att.numMambaLayers * att.numMambaHeads * att.mambaHeadDim * att.ssmStateSize * 4
+}
+
+// FLOPs per token from Mamba2 blocks (constant in seqlen). Zero for non-Mamba models.
+export function mambaFlopsPerToken(model: ModelArch): number {
+  const att = model.attention
+  if (att.type !== 'mamba2-hybrid') return 0
+  // Per-block SSM scan ≈ 2 ops per state element (update + readout), matching
+  // the convention used for linear/DeltaNet variants above.
+  return 2 * att.numMambaLayers * att.numMambaHeads * att.mambaHeadDim * att.ssmStateSize
 }
 
 // FLOPs per token from DeltaNet layers (constant in seqlen). Zero for non-DeltaNet models.
@@ -138,6 +178,7 @@ export function computeMemory(input: CalcInput): MemoryResult {
     kvPerLayerPerToken * attendedSeqlen
     + linearAttentionStateBytes(model, quant.kv)
     + deltaStateBytes(model, quant.kv)
+    + mambaStateBytes(model)
   const kvCacheTotal = kvCachePerRequest * workload.concurrency
 
   // Prefill activations: one big batched pass, scales with promptTokens × hidden.
