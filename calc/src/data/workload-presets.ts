@@ -79,4 +79,79 @@ export const WORKLOAD_PRESETS: WorkloadPreset[] = [
     sourceAccessedAt: '2026-06-08',
     description: 'Government-report summarization subtask; long prompt, 512-tok output cap',
   },
+  // MBPP: CASTILLO (arXiv 2505.16881) Table 1 reports median 131 / mean 153.5
+  // prompt tokens under Llama-3.2-1B tokenization — closest publicly-tabulated
+  // proxy for Llama-3 BPE. Output: MBPP paper reports mean 6.8 LoC per solution
+  // (~100 chars / ~30 tokens raw), but served outputs include reasoning/
+  // commentary; ~120 tokens is the typical served distribution.
+  {
+    id: 'mbpp',
+    name: 'MBPP',
+    group: 'code-gen',
+    promptTokens: 131,
+    outputTokens: 120,
+    sourceUrl: 'https://arxiv.org/abs/2505.16881',
+    sourceAccessedAt: '2026-06-08',
+    description: '974 Python problems; prompt median per CASTILLO Table 1, output approx from MBPP 6.8 LoC',
+  },
+  // LiveCodeBench code_generation_lite: LeetCode/AtCoder/Codeforces problems
+  // with description + I/O examples + constraints + starter code. Problem
+  // statements run ~500-1500 tokens; with format scaffolding the prompt sits
+  // around 1.5k. Output: LCB default max_tokens=2000 (lcb_runner parser.py);
+  // realistic solutions saturate near ~800 tokens of code+reasoning.
+  {
+    id: 'livecodebench',
+    name: 'LiveCodeBench (code_gen_lite)',
+    group: 'code-gen',
+    promptTokens: 1500,
+    outputTokens: 800,
+    sourceUrl: 'https://huggingface.co/datasets/livecodebench/code_generation_lite',
+    sourceAccessedAt: '2026-06-08',
+    description: 'code_generation_lite subset; approximate — prompt incl. starter code, output near 2k cap',
+  },
+  // SWE-Bench Verified (Oracle retrieval): HF SWE-bench_oracle text field is
+  // 2.59k–1.94M chars; SWE-bench paper §5.1 example clocks 20,882 tokens for
+  // one instance. Mean for Verified (curated 500-instance subset) sits around
+  // 12k tokens — Oracle context is the retrieved-file slice, not the full
+  // codebase. Patch field 277-17.4k chars → median ≈1000 output tokens.
+  {
+    id: 'swe-bench-verified',
+    name: 'SWE-Bench Verified (Oracle)',
+    group: 'code-gen',
+    promptTokens: 12000,
+    outputTokens: 1000,
+    sourceUrl: 'https://huggingface.co/datasets/princeton-nlp/SWE-bench_oracle',
+    sourceAccessedAt: '2026-06-08',
+    description: 'Oracle-retrieval setting; approximate — HF char range + paper §5.1 reference point',
+  },
+  // MMLU: HF cais/mmlu card reports question length 41–243 chars. Each item
+  // is question + 4 options (A/B/C/D) + brief header. Per-item zero-shot
+  // prompt: ~140 chars question + ~120 chars options + header ≈ ~50 tokens
+  // (char-count ÷ 4 BPE rule-of-thumb). Output: single letter answer with
+  // minimal framing → ~3 tokens.
+  {
+    id: 'mmlu',
+    name: 'MMLU (0-shot, per item)',
+    group: 'other',
+    promptTokens: 50,
+    outputTokens: 3,
+    sourceUrl: 'https://huggingface.co/datasets/cais/mmlu',
+    sourceAccessedAt: '2026-06-08',
+    description: 'Zero-shot per-question; approximate — HF char range ÷ 4 BPE rule-of-thumb, single-letter answer',
+  },
+  // AlpacaEval: 805 single-turn instructions from helpful_base + koala. No
+  // tokenized stats on HF card, but CASTILLO Table 1 reports Alpaca median 49
+  // prompt tokens (Llama-3.2-1B); AlpacaEval is a curated subset of similar
+  // distribution. Output: AlpacaEval lifts max_new_tokens from 300 → 2000;
+  // typical judged responses run ~200 tokens (length-bias analysis baseline).
+  {
+    id: 'alpaca-eval',
+    name: 'AlpacaEval',
+    group: 'other',
+    promptTokens: 50,
+    outputTokens: 200,
+    sourceUrl: 'https://github.com/tatsu-lab/alpaca_eval',
+    sourceAccessedAt: '2026-06-08',
+    description: '805 single-turn instructions; approximate — prompt from CASTILLO Alpaca median, output typical',
+  },
 ]
