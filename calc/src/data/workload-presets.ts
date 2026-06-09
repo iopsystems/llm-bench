@@ -33,4 +33,21 @@ export function matchPreset(
   return m?.id ?? 'custom'
 }
 
-export const WORKLOAD_PRESETS: WorkloadPreset[] = []
+export const WORKLOAD_PRESETS: WorkloadPreset[] = [
+  // HumanEval values from "Towards Green AI" (arXiv 2602.05712) Tables 1 & 3,
+  // CodeLlama-7B zero-shot row — mean prompt and mean generated tokens. Using
+  // CodeLlama (Llama-family BPE) as the closest publicly-tabulated proxy for
+  // Llama-3 tokenization; within the ±10–20% tokenizer-variance disclaimer.
+  // Output 207 is shaped by the canonical max_new_tokens=300 cap, which is
+  // the realistic served-request distribution (not raw canonical solution).
+  {
+    id: 'humaneval',
+    name: 'HumanEval (0-shot)',
+    group: 'code-gen',
+    promptTokens: 163,
+    outputTokens: 207,
+    sourceUrl: 'https://arxiv.org/abs/2602.05712',
+    sourceAccessedAt: '2026-06-08',
+    description: '164 Python function-completion problems; zero-shot prompt = signature + docstring',
+  },
+]

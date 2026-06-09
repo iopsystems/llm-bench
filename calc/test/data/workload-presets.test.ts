@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { WORKLOAD_PRESETS } from '../../src/data/workload-presets'
 
 describe('WORKLOAD_PRESETS schema', () => {
+  it('registry has at least one entry', () => {
+    expect(WORKLOAD_PRESETS.length).toBeGreaterThan(0)
+  })
+
   it('every preset has the required shape', () => {
     for (const p of WORKLOAD_PRESETS) {
       expect(p.id, `preset ${JSON.stringify(p)}: id`).toMatch(/^[a-z0-9-]+$/)
