@@ -75,13 +75,29 @@
 
   // Sync from store ONLY when the current text doesn't already parse to the
   // store's value. Without this guard, typing "40k" round-trips through the
-  // store as 40000 and clobbers the user's "40k" mid-keystroke.
+  // store as 40000 and clobbers the user's "40k" mid-keystroke. The same
+  // pattern applies to prompt/output inputs so external store writes (e.g.,
+  // the preset picker selecting HumanEval) update the textboxes.
   $: {
     const storeStr = $concurrencyOverride === null ? '' : String($concurrencyOverride)
     const trimmed = concurrencyInput.trim()
     const inputParses = trimmed === '' ? null : parseTokenCount(trimmed)
     if (inputParses !== $concurrencyOverride) {
       concurrencyInput = storeStr
+    }
+  }
+  $: {
+    const trimmed = promptInput.trim()
+    const inputParses = trimmed === '' ? null : parseTokenCount(trimmed)
+    if (inputParses !== $workload.promptTokens) {
+      promptInput = formatTokenCount($workload.promptTokens)
+    }
+  }
+  $: {
+    const trimmed = outputInput.trim()
+    const inputParses = trimmed === '' ? null : parseTokenCount(trimmed)
+    if (inputParses !== $workload.outputTokens) {
+      outputInput = formatTokenCount($workload.outputTokens)
     }
   }
 
