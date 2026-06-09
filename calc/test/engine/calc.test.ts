@@ -918,3 +918,251 @@ describe('calculate — disaggregated serving (KV transfer TTFT bump)', () => {
     expect(r.perf['peak'].ttftS).toBe(r.perf['peak'].prefill.timeS)
   })
 })
+
+describe('calculate — gpt-oss (alternating sliding/full + MoE) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+
+  it('gpt-oss-120b at 8k prompt: KV bounded by 128-token window on half the layers', () => {
+    const m = MODELS.find(x => x.id === 'gpt-oss-120b')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 8192, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Per-layer KV bytes/token = 2 × 8 × 64 × 2 = 2048
+    // attendedSeq = 18 × min(8192, 128) + 18 × 8192 = 2304 + 147456 = 149760
+    expect(r.memory.kvCachePerRequest).toBe(2048 * (18 * 128 + 18 * 8192))
+  })
+
+  it('gpt-oss-120b weights 234 GB at fp16 do not fit; decode reads 5.1B active', () => {
+    const m = MODELS.find(x => x.id === 'gpt-oss-120b')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    expect(r.memory.weights / 1e9).toBeCloseTo(234, 0)
+    expect(r.memory.fits).toBe(false)
+    const activeBytes = 5_100_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 1e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+
+  it('gpt-oss-20b at fp16 fits a single H100 SXM-80', () => {
+    const m = MODELS.find(x => x.id === 'gpt-oss-20b')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 21B × 2 = 42 GB
+    expect(r.memory.weights / 1e9).toBeCloseTo(42, 0)
+    expect(r.memory.fits).toBe(true)
+  })
+})
+
+describe('calculate — Llama 4 (chunked-attention ≈ hybrid + MoE) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+
+  it('Llama 4 Maverick at 32k prompt: 36 chunked layers bounded at 8192, 12 global', () => {
+    const m = MODELS.find(x => x.id === 'llama-4-maverick')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Per-layer KV bytes/token = 2 × 8 × 128 × 2 = 4096
+    // attendedSeq = 36 × min(32768, 8192) + 12 × 32768 = 294912 + 393216 = 688128
+    expect(r.memory.kvCachePerRequest).toBe(4096 * (36 * 8192 + 12 * 32768))
+  })
+
+  it('Llama 4 Maverick weights 800 GB at fp16; decode reads 17B active', () => {
+    const m = MODELS.find(x => x.id === 'llama-4-maverick')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    expect(r.memory.weights / 1e9).toBeCloseTo(800, 0)
+    expect(r.memory.fits).toBe(false)
+    const activeBytes = 17_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 2e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+
+  it('Llama 4 Scout: 109B total / 17B active, 10M trained context', () => {
+    const m = MODELS.find(x => x.id === 'llama-4-scout')!
+    expect(m.paramCount).toBe(109_000_000_000)
+    expect(m.maxContext).toBe(10485760)
+    expect(m.architecture.type).toBe('moe')
+    if (m.architecture.type === 'moe') {
+      expect(m.architecture.activeParamCount).toBe(17_000_000_000)
+    }
+  })
+})
+
+describe('calculate — MiniMax M2.5/M2.7 (full-attention MoE + MTP-3) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+
+  it('MiniMax M2.5 at 32k prompt: full-attention GQA KV across all 62 layers', () => {
+    const m = MODELS.find(x => x.id === 'minimax-m2.5')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 2 × 8 × 128 × 2 × 62 × 32768
+    expect(r.memory.kvCachePerRequest).toBe(2 * 8 * 128 * 2 * 62 * 32768)
+  })
+
+  it('MiniMax M2.5 decode: 10B active reads, 4× token rate from MTP depth 3', () => {
+    const m = MODELS.find(x => x.id === 'minimax-m2.5')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    expect(r.memory.weights / 1e9).toBeCloseTo(460, 0)
+    expect(r.memory.fits).toBe(false)
+    const activeBytes = 10_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 2e9)
+    const rNoMtp = calculate({ ...input, model: { ...m, numNextnLayers: 0 } })
+    expect(r.perf['peak'].decode.aggregateTokensPerS).toBeCloseTo(
+      rNoMtp.perf['peak'].decode.aggregateTokensPerS * 4, 6
+    )
+  })
+
+  it('MiniMax M2.7 shares M2.5 geometry with 200k trained context', () => {
+    const m25 = MODELS.find(x => x.id === 'minimax-m2.5')!
+    const m27 = MODELS.find(x => x.id === 'minimax-m2.7')!
+    expect(m27.layers).toBe(m25.layers)
+    expect(m27.paramCount).toBe(m25.paramCount)
+    expect(m27.maxContext).toBe(204800)
+  })
+})
+
+describe('calculate — Kimi K2.5 / DeepSeek V3.1 (V3-family MLA) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+
+  it('Kimi K2.5 at 32k prompt: MLA KV identical to K2 (same backbone)', () => {
+    const m = MODELS.find(x => x.id === 'kimi-k2.5')!
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    expect(r.memory.kvCachePerRequest).toBe(61 * (512 + 64) * 2 * 32768)
+    expect(r.memory.weights / 1e12).toBeCloseTo(2.05, 1)
+    expect(m.maxContext).toBe(262144)
+    expect(m.nativeDtype).toBe('int4')
+  })
+
+  it('DeepSeek V3.1 matches V3 geometry and carries MTP depth 1', () => {
+    const v3 = MODELS.find(x => x.id === 'deepseek-v3')!
+    const v31 = MODELS.find(x => x.id === 'deepseek-v3.1')!
+    const baseInput: Omit<CalcInput, 'model'> = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r3 = calculate({ ...baseInput, model: v3 })
+    const r31 = calculate({ ...baseInput, model: v31 })
+    expect(r31.memory.kvCachePerRequest).toBe(r3.memory.kvCachePerRequest)
+    expect(v31.numNextnLayers).toBe(1)
+  })
+
+  it('DeepSeek V3/R1/V3.2 carry MTP depth 1 (num_nextn_predict_layers in config)', () => {
+    for (const id of ['deepseek-v3', 'deepseek-r1', 'deepseek-v3.2']) {
+      expect(MODELS.find(x => x.id === id)!.numNextnLayers, id).toBe(1)
+    }
+  })
+})
+
+describe('calculate — small dense additions (Qwen3-0.6B, MiMo-7B, Llama 3.1)', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const base = (id: string): CalcInput => ({
+    accelerator: h100,
+    acceleratorVariantId: 'sxm-80',
+    model: MODELS.find(x => x.id === id)!,
+    quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+    workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
+  })
+
+  it('Qwen3-0.6B: 1.2 GB weights fit; full-attention KV', () => {
+    const r = calculate(base('qwen3-0.6b'))
+    expect(r.memory.weights / 1e9).toBeCloseTo(1.19, 1)
+    expect(r.memory.fits).toBe(true)
+    // 2 × 8 × 128 × 2 × 28 × (8192 prompt + 512 output)
+    expect(r.memory.kvCachePerRequest).toBe(2 * 8 * 128 * 2 * 28 * (8192 + 512))
+  })
+
+  it('MiMo-7B: 15.7 GB weights fit; carries MTP depth 1', () => {
+    const r = calculate(base('mimo-7b'))
+    expect(r.memory.weights / 1e9).toBeCloseTo(15.7, 0)
+    expect(r.memory.fits).toBe(true)
+    expect(MODELS.find(x => x.id === 'mimo-7b')!.numNextnLayers).toBe(1)
+  })
+
+  it('Llama 3.1 8B: 16.1 GB weights fit; 3.1 70B matches 3.3 70B geometry', () => {
+    const r = calculate(base('llama-3.1-8b'))
+    expect(r.memory.weights / 1e9).toBeCloseTo(16.1, 0)
+    expect(r.memory.fits).toBe(true)
+    const l31 = MODELS.find(x => x.id === 'llama-3.1-70b')!
+    const l33 = MODELS.find(x => x.id === 'llama-3.3-70b')!
+    expect(l31.paramCount).toBe(l33.paramCount)
+    expect(l31.layers).toBe(l33.layers)
+  })
+})
+
+describe('models data — every entry produces finite results', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+
+  it('no model yields NaN/0 in memory or perf at 8k/512/c=4', () => {
+    for (const m of MODELS) {
+      const r = calculate({
+        accelerator: h100,
+        acceleratorVariantId: 'sxm-80',
+        model: m,
+        quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+        workload: { promptTokens: 8192, outputTokens: 512, concurrency: 4 }
+      })
+      expect(Number.isFinite(r.memory.total), `${m.id} memory.total`).toBe(true)
+      expect(r.memory.weights, `${m.id} weights`).toBeGreaterThan(0)
+      expect(r.memory.kvCachePerRequest, `${m.id} kv`).toBeGreaterThan(0)
+      for (const [tier, p] of Object.entries(r.perf)) {
+        expect(Number.isFinite(p.prefill.timeS), `${m.id} ${tier} prefill.timeS`).toBe(true)
+        expect(p.prefill.timeS, `${m.id} ${tier} prefill.timeS`).toBeGreaterThan(0)
+        expect(Number.isFinite(p.decode.timePerTokenS), `${m.id} ${tier} tpot`).toBe(true)
+        expect(p.decode.timePerTokenS, `${m.id} ${tier} tpot`).toBeGreaterThan(0)
+      }
+    }
+  })
+})
