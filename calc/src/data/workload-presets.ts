@@ -48,7 +48,7 @@ export const WORKLOAD_PRESETS: WorkloadPreset[] = [
     outputTokens: 207,
     sourceUrl: 'https://arxiv.org/abs/2602.05712',
     sourceAccessedAt: '2026-06-08',
-    description: '164 Python function-completion problems; zero-shot prompt = signature + docstring',
+    description: '164 Python problems; zero-shot, output median reflects CodeLlama-7B + max_new_tokens=300 harness',
   },
   // Sarathi-Serve (arXiv 2403.02310) Table 2 medians for openchat_sharegpt4,
   // the collated ShareGPT trace serving papers benchmark against. Multi-turn
