@@ -50,4 +50,33 @@ export const WORKLOAD_PRESETS: WorkloadPreset[] = [
     sourceAccessedAt: '2026-06-08',
     description: '164 Python function-completion problems; zero-shot prompt = signature + docstring',
   },
+  // Sarathi-Serve (arXiv 2403.02310) Table 2 medians for openchat_sharegpt4,
+  // the collated ShareGPT trace serving papers benchmark against. Multi-turn
+  // chat as actually served (prompt includes prior turns), so values run
+  // higher than a first-turn slice. P50 prompt / P50 output as published.
+  {
+    id: 'chat-typical',
+    name: 'Chat (ShareGPT median)',
+    group: 'other',
+    promptTokens: 1730,
+    outputTokens: 415,
+    sourceUrl: 'https://arxiv.org/abs/2403.02310',
+    sourceAccessedAt: '2026-06-08',
+    description: 'ShareGPT served-chat median per Sarathi-Serve Table 2 (openchat_sharegpt4, P50)',
+  },
+  // LongBench gov_report: HF card reports avg 8,734 *words* (Python split,
+  // not tokens — deliberate to avoid tokenizer drift). Llama-3 BPE on English
+  // prose ≈ 1.35 tokens/word → ≈11,790 prompt tokens. Output = 512 per the
+  // repo's LongBench/config/dataset2maxlen.json cap, which is the realistic
+  // served distribution since summarization saturates the cap.
+  {
+    id: 'longbench-gov-report',
+    name: 'LongBench (gov_report summary)',
+    group: 'other',
+    promptTokens: 11790,
+    outputTokens: 512,
+    sourceUrl: 'https://huggingface.co/datasets/THUDM/LongBench',
+    sourceAccessedAt: '2026-06-08',
+    description: 'Government-report summarization subtask; long prompt, 512-tok output cap',
+  },
 ]
