@@ -167,6 +167,19 @@ export function calculate(input: CalcInput): CalcResult {
           decode.commsBytes, 'bytes'
         )
       }
+      // The time formulas divide comms bytes by this; surface it so the
+      // drawer is self-contained (tflops/hbm_bw live on the SKU spec sheet,
+      // but the fabric rate appears nowhere else in the UI).
+      if (input.multiDevice) {
+        const ic = INTERCONNECTS.find(i => i.id === input.multiDevice!.system.interconnectId)
+        if (ic) {
+          d.add(
+            'interconnect bw (per direction)',
+            'system fabric per-direction bandwidth (bidirectional ÷ 2 unless specified)',
+            ic.perDirectionGBs ?? ic.perGpuBandwidthGBs / 2, 'GB/s'
+          )
+        }
+      }
     }
     const prefillTimeExpr = prefill.commsBytes !== undefined
       ? 'max(prefill_flops ÷ tflops, prefill_bytes ÷ hbm_bw, prefill_comms_bytes ÷ interconnect_bw)'
