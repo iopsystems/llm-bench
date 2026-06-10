@@ -71,6 +71,7 @@ export function computeDecode(
     bytesPerStep,
     timePerTokenS: timeS / mtpFactor,
     regime,
-    aggregateTokensPerS: workload.concurrency * mtpFactor / timeS
+    aggregateTokensPerS: workload.concurrency * mtpFactor / timeS,
+    ...(commsBytes !== undefined && { commsBytes })
   }
 }

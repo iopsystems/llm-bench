@@ -497,9 +497,11 @@ export interface MemoryResult {
 }
 
 export interface PerfTier {
-  prefill: { flops: number; bytes: number; timeS: number; regime: 'compute' | 'memory' | 'comms' }
+  prefill: { flops: number; bytes: number; timeS: number; regime: 'compute' | 'memory' | 'comms';
+             commsBytes?: number }
   decode:  { flopsPerStep: number; bytesPerStep: number; timePerTokenS: number;
-             regime: 'compute' | 'memory' | 'comms'; aggregateTokensPerS: number }
+             regime: 'compute' | 'memory' | 'comms'; aggregateTokensPerS: number;
+             commsBytes?: number }
   ttftS: number
   kvTransferS: number   // KV-cache transfer time for disagg; 0 when integrated.
   inputTokenRate: number

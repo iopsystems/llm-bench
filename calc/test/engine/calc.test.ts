@@ -1245,6 +1245,83 @@ describe('calculate — Llama-3.3-Nemotron-Super 49B (partial attention) integra
   })
 })
 
+describe('derivation — formulas match what the engine computed', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const hgxH100 = SYSTEMS.find(s => s.id === 'hgx-h100-8')!
+
+  it('MLA model: kv-per-token expression is the MLA formula, not GQA', () => {
+    const k25 = MODELS.find(m => m.id === 'kimi-k2.5')!
+    const r = calculate({
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: k25,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 0, concurrency: 1 }
+    })
+    const row = r.derivation.find(s => s.label === 'kv per token per request')!
+    expect(row.expression).toContain('kv_lora_rank')
+    expect(row.expression).not.toContain('kv_heads')
+    // The value must be reproducible from the printed formula:
+    // (512 + 64) × 2 bytes × 61 layers
+    expect(row.value).toBe((512 + 64) * 2 * 61)
+  })
+
+  it('multi-device: time expressions include the comms term and comms rows exist', () => {
+    const v3 = MODELS.find(m => m.id === 'deepseek-v3')!
+    const r = calculate({
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: v3,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 64 },
+      multiDevice: {
+        system: hgxH100,
+        parallelism: ['tp', 'ep'],
+        parallelismDegrees: { tp: 8, ep: 8 }
+      }
+    })
+    const t = r.derivation.find(s => s.label === 'prefill time @ peak')!
+    expect(t.expression).toContain('comms')
+    const comms = r.derivation.find(s => s.label === 'prefill comms bytes')!
+    expect(comms.value).toBe(r.perf['peak'].prefill.commsBytes)
+    expect(comms.value).toBeGreaterThan(0)
+  })
+
+  it('single-device: time expressions do NOT mention comms; flops/bytes rows match perf', () => {
+    const llama = MODELS.find(m => m.id === 'llama-3.3-70b')!
+    const r = calculate({
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: llama,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    })
+    const t = r.derivation.find(s => s.label === 'prefill time @ peak')!
+    expect(t.expression).not.toContain('comms')
+    expect(r.derivation.find(s => s.label === 'prefill flops')!.value)
+      .toBe(r.perf['peak'].prefill.flops)
+    expect(r.derivation.find(s => s.label === 'prefill bytes (hbm)')!.value)
+      .toBe(r.perf['peak'].prefill.bytes)
+    expect(r.derivation.find(s => s.label === 'decode flops per step')!.value)
+      .toBe(r.perf['peak'].decode.flopsPerStep)
+    expect(r.derivation.find(s => s.label === 'decode bytes per step')!.value)
+      .toBe(r.perf['peak'].decode.bytesPerStep)
+  })
+
+  it('MTP model: decode time expression shows the (1 + mtp_depth) division', () => {
+    const m25 = MODELS.find(m => m.id === 'minimax-m2.5')!
+    const r = calculate({
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: m25,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    })
+    const t = r.derivation.find(s => s.label === 'decode time per token @ peak')!
+    expect(t.expression).toContain('1 + mtp_depth')
+  })
+})
+
 describe('models data — every entry produces finite results', () => {
   const h100 = ACCELERATORS.find(a => a.id === 'h100')!
 

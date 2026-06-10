@@ -46,5 +46,5 @@ export function computePrefill(
     flops, bytes, tflops, bwGBs: opPoint.hbmBandwidthGBs,
     commsBytes, interconnectBwGBs
   })
-  return { flops, bytes, timeS, regime }
+  return { flops, bytes, timeS, regime, ...(commsBytes !== undefined && { commsBytes }) }
 }
