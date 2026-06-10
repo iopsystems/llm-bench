@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { get } from 'svelte/store'
 import {
   workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
+  simDisaggKvTransferFabricId, simDisaggFirstTokenOnPrefill,
   simInputMonolithic, simInputDisagg, simResultMonolithic, simResultDisagg,
   decodeAcceleratorId, decodeVariantId, decodeSystemId,
   decodeParallelismOverride, heterogeneous
@@ -10,8 +11,9 @@ import {
 describe('simInputMonolithic / simInputDisagg', () => {
   beforeEach(() => {
     workload.set({ promptTokens: 2048, outputTokens: 512, concurrency: 64 })
-    disaggKvTransferFabricId.set('roce-400')
-    disaggFirstTokenOnPrefill.set(false)
+    // Sim tab has its own disagg config — independent of Calc's. Test those.
+    simDisaggKvTransferFabricId.set('roce-400')
+    simDisaggFirstTokenOnPrefill.set(false)
   })
 
   it('both clamp workload.concurrency to 1', () => {
@@ -25,8 +27,17 @@ describe('simInputMonolithic / simInputDisagg', () => {
     expect(inp.disaggFirstTokenOnPrefill).toBeUndefined()
   })
 
-  it('simInputDisagg preserves disagg fields from the store', () => {
+  it('simInputDisagg uses the Sim-side disagg stores', () => {
     const inp = get(simInputDisagg)!
+    expect(inp.disaggKvTransferFabricId).toBe('roce-400')
+    expect(inp.disaggFirstTokenOnPrefill).toBe(false)
+  })
+
+  it('simInputDisagg ignores the Calc-side disagg stores', () => {
+    disaggKvTransferFabricId.set('ib-ndr')
+    disaggFirstTokenOnPrefill.set(true)
+    const inp = get(simInputDisagg)!
+    // Sim still sees its own values, not Calc's
     expect(inp.disaggKvTransferFabricId).toBe('roce-400')
     expect(inp.disaggFirstTokenOnPrefill).toBe(false)
   })
@@ -34,7 +45,7 @@ describe('simInputMonolithic / simInputDisagg', () => {
   it('does not write back to the shared stores', () => {
     get(simInputMonolithic); get(simInputDisagg)
     expect(get(workload).concurrency).toBe(64)
-    expect(get(disaggKvTransferFabricId)).toBe('roce-400')
+    expect(get(simDisaggKvTransferFabricId)).toBe('roce-400')
   })
 })
 

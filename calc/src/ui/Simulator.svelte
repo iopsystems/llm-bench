@@ -5,7 +5,11 @@
   import LoadSection from './LoadSection.svelte'
   import {
     simResultMonolithic, simResultDisagg, simError, simErrorDisagg,
-    workload, disaggFirstTokenOnPrefill, disaggKvTransferFabricId
+    workload,
+    // Sim-tab disagg stores (separate from Calc-tab's). Local aliases keep the
+    // template terse and parallel to InputPanel's Calc-side usage.
+    simDisaggKvTransferFabricId as disaggKvTransferFabricId,
+    simDisaggFirstTokenOnPrefill as disaggFirstTokenOnPrefill,
   } from './stores'
   import type { GanttInput } from './simulatorGantt'
   import type { CalcResult } from '../engine/types'

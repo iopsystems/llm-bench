@@ -43,15 +43,23 @@ export const parallelismOverride = writable<ParallelismConfig | null>(null)
 // override is shared.
 export const concurrencyOverride = writable<number | null>(null)
 
-// Disaggregated serving: id of the inter-cluster fabric used to ship KV cache
-// from prefill to decode. Empty string means integrated (no disagg). Default
-// to the fastest fabric eligible for the default accelerator so the Sim tab
-// opens with disagg already enabled (a much richer first-impression than the
-// monolithic-only view); user can flip back to '' to disable.
-export const disaggKvTransferFabricId = writable<string>(pickFastestDisaggFabric())
+// Disaggregated serving (Calc tab): id of the inter-cluster fabric used to
+// ship KV cache from prefill to decode. Empty string means integrated (no
+// disagg). Calc-tab default is OFF — the Calc tab is a sizing tool that opens
+// on monolithic by default; user opts into disagg by picking a fabric.
+export const disaggKvTransferFabricId = writable<string>('')
 // Production-standard optimization: prefill node emits the first token while
 // KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
 export const disaggFirstTokenOnPrefill = writable<boolean>(true)
+
+// Disaggregated serving (Sim tab): separate from the Calc-tab store because
+// the Sim tab opens with disagg pre-armed on the fastest eligible fabric —
+// it's a deployment-architecture exploration tool, so the richer (disagg)
+// view is the default first impression. Calc and Sim are independent disagg
+// configs; URL state encodes them with separate keys (dk for Calc, sdk for
+// Sim).
+export const simDisaggKvTransferFabricId = writable<string>(pickFastestDisaggFabric())
+export const simDisaggFirstTokenOnPrefill = writable<boolean>(true)
 
 // Heterogeneous PD-disagg — separate hw + parallelism per cluster, fully
 // decoupled from the monolithic (shared) stores. When `heterogeneous` is
@@ -254,14 +262,22 @@ export const simInputMonolithic: Readable<CalcInput | null> = derived(input, $in
 export const simInputDisagg: Readable<CalcInput | null> = derived(
   [input, heterogeneous,
    prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillMultiDevice,
-   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeMultiDevice],
+   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeMultiDevice,
+   simDisaggKvTransferFabricId, simDisaggFirstTokenOnPrefill],
   ([$input, $het,
     $prefillAcceleratorId, $prefillVariantId, $prefillSystemId, $prefillMultiDevice,
-    $decodeAcceleratorId, $decodeVariantId, $decodeSystemId, $decodeMultiDevice]) => {
+    $decodeAcceleratorId, $decodeVariantId, $decodeSystemId, $decodeMultiDevice,
+    $simFabric, $simFirstToken]) => {
     if (!$input) return null
+    // Sim-tab disagg config is independent of Calc-tab's — overlay the Sim
+    // stores onto the base input so the Sim view's "disagg on" doesn't
+    // depend on Calc's disagg picker (and vice versa).
     const base: CalcInput = {
       ...$input,
       workload: { ...$input.workload, concurrency: 1 },
+      ...($simFabric
+        ? { disaggKvTransferFabricId: $simFabric, disaggFirstTokenOnPrefill: $simFirstToken }
+        : { disaggKvTransferFabricId: undefined, disaggFirstTokenOnPrefill: undefined }),
     }
     if (!$het) return base
     // Heterogeneous: both clusters can override the shared (monolithic) hw.
