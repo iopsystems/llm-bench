@@ -1,6 +1,6 @@
 import type { CalcInput, AcceleratorOperatingPoint, MemoryResult, PerfTier, MultiDeviceConfig } from './types'
 import { roofline } from './roofline'
-import { attendedSeqlenSummedOverLayers, activeParams, attentionDim, linearAttentionFlopsPerToken, deltaAttentionFlopsPerToken } from './memory'
+import { attendedSeqlenSummedOverLayers, activeParams, attentionDim, linearAttentionFlopsPerToken, deltaAttentionFlopsPerToken, mambaFlopsPerToken } from './memory'
 import { commsBytesPerStep } from './parallelism'
 import { INTERCONNECTS } from '../data/interconnects'
 
@@ -18,7 +18,8 @@ export function computePrefill(
     2 * activeParams(model) * p +
     2 * p * attendedSeqlenSummedOverLayers(model, p) * attentionDim(model) +
     p * linearAttentionFlopsPerToken(model) +
-    p * deltaAttentionFlopsPerToken(model)
+    p * deltaAttentionFlopsPerToken(model) +
+    p * mambaFlopsPerToken(model)
   const bytes = memory.weights + memory.activationsPeak
 
   const tflops = opPoint.tflops[quant.activations]
@@ -45,5 +46,5 @@ export function computePrefill(
     flops, bytes, tflops, bwGBs: opPoint.hbmBandwidthGBs,
     commsBytes, interconnectBwGBs
   })
-  return { flops, bytes, timeS, regime }
+  return { flops, bytes, timeS, regime, ...(commsBytes !== undefined && { commsBytes }) }
 }

@@ -333,6 +333,30 @@ export type AttentionConfig =
       // HCA params
       hcaCompressionM: number
     }
+  | { type: 'mamba2-hybrid';
+      // NemotronH-style block hybrid (Nemotron-H, Nemotron 3): attention,
+      // Mamba2, and FFN-only blocks are SEPARATE entries in num_hidden_layers
+      // (unlike transformer layers that pair attention with an FFN). Parsed
+      // from hybrid_override_pattern: '*' = attention, 'M' = Mamba2,
+      // 'E'/'-' = MoE/dense FFN block.
+      // Per-block counts (must sum to model.layers)
+      numMambaLayers: number;
+      numFullLayers: number;
+      numFfnLayers: number;
+      // Mamba2 SSM geometry (state = numMambaHeads × mambaHeadDim × ssmStateSize
+      // per Mamba block, cached in fp32 regardless of KV quant — the configs pin
+      // mamba_ssm_cache_dtype: float32)
+      numMambaHeads: number;
+      mambaHeadDim: number;
+      ssmStateSize: number
+    }
+  | { type: 'partial';
+      // NAS-pruned models (DeciLM / Llama-Nemotron): a subset of blocks have
+      // attention removed entirely. Only numFullLayers blocks attend/cache KV,
+      // all with the model's uniform GQA geometry. Variable per-block FFN
+      // widths are absorbed by paramCount/activeParamCount.
+      numFullLayers: number
+    }
   | { type: 'delta-hybrid';
       // Qwen3.5: Gated DeltaNet (linear/state-space) + Gated Attention (RoPE)
       // Per-layer counts (must sum to model.layers)
@@ -473,9 +497,11 @@ export interface MemoryResult {
 }
 
 export interface PerfTier {
-  prefill: { flops: number; bytes: number; timeS: number; regime: 'compute' | 'memory' | 'comms' }
+  prefill: { flops: number; bytes: number; timeS: number; regime: 'compute' | 'memory' | 'comms';
+             commsBytes?: number }
   decode:  { flopsPerStep: number; bytesPerStep: number; timePerTokenS: number;
-             regime: 'compute' | 'memory' | 'comms'; aggregateTokensPerS: number }
+             regime: 'compute' | 'memory' | 'comms'; aggregateTokensPerS: number;
+             commsBytes?: number }
   ttftS: number
   kvTransferS: number   // KV-cache transfer time for disagg; 0 when integrated.
   inputTokenRate: number

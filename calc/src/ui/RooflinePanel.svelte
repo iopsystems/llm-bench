@@ -7,9 +7,13 @@
   let container: HTMLDivElement | undefined = $state(undefined)
 
   // Each operating tier (Theoretical = peak, Achievable = non-peak) gets its
-  // own roofline AND markers, sharing one color via the tier scale. Markers
-  // sit on their tier's roof by construction — the math computes time as
+  // own roofline AND markers, sharing one color via the tier scale.
+  // Single-device, markers sit on their tier's roof by construction — time =
   // max(F/C, B/M), so achieved rate is min(C, AI×M), i.e. exactly the roof.
+  // Multi-device adds a third term (comms): a comms-bound marker plots BELOW
+  // the roof, and not on the purple interconnect line either — that line is
+  // drawn in HBM-AI space (x = flops ÷ HBM bytes) while comms time divides by
+  // comms bytes, a different denominator.
   type RoofRow = {
     tier: 'Theoretical' | 'Achievable'
     ai: number
@@ -282,6 +286,9 @@
       flat = compute-bound{#if interconnectBwGBs}, dashed purple = interconnect-bound{/if}).
       Markers are the workload's prefill and decode; the gap between the achievable marker
       and the roof above it is the hardware-efficiency loss.
+      {#if interconnectBwGBs}Comms-bound markers sit below the roof: the on-chip
+      ceilings don't include collective traffic (check the marker tooltip's
+      Bottleneck row).{/if}
     </p>
     <div class="chart-row">
     <div bind:this={container} class="plot"></div>

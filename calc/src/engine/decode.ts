@@ -7,7 +7,9 @@ import {
   linearAttentionFlopsPerToken,
   linearAttentionStateBytes,
   deltaStateBytes,
-  deltaAttentionFlopsPerToken
+  deltaAttentionFlopsPerToken,
+  mambaStateBytes,
+  mambaFlopsPerToken
 } from './memory'
 import { bytesOf } from './dtypes'
 import { commsBytesPerStep } from './parallelism'
@@ -27,13 +29,15 @@ export function computeDecode(
     (2 * activeParams(model)
      + 2 * attendedSeqlenSummedOverLayers(model, avgSeqlen) * attentionDim(model)
      + linearAttentionFlopsPerToken(model)
-     + deltaAttentionFlopsPerToken(model)) *
+     + deltaAttentionFlopsPerToken(model)
+     + mambaFlopsPerToken(model)) *
     workload.concurrency
   const bytesPerStep =
     activeParams(model) * bytesOf(quant.weights) +
     memory.kvCachePerRequest * workload.concurrency +
     linearAttentionStateBytes(model, quant.kv) * workload.concurrency +  // KDA state write-back
-    deltaStateBytes(model, quant.kv) * workload.concurrency  // DeltaNet state write-back
+    deltaStateBytes(model, quant.kv) * workload.concurrency +  // DeltaNet state write-back
+    mambaStateBytes(model) * workload.concurrency  // Mamba2 SSM state write-back (fp32)
 
   const tflops = opPoint.tflops[quant.activations]
   if (tflops === undefined) {
@@ -67,6 +71,7 @@ export function computeDecode(
     bytesPerStep,
     timePerTokenS: timeS / mtpFactor,
     regime,
-    aggregateTokensPerS: workload.concurrency * mtpFactor / timeS
+    aggregateTokensPerS: workload.concurrency * mtpFactor / timeS,
+    ...(commsBytes !== undefined && { commsBytes })
   }
 }

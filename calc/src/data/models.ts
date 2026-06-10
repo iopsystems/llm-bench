@@ -5,6 +5,18 @@ import type { ModelArch } from '../engine/types'
 export const MODELS: ModelArch[] = [
   // === Qwen3 dense series ===
   {
+    id: 'qwen3-0.6b', name: 'Qwen3 0.6B', family: 'qwen3',
+    publisher: 'Alibaba', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
+    layers: 28, hiddenDim: 1024, intermediateDim: 3072,
+    numHeads: 16, numKvHeads: 8, headDim: 128, vocabSize: 151936,
+    paramCount: 596_000_000,
+    maxContext: 40960,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
     id: 'qwen3-1.7b', name: 'Qwen3 1.7B', family: 'qwen3',
     publisher: 'Alibaba', releaseDate: '2025-04',
     nativeDtype: 'bf16',
@@ -319,6 +331,30 @@ export const MODELS: ModelArch[] = [
   },
   // === Llama ===
   {
+    id: 'llama-3.1-8b', name: 'Llama 3.1 8B', family: 'llama-3',
+    publisher: 'Meta', releaseDate: '2024-07',
+    nativeDtype: 'bf16',
+    layers: 32, hiddenDim: 4096, intermediateDim: 14336,
+    numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 128256,
+    paramCount: 8_030_261_248,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
+    id: 'llama-3.1-70b', name: 'Llama 3.1 70B', family: 'llama-3',
+    publisher: 'Meta', releaseDate: '2024-07',
+    nativeDtype: 'bf16',
+    layers: 80, hiddenDim: 8192, intermediateDim: 28672,
+    numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 128256,
+    paramCount: 70_553_706_496,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
+  },
+  {
     id: 'llama-3.3-70b', name: 'Llama 3.3 70B', family: 'llama-3',
     publisher: 'Meta', releaseDate: '2024-12',
     nativeDtype: 'bf16',
@@ -341,6 +377,51 @@ export const MODELS: ModelArch[] = [
     numNextnLayers: 0,
     attention: { type: 'full' },
     architecture: { type: 'dense' }
+  },
+  // === Llama 4 ===
+  // Llama 4 interleaves chunked local attention (attention_chunk_size 8192,
+  // 3 of every 4 layers) with full NoPE attention on every 4th layer. Chunked
+  // attention bounds per-layer KV exactly like a sliding window of the same
+  // size, so it's modeled as `hybrid` with slidingWindow 8192.
+  {
+    id: 'llama-4-scout', name: 'Llama 4 Scout 109B-A17B', family: 'llama-4',
+    publisher: 'Meta', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
+    layers: 48, hiddenDim: 5120, intermediateDim: 8192,
+    numHeads: 40, numKvHeads: 8, headDim: 128, vocabSize: 202048,
+    paramCount: 109_000_000_000,
+    maxContext: 10485760,
+    numNextnLayers: 0,
+    attention: { type: 'hybrid', slidingWindow: 8192, numSlidingLayers: 36, numGlobalLayers: 12 },
+    architecture: {
+      type: 'moe',
+      numExperts: 16,
+      numExpertsActive: 1,
+      numSharedExperts: 1,
+      activeParamCount: 17_000_000_000
+    }
+  },
+  // Maverick routes through MoE on every other layer only (interleave step 2);
+  // the remaining layers are dense FFN (16384 inner dim). The uniform-MoE
+  // schema can't express that split — paramCount/activeParamCount from the
+  // model card carry the memory and decode-cost truth.
+  {
+    id: 'llama-4-maverick', name: 'Llama 4 Maverick 400B-A17B', family: 'llama-4',
+    publisher: 'Meta', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
+    layers: 48, hiddenDim: 5120, intermediateDim: 8192,
+    numHeads: 40, numKvHeads: 8, headDim: 128, vocabSize: 202048,
+    paramCount: 400_000_000_000,
+    maxContext: 1048576,
+    numNextnLayers: 0,
+    attention: { type: 'hybrid', slidingWindow: 8192, numSlidingLayers: 36, numGlobalLayers: 12 },
+    architecture: {
+      type: 'moe',
+      numExperts: 128,
+      numExpertsActive: 1,
+      numSharedExperts: 1,
+      activeParamCount: 17_000_000_000
+    }
   },
   // === Gemma 3 ===
   {
@@ -491,7 +572,7 @@ export const MODELS: ModelArch[] = [
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
     maxContext: 163840,
-    numNextnLayers: 0,
+    numNextnLayers: 1,
     attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
@@ -509,7 +590,25 @@ export const MODELS: ModelArch[] = [
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
     maxContext: 163840,
-    numNextnLayers: 0,
+    numNextnLayers: 1,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 37_000_000_000
+    }
+  },
+  {
+    id: 'deepseek-v3.1', name: 'DeepSeek-V3.1', family: 'deepseek',
+    publisher: 'DeepSeek', releaseDate: '2025-08',
+    nativeDtype: 'fp8',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
+    paramCount: 671_000_000_000,
+    maxContext: 163840,
+    numNextnLayers: 1,
     attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
     architecture: {
       type: 'moe',
@@ -527,7 +626,7 @@ export const MODELS: ModelArch[] = [
     numHeads: 128, numKvHeads: 128, headDim: 192, vocabSize: 129280,
     paramCount: 671_000_000_000,
     maxContext: 163840,
-    numNextnLayers: 0,
+    numNextnLayers: 1,
     attention: { type: 'mla-dsa', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128, topK: 2048 },
     architecture: {
       type: 'moe',
@@ -604,6 +703,28 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 32_000_000_000
     }
   },
+  // K2.5 reuses the K2 text backbone (same 61-layer MLA MoE) continually
+  // pretrained to 256k context, shipping int4 (W4A16) weights. The 400M-param
+  // vision encoder is out of scope for this text-decode calc; paramCount is
+  // the text tower, matching the card's "1T total / 32B activated".
+  {
+    id: 'kimi-k2.5', name: 'Kimi K2.5', family: 'kimi',
+    publisher: 'Moonshot AI', releaseDate: '2026-01',
+    nativeDtype: 'int4',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
+    paramCount: 1_026_000_000_000,
+    maxContext: 262144,
+    numNextnLayers: 0,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
+    architecture: {
+      type: 'moe',
+      numExperts: 384,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 32_000_000_000
+    }
+  },
   {
     id: 'kimi-linear', name: 'Kimi-Linear-48B-A3B', family: 'kimi',
     publisher: 'Moonshot AI', releaseDate: '2026-02',
@@ -627,6 +748,203 @@ export const MODELS: ModelArch[] = [
       numSharedExperts: 1,
       activeParamCount: 3_000_000_000
     }
+  },
+  // === MiniMax ===
+  // M2-family: full-attention GQA MoE (no linear/lightning attention — the
+  // attn_type_list is all-full). Ships fp8 block-quantized. MTP depth 3
+  // (num_mtp_modules 3, one transformer layer each).
+  {
+    id: 'minimax-m2.5', name: 'MiniMax M2.5', family: 'minimax-m2',
+    publisher: 'MiniMax', releaseDate: '2026-02',
+    nativeDtype: 'fp8',
+    layers: 62, hiddenDim: 3072, intermediateDim: 1536,
+    numHeads: 48, numKvHeads: 8, headDim: 128, vocabSize: 200064,
+    paramCount: 230_000_000_000,
+    maxContext: 196608,
+    numNextnLayers: 3,
+    attention: { type: 'full' },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 0,
+      activeParamCount: 10_000_000_000
+    }
+  },
+  {
+    id: 'minimax-m2.7', name: 'MiniMax M2.7', family: 'minimax-m2',
+    publisher: 'MiniMax', releaseDate: '2026-04',
+    nativeDtype: 'fp8',
+    layers: 62, hiddenDim: 3072, intermediateDim: 1536,
+    numHeads: 48, numKvHeads: 8, headDim: 128, vocabSize: 200064,
+    paramCount: 230_000_000_000,
+    maxContext: 204800,
+    numNextnLayers: 3,
+    attention: { type: 'full' },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 0,
+      activeParamCount: 10_000_000_000
+    }
+  },
+  // === OpenAI gpt-oss ===
+  // Alternating sliding(128)/full attention 1:1, MoE with top-4 routing.
+  // Ships mxfp4 MoE weights (attention/embeddings stay bf16) → nativeDtype fp4.
+  {
+    id: 'gpt-oss-20b', name: 'gpt-oss-20b', family: 'gpt-oss',
+    publisher: 'OpenAI', releaseDate: '2025-08',
+    nativeDtype: 'fp4',
+    layers: 24, hiddenDim: 2880, intermediateDim: 2880,
+    numHeads: 64, numKvHeads: 8, headDim: 64, vocabSize: 201088,
+    paramCount: 21_000_000_000,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'hybrid', slidingWindow: 128, numSlidingLayers: 12, numGlobalLayers: 12 },
+    architecture: {
+      type: 'moe',
+      numExperts: 32,
+      numExpertsActive: 4,
+      numSharedExperts: 0,
+      activeParamCount: 3_600_000_000
+    }
+  },
+  {
+    id: 'gpt-oss-120b', name: 'gpt-oss-120b', family: 'gpt-oss',
+    publisher: 'OpenAI', releaseDate: '2025-08',
+    nativeDtype: 'fp4',
+    layers: 36, hiddenDim: 2880, intermediateDim: 2880,
+    numHeads: 64, numKvHeads: 8, headDim: 64, vocabSize: 201088,
+    paramCount: 117_000_000_000,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'hybrid', slidingWindow: 128, numSlidingLayers: 18, numGlobalLayers: 18 },
+    architecture: {
+      type: 'moe',
+      numExperts: 128,
+      numExpertsActive: 4,
+      numSharedExperts: 0,
+      activeParamCount: 5_100_000_000
+    }
+  },
+  // === NVIDIA Nemotron ===
+  // NemotronH-family block hybrids: num_hidden_layers counts attention, Mamba2,
+  // and FFN blocks separately (see mamba2-hybrid in types.ts). Block counts
+  // parsed from hybrid_override_pattern / layers_block_type.
+  {
+    id: 'nemotron-h-56b', name: 'Nemotron-H 56B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
+    layers: 118, hiddenDim: 8192, intermediateDim: 32768,
+    numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 131072,
+    paramCount: 56_324_350_464,
+    maxContext: 8192,
+    numNextnLayers: 0,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 54, numFullLayers: 10, numFfnLayers: 54,
+      numMambaHeads: 256, mambaHeadDim: 64, ssmStateSize: 256
+    },
+    architecture: { type: 'dense' }
+  },
+  // Nemotron 3: Mamba2 hybrid + MoE with relu² (2-matrix) experts and a
+  // double-width shared expert. activeParamCount from each model card.
+  {
+    id: 'nemotron-3-nano-30b-a3b', name: 'Nemotron 3 Nano 30B-A3B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2025-12',
+    nativeDtype: 'bf16',
+    layers: 52, hiddenDim: 2688, intermediateDim: 1856,
+    numHeads: 32, numKvHeads: 2, headDim: 128, vocabSize: 131072,
+    paramCount: 31_577_937_344,
+    maxContext: 262144,
+    numNextnLayers: 0,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 23, numFullLayers: 6, numFfnLayers: 23,
+      numMambaHeads: 64, mambaHeadDim: 64, ssmStateSize: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 128,
+      numExpertsActive: 6,
+      numSharedExperts: 1,
+      activeParamCount: 3_500_000_000
+    }
+  },
+  {
+    id: 'nemotron-3-super-120b-a12b', name: 'Nemotron 3 Super 120B-A12B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2026-03',
+    nativeDtype: 'bf16',
+    layers: 88, hiddenDim: 4096, intermediateDim: 2688,
+    numHeads: 32, numKvHeads: 2, headDim: 128, vocabSize: 131072,
+    paramCount: 123_611_012_096,
+    maxContext: 262144,
+    numNextnLayers: 1,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 40, numFullLayers: 8, numFfnLayers: 40,
+      numMambaHeads: 128, mambaHeadDim: 64, ssmStateSize: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 512,
+      numExpertsActive: 22,
+      numSharedExperts: 1,
+      activeParamCount: 12_000_000_000
+    }
+  },
+  {
+    id: 'nemotron-3-ultra-550b-a55b', name: 'Nemotron 3 Ultra 550B-A55B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2026-06',
+    nativeDtype: 'bf16',
+    layers: 108, hiddenDim: 8192, intermediateDim: 5120,
+    numHeads: 64, numKvHeads: 2, headDim: 128, vocabSize: 131072,
+    paramCount: 560_524_578_816,
+    maxContext: 262144,
+    numNextnLayers: 1,
+    attention: {
+      type: 'mamba2-hybrid',
+      numMambaLayers: 48, numFullLayers: 12, numFfnLayers: 48,
+      numMambaHeads: 256, mambaHeadDim: 64, ssmStateSize: 128
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 512,
+      numExpertsActive: 22,
+      numSharedExperts: 1,
+      activeParamCount: 55_000_000_000
+    }
+  },
+  // Puzzle-NAS derivative of Llama 3.3 70B: 31 of 80 blocks had attention
+  // removed (attention.no_op in block_configs); the 49 survivors share one
+  // GQA geometry (64 heads / 8 KV). FFN widths vary per block (ffn_mult 0.5
+  // to 5.25) — intermediateDim is the block average (activations estimate
+  // only); paramCount carries the weights truth.
+  {
+    id: 'llama-3.3-nemotron-super-49b', name: 'Llama-3.3-Nemotron-Super 49B', family: 'nemotron',
+    publisher: 'NVIDIA', releaseDate: '2025-03',
+    nativeDtype: 'bf16',
+    layers: 80, hiddenDim: 8192, intermediateDim: 30720,
+    numHeads: 64, numKvHeads: 8, headDim: 128, vocabSize: 128256,
+    paramCount: 49_867_145_216,
+    maxContext: 131072,
+    numNextnLayers: 0,
+    attention: { type: 'partial', numFullLayers: 49 },
+    architecture: { type: 'dense' }
+  },
+  // === Xiaomi MiMo ===
+  {
+    id: 'mimo-7b', name: 'MiMo-7B', family: 'mimo',
+    publisher: 'Xiaomi', releaseDate: '2025-04',
+    nativeDtype: 'bf16',
+    layers: 36, hiddenDim: 4096, intermediateDim: 11008,
+    numHeads: 32, numKvHeads: 8, headDim: 128, vocabSize: 151680,
+    paramCount: 7_833_409_536,
+    maxContext: 32768,
+    numNextnLayers: 1,
+    attention: { type: 'full' },
+    architecture: { type: 'dense' }
   },
   // === Z.ai / GLM ===
   // GLM-4.5-Air pairs the new shared-expert MoE schema with regular GQA full

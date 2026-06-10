@@ -34,4 +34,35 @@ describe('native-dtype re-seed', () => {
     modelId.set(bf16Model)
     expect(get(quant)).toEqual({ weights: 'bf16', kv: 'int8', activations: 'bf16' })
   })
+
+  it('weight-only 4-bit natives (int4/fp4) seed weights only; activations fall back to bf16', () => {
+    // Kimi K2.5 ships int4 W4A16-QAT weights; gpt-oss ships mxfp4 MoE weights.
+    // Both compute in bf16 — and no accelerator operating point exposes 4-bit
+    // matmul rates, so activations=int4 would make every SKU throw.
+    modelId.set('kimi-k2.5')
+    expect(get(quant)).toEqual({ weights: 'int4', kv: 'fp16', activations: 'bf16' })
+    modelId.set('gpt-oss-120b')
+    expect(get(quant)).toEqual({ weights: 'fp4', kv: 'fp16', activations: 'bf16' })
+  })
+})
+
+describe('default quant is computable on a mainstream SKU', () => {
+  it('every model calculates cleanly under its own default quant on H100', async () => {
+    const { calculate } = await import('../../src/engine')
+    const { ACCELERATORS } = await import('../../src/data')
+    const { defaultActivationsFor } = await import('../../src/ui/stores')
+    const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+    for (const m of MODELS) {
+      const r = calculate({
+        accelerator: h100,
+        acceleratorVariantId: 'sxm-80',
+        model: m,
+        quant: { weights: m.nativeDtype, kv: 'fp16', activations: defaultActivationsFor(m.nativeDtype) },
+        workload: { promptTokens: 8192, outputTokens: 512, concurrency: 1 }
+      })
+      for (const p of Object.values(r.perf)) {
+        expect(Number.isFinite(p.decode.timePerTokenS), m.id).toBe(true)
+      }
+    }
+  })
 })
