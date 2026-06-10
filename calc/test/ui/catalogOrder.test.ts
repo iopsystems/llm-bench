@@ -12,9 +12,9 @@ function model(p: Partial<ModelArch> & { id: string; publisher: string; releaseD
   } as ModelArch
 }
 
-function accel(id: string, vendor: string, releaseDate: string, hbms: number[]): AcceleratorSpec {
+function accel(id: string, vendor: string, releaseDate: string, hbms: number[], name?: string): AcceleratorSpec {
   return {
-    id, name: id, vendor, releaseDate,
+    id, name: name ?? id, vendor, releaseDate,
     variants: hbms.map((gb, i) => ({
       id: `v${i}`, label: `${gb}GB`, hbmCapacityGB: gb, operatingPoints: [],
     })),
@@ -100,5 +100,38 @@ describe('orderSkus', () => {
     ]
     const [v] = orderSkus(accelerators, [])
     expect(v.entries.map(e => e.id)).toEqual(['big', 'small'])
+  })
+
+  it('AMD SKUs group by product line: Instinct → Radeon AI PRO → Radeon PRO → Radeon RX', () => {
+    // Deliberately scrambled input dates so pure-recency ordering would differ
+    // from product-line ordering — the line rank must win first for AMD.
+    const accelerators = [
+      accel('rx',       'AMD', '2025-03', [16], 'AMD Radeon RX 9070 XT'),
+      accel('instinct', 'AMD', '2023-12', [192], 'AMD Instinct MI300X'),
+      accel('pro',      'AMD', '2023-04', [48], 'AMD Radeon PRO W7900'),
+      accel('ai-pro',   'AMD', '2025-07', [32], 'AMD Radeon AI PRO R9700'),
+    ]
+    const [amd] = orderSkus(accelerators, [])
+    expect(amd.entries.map(e => e.id)).toEqual(['instinct', 'ai-pro', 'pro', 'rx'])
+  })
+
+  it('within an AMD product line: newer first, then HBM descending', () => {
+    const accelerators = [
+      accel('rx-old',     'AMD', '2022-12', [24], 'AMD Radeon RX 7900 XTX'),
+      accel('rx-new',     'AMD', '2025-03', [16], 'AMD Radeon RX 9070 XT'),
+      accel('instinct-a', 'AMD', '2024-10', [256], 'AMD Instinct MI325X'),
+    ]
+    const [amd] = orderSkus(accelerators, [])
+    // Instinct line first, then RX line ordered newer-first.
+    expect(amd.entries.map(e => e.id)).toEqual(['instinct-a', 'rx-new', 'rx-old'])
+  })
+
+  it('non-AMD vendors keep pure recency ordering (no product-line grouping)', () => {
+    const accelerators = [
+      accel('nv-old', 'NVIDIA', '2022-10', [24], 'NVIDIA RTX 4090'),
+      accel('nv-new', 'NVIDIA', '2025-01', [32], 'NVIDIA RTX 5090'),
+    ]
+    const [nv] = orderSkus(accelerators, [])
+    expect(nv.entries.map(e => e.id)).toEqual(['nv-new', 'nv-old'])
   })
 })
