@@ -5,9 +5,23 @@ import { calculate } from '../engine'
 import { defaultParallelism, type ParallelismConfig } from '../engine/parallelism'
 import type { CalcInput, CalcResult, Dtype, MultiDeviceConfig, Quantization, Workload } from '../engine/types'
 import { computeNMax } from '../engine/queueModel'
+import { groupedDisaggFabrics } from './disaggFabrics'
 
 const defaultAccelerator = ACCELERATORS[0]
 const defaultModel = MODELS[0]
+
+// Fastest fabric eligible for PD-disagg KV transfer on the default accelerator.
+// `groupedDisaggFabrics` sorts each group by BW descending; pick the highest-BW
+// candidate across both groups so the Sim tab opens with disagg pre-armed on
+// the most aggressive realistic interconnect. Falls back to '' (= disagg off)
+// only if neither group has any entries — defensive; practically never fires.
+function pickFastestDisaggFabric(): string {
+  const groups = groupedDisaggFabrics(defaultAccelerator.id)
+  const candidates = [...groups.scaleUp, ...groups.scaleOut]
+  if (candidates.length === 0) return ''
+  candidates.sort((a, b) => b.perGpuBandwidthGBs - a.perGpuBandwidthGBs)
+  return candidates[0].id
+}
 
 // Derivation drawer open state — shared so App can reflow the main content
 // out from under the fixed drawer instead of letting it overlap.
@@ -30,8 +44,11 @@ export const parallelismOverride = writable<ParallelismConfig | null>(null)
 export const concurrencyOverride = writable<number | null>(null)
 
 // Disaggregated serving: id of the inter-cluster fabric used to ship KV cache
-// from prefill to decode. Empty string means integrated (no disagg).
-export const disaggKvTransferFabricId = writable<string>('')
+// from prefill to decode. Empty string means integrated (no disagg). Default
+// to the fastest fabric eligible for the default accelerator so the Sim tab
+// opens with disagg already enabled (a much richer first-impression than the
+// monolithic-only view); user can flip back to '' to disable.
+export const disaggKvTransferFabricId = writable<string>(pickFastestDisaggFabric())
 // Production-standard optimization: prefill node emits the first token while
 // KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
 export const disaggFirstTokenOnPrefill = writable<boolean>(true)
