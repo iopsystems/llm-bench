@@ -14,7 +14,7 @@ import { get } from 'svelte/store'
 import {
   acceleratorId, variantId, systemId, modelId,
   parallelismOverride, disaggKvTransferFabricId, disaggFirstTokenOnPrefill,
-  quant, workload, concurrencyOverride,
+  quant, workload, concurrencyOverride, defaultActivationsFor,
   heterogeneous,
   prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
@@ -320,7 +320,7 @@ function applyToStores(partial: Partial<ShareableState>): void {
     // from the model's native precision so sharing `?m=X` lands on X's
     // defaults rather than whatever the recipient last had loaded.
     const m = MODELS.find(x => x.id === partial.modelId)
-    if (m) quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
+    if (m) quant.update(q => ({ ...q, weights: m.nativeDtype, activations: defaultActivationsFor(m.nativeDtype) }))
   }
   if (partial.workload !== undefined) workload.set(partial.workload)
   if (partial.concurrencyOverride !== undefined) concurrencyOverride.set(partial.concurrencyOverride)

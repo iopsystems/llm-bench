@@ -3,7 +3,7 @@ import { ACCELERATORS, MODELS } from '../data'
 import { SYSTEMS } from '../data/systems'
 import { calculate } from '../engine'
 import { defaultParallelism, type ParallelismConfig } from '../engine/parallelism'
-import type { CalcInput, CalcResult, MultiDeviceConfig, Quantization, Workload } from '../engine/types'
+import type { CalcInput, CalcResult, Dtype, MultiDeviceConfig, Quantization, Workload } from '../engine/types'
 import { computeNMax } from '../engine/queueModel'
 
 const defaultAccelerator = ACCELERATORS[0]
@@ -54,11 +54,22 @@ export const decodeSystemId             = writable<string>('')
 export const decodeParallelismOverride  = writable<ParallelismConfig | null>(null)
 export const heterogeneous              = writable<boolean>(false)
 
+// Activations default that pairs with a model's nativeDtype. 4-bit natives
+// (Kimi K2.5 int4 W4A16-QAT, gpt-oss mxfp4) are weight-only ship formats:
+// the matmuls run in bf16 after in-kernel dequant — no current datacenter
+// chip exposes int4 tensor cores (Hopper dropped them; Blackwell's 4-bit
+// path is fp4) and no accelerator entry lists 4-bit TFLOPS, so seeding
+// activations to the ship format would make every SKU throw.
+export function defaultActivationsFor(native: Dtype): Dtype {
+  return native === 'int4' || native === 'fp4' ? 'bf16' : native
+}
+
 // Initial quant follows the default model's native precision; KV defaults to
 // fp16 because cache quant is an independent serving-side axis, not a
 // property of how the weights ship.
 export const quant = writable<Quantization>({
-  weights: defaultModel.nativeDtype, kv: 'fp16', activations: defaultModel.nativeDtype
+  weights: defaultModel.nativeDtype, kv: 'fp16',
+  activations: defaultActivationsFor(defaultModel.nativeDtype)
 })
 
 // Wire the model→quant coupling: switching models reseeds weights+activations
@@ -72,7 +83,7 @@ export function initNativeDtypeSync(): () => void {
     if (first) { first = false; return }
     const m = MODELS.find(x => x.id === $modelId)
     if (!m) return
-    quant.update(q => ({ ...q, weights: m.nativeDtype, activations: m.nativeDtype }))
+    quant.update(q => ({ ...q, weights: m.nativeDtype, activations: defaultActivationsFor(m.nativeDtype) }))
   })
 }
 
