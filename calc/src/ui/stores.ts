@@ -5,9 +5,23 @@ import { calculate } from '../engine'
 import { defaultParallelism, type ParallelismConfig } from '../engine/parallelism'
 import type { CalcInput, CalcResult, Dtype, MultiDeviceConfig, Quantization, Workload } from '../engine/types'
 import { computeNMax } from '../engine/queueModel'
+import { groupedDisaggFabrics } from './disaggFabrics'
 
 const defaultAccelerator = ACCELERATORS[0]
 const defaultModel = MODELS[0]
+
+// Fastest fabric eligible for PD-disagg KV transfer on the default accelerator.
+// `groupedDisaggFabrics` sorts each group by BW descending; pick the highest-BW
+// candidate across both groups so the Sim tab opens with disagg pre-armed on
+// the most aggressive realistic interconnect. Falls back to '' (= disagg off)
+// only if neither group has any entries — defensive; practically never fires.
+function pickFastestDisaggFabric(): string {
+  const groups = groupedDisaggFabrics(defaultAccelerator.id)
+  const candidates = [...groups.scaleUp, ...groups.scaleOut]
+  if (candidates.length === 0) return ''
+  candidates.sort((a, b) => b.perGpuBandwidthGBs - a.perGpuBandwidthGBs)
+  return candidates[0].id
+}
 
 // Derivation drawer open state — shared so App can reflow the main content
 // out from under the fixed drawer instead of letting it overlap.
@@ -29,12 +43,23 @@ export const parallelismOverride = writable<ParallelismConfig | null>(null)
 // override is shared.
 export const concurrencyOverride = writable<number | null>(null)
 
-// Disaggregated serving: id of the inter-cluster fabric used to ship KV cache
-// from prefill to decode. Empty string means integrated (no disagg).
+// Disaggregated serving (Calc tab): id of the inter-cluster fabric used to
+// ship KV cache from prefill to decode. Empty string means integrated (no
+// disagg). Calc-tab default is OFF — the Calc tab is a sizing tool that opens
+// on monolithic by default; user opts into disagg by picking a fabric.
 export const disaggKvTransferFabricId = writable<string>('')
 // Production-standard optimization: prefill node emits the first token while
 // KV streams. Defaults true; uncheck to model the worst-case sequential handoff.
 export const disaggFirstTokenOnPrefill = writable<boolean>(true)
+
+// Disaggregated serving (Sim tab): separate from the Calc-tab store because
+// the Sim tab opens with disagg pre-armed on the fastest eligible fabric —
+// it's a deployment-architecture exploration tool, so the richer (disagg)
+// view is the default first impression. Calc and Sim are independent disagg
+// configs; URL state encodes them with separate keys (dk for Calc, sdk for
+// Sim).
+export const simDisaggKvTransferFabricId = writable<string>(pickFastestDisaggFabric())
+export const simDisaggFirstTokenOnPrefill = writable<boolean>(true)
 
 // Heterogeneous PD-disagg — separate hw + parallelism per cluster, fully
 // decoupled from the monolithic (shared) stores. When `heterogeneous` is
@@ -237,14 +262,22 @@ export const simInputMonolithic: Readable<CalcInput | null> = derived(input, $in
 export const simInputDisagg: Readable<CalcInput | null> = derived(
   [input, heterogeneous,
    prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillMultiDevice,
-   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeMultiDevice],
+   decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeMultiDevice,
+   simDisaggKvTransferFabricId, simDisaggFirstTokenOnPrefill],
   ([$input, $het,
     $prefillAcceleratorId, $prefillVariantId, $prefillSystemId, $prefillMultiDevice,
-    $decodeAcceleratorId, $decodeVariantId, $decodeSystemId, $decodeMultiDevice]) => {
+    $decodeAcceleratorId, $decodeVariantId, $decodeSystemId, $decodeMultiDevice,
+    $simFabric, $simFirstToken]) => {
     if (!$input) return null
+    // Sim-tab disagg config is independent of Calc-tab's — overlay the Sim
+    // stores onto the base input so the Sim view's "disagg on" doesn't
+    // depend on Calc's disagg picker (and vice versa).
     const base: CalcInput = {
       ...$input,
       workload: { ...$input.workload, concurrency: 1 },
+      ...($simFabric
+        ? { disaggKvTransferFabricId: $simFabric, disaggFirstTokenOnPrefill: $simFirstToken }
+        : { disaggKvTransferFabricId: undefined, disaggFirstTokenOnPrefill: undefined }),
     }
     if (!$het) return base
     // Heterogeneous: both clusters can override the shared (monolithic) hw.

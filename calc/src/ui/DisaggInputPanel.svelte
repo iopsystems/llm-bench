@@ -1,7 +1,11 @@
 <script lang="ts">
   import {
     acceleratorId, variantId, systemId, parallelismOverride,
-    disaggKvTransferFabricId, disaggFirstTokenOnPrefill, heterogeneous,
+    // DisaggInputPanel renders inside the Sim tab; bind to the Sim-tab disagg
+    // stores so changes here don't bleed into Calc's disagg state.
+    simDisaggKvTransferFabricId as disaggKvTransferFabricId,
+    simDisaggFirstTokenOnPrefill as disaggFirstTokenOnPrefill,
+    heterogeneous,
     prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
     decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
   } from './stores'
