@@ -54,6 +54,8 @@ format = "json"
         retry_initial_delay_ms: cfg.endpoint.retry_initial_delay_ms,
         retry_max_delay_ms: cfg.endpoint.retry_max_delay_ms,
         pool_size: 4,
+        stream_idle_timeout: None,
+        retry_on_timeout: false,
         chat_template_kwargs: cfg.endpoint.chat_template_kwargs.clone(),
     })
     .unwrap();

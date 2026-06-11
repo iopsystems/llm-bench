@@ -88,6 +88,16 @@ pub struct EndpointConfig {
     pub retry_initial_delay_ms: u64,
     #[serde(default = "default_retry_max_delay_ms")]
     pub retry_max_delay_ms: u64,
+    /// Per-read idle timeout for streaming responses, in seconds (0 = disabled).
+    /// Detects a stalled-but-open stream that the total request timeout may miss
+    /// under HTTP/2 keep-alive.
+    #[serde(default = "default_stream_idle_timeout")]
+    pub stream_idle_timeout: u64,
+    /// Retry requests that timed out. Off by default: a timed-out chat completion
+    /// may still be running server-side, so retrying re-fires an expensive,
+    /// non-idempotent generation.
+    #[serde(default)]
+    pub retry_on_timeout: bool,
     #[serde(default = "default_health_check_timeout")]
     pub health_check_timeout: u64, // Total time to wait for server readiness in seconds (0 = disabled)
     #[serde(default = "default_health_check_interval")]
@@ -464,6 +474,10 @@ fn default_retry_initial_delay_ms() -> u64 {
 
 fn default_retry_max_delay_ms() -> u64 {
     10000 // 10 seconds
+}
+
+fn default_stream_idle_timeout() -> u64 {
+    0 // disabled by default to avoid surprising timeouts on legitimately slow models
 }
 
 fn default_health_check_timeout() -> u64 {
