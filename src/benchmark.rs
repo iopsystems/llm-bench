@@ -109,6 +109,22 @@ pub(crate) fn compute_bust_prefix(expected_hit: bool, counter: &AtomicU64) -> St
     }
 }
 
+/// Per-output-token decode time: the generation window divided across the
+/// inter-token intervals (`token_count - 1`). Returns `None` when there are
+/// fewer than two tokens (no interval to measure).
+///
+/// The window must be measured on the send-relative clock so that decode rate
+/// reflects only generation, never queueing/schedule slip.
+fn decode_tpot(gen_window: Duration, token_count: u64) -> Option<Duration> {
+    if token_count > 1 {
+        Some(Duration::from_nanos(
+            gen_window.as_nanos() as u64 / (token_count - 1),
+        ))
+    } else {
+        None
+    }
+}
+
 /// Returns Some(true/false) if the server reported cache details, None otherwise.
 pub(crate) fn actual_cache_hit_option(usage: &crate::client::Usage) -> Option<bool> {
     usage
@@ -634,6 +650,8 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
+                        Instant::now(),
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -707,6 +725,8 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
+                        Instant::now(),
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -780,6 +800,8 @@ impl BenchmarkRunner {
                                 expected_hit,
                                 conversation_cfg,
                                 delay_base_seed,
+                                // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
+                                Instant::now(),
                             )
                             .await;
                             warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -884,6 +906,8 @@ impl BenchmarkRunner {
                             expected_hit,
                             conversation_cfg,
                             delay_base_seed,
+                            // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
+                            Instant::now(),
                         );
                         match tokio::time::timeout(remaining, request_future).await {
                             Ok(_) => {
@@ -1019,6 +1043,8 @@ impl BenchmarkRunner {
                             expected_hit,
                             conversation_cfg,
                             delay_base_seed,
+                            // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
+                            Instant::now(),
                         )
                         .await;
                     }
@@ -1111,6 +1137,8 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
+                        Instant::now(),
                     )
                     .await;
                 }
@@ -1220,6 +1248,7 @@ impl BenchmarkRunner {
                 let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
                 let workload_idx = idx % workloads.len();
                 tokio::time::sleep(distribution.next_delay()).await;
+                let arrival = Instant::now();
 
                 let client = Arc::clone(&self.client);
                 let tokenizer = Arc::clone(&self.tokenizer);
@@ -1267,6 +1296,7 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        arrival,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1294,6 +1324,7 @@ impl BenchmarkRunner {
                 let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
                 let workload_idx = idx % workloads.len();
                 tokio::time::sleep(distribution.next_delay()).await;
+                let arrival = Instant::now();
 
                 let client = Arc::clone(&self.client);
                 let tokenizer = Arc::clone(&self.tokenizer);
@@ -1341,6 +1372,7 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        arrival,
                     )
                     .await;
                     warmup_completed.fetch_add(1, Ordering::Relaxed);
@@ -1392,6 +1424,11 @@ impl BenchmarkRunner {
             {
                 break;
             }
+
+            // Scheduled arrival: the moment the rate limiter releases this
+            // request. Latency is measured from here so any wait for an in-flight
+            // slot (schedule slip) is counted, not silently omitted.
+            let arrival = Instant::now();
 
             // Spawn request
             let workloads = Arc::clone(&self.workloads);
@@ -1446,6 +1483,7 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        arrival,
                     );
                     match timeout(timeout_duration, request_future).await {
                         Ok(result) => {
@@ -1474,6 +1512,7 @@ impl BenchmarkRunner {
                         expected_hit,
                         conversation_cfg,
                         delay_base_seed,
+                        arrival,
                     )
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
@@ -1553,6 +1592,7 @@ impl BenchmarkRunner {
         expected_hit: bool,
         conversation_cfg: Option<ConversationConfig>,
         delay_base_seed: u64,
+        arrival: Instant,
     ) -> Result<()> {
         match workload {
             Workload::SingleTurn(prompt) => {
@@ -1566,6 +1606,7 @@ impl BenchmarkRunner {
                     default_max_tokens,
                     bust_prefix,
                     expected_hit,
+                    arrival,
                 )
                 .await
             }
@@ -1591,6 +1632,7 @@ impl BenchmarkRunner {
                     expected_hit,
                     conversation_cfg,
                     delay_base_seed,
+                    arrival,
                 )
                 .await
             }
@@ -1609,6 +1651,7 @@ impl BenchmarkRunner {
         expected_hit: bool,
         conversation_cfg: Option<ConversationConfig>,
         delay_base_seed: u64,
+        arrival: Instant,
     ) -> Result<()> {
         debug!(
             "Executing conversation {} ({} turns, warmup: {})",
@@ -1618,9 +1661,13 @@ impl BenchmarkRunner {
         );
 
         let conversation_start = Instant::now();
+        // Schedule slip applies to the first turn only — the in-flight slot is
+        // held for the whole conversation, so later turns never queue.
+        let slip = conversation_start.saturating_duration_since(arrival);
 
         if !is_warmup {
             Metrics::record_conversation_sent();
+            Metrics::record_schedule_slip(slip);
         }
 
         let mut messages: Vec<Message> = Vec::new();
@@ -1718,8 +1765,13 @@ impl BenchmarkRunner {
                     if !is_warmup {
                         use crate::metrics::Phase;
 
+                        // Only the first turn queued for an in-flight slot, so slip
+                        // is added to that turn's perceived latency/TTFT and nothing
+                        // else.
+                        let turn_slip = if turn_idx == 0 { slip } else { Duration::ZERO };
+
                         if let Some(ttft) = stream.time_to_first_token() {
-                            Metrics::record_ttft(ttft, input_tokens);
+                            Metrics::record_ttft(ttft + turn_slip, input_tokens);
                             // Record cache outcome only for first turn (where bust_prefix applies)
                             if turn_idx == 0 {
                                 let actual_hit =
@@ -1727,12 +1779,12 @@ impl BenchmarkRunner {
                                 crate::metrics::Metrics::record_cache_outcome(
                                     expected_hit,
                                     actual_hit,
-                                    ttft,
+                                    ttft + turn_slip,
                                 );
                             }
                         }
                         if let Some(ttft) = stream.time_to_first_content_token() {
-                            Metrics::record_ttft_content(ttft, input_tokens);
+                            Metrics::record_ttft_content(ttft + turn_slip, input_tokens);
                         }
                         if let Some(think) = stream.think_duration() {
                             Metrics::record_think_duration(think);
@@ -1745,33 +1797,32 @@ impl BenchmarkRunner {
                             Metrics::record_itl(*itl, input_tokens, Phase::Content);
                         }
 
-                        let total_duration = request_start.elapsed();
-                        Metrics::record_latency(total_duration);
+                        // Generation window is send-relative; perceived latency adds slip.
+                        let gen_duration = request_start.elapsed();
+                        Metrics::record_latency(gen_duration + turn_slip);
                         Metrics::record_tokens(
                             input_tokens,
                             stream.reasoning_tokens() as u64,
                             stream.content_tokens() as u64,
                         );
 
-                        // Phase-specific TPOT
-                        if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token()
-                            && stream.reasoning_tokens() > 1
-                        {
-                            let reasoning_end = stream
-                                .time_to_first_content_token()
-                                .unwrap_or(total_duration);
-                            let reasoning_gen = reasoning_end.saturating_sub(reasoning_ttft);
-                            let tpot_ns = reasoning_gen.as_nanos() as u64
-                                / (stream.reasoning_tokens() as u64 - 1);
-                            Metrics::record_tpot(Duration::from_nanos(tpot_ns), Phase::Reasoning);
+                        // Phase-specific TPOT — decode rate, send-relative (excludes slip)
+                        if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token() {
+                            let reasoning_end =
+                                stream.time_to_first_content_token().unwrap_or(gen_duration);
+                            let window = reasoning_end.saturating_sub(reasoning_ttft);
+                            if let Some(tpot) =
+                                decode_tpot(window, stream.reasoning_tokens() as u64)
+                            {
+                                Metrics::record_tpot(tpot, Phase::Reasoning);
+                            }
                         }
-                        if let Some(content_ttft) = stream.time_to_first_content_token()
-                            && stream.content_tokens() > 1
-                        {
-                            let content_gen = total_duration.saturating_sub(content_ttft);
-                            let tpot_ns = content_gen.as_nanos() as u64
-                                / (stream.content_tokens() as u64 - 1);
-                            Metrics::record_tpot(Duration::from_nanos(tpot_ns), Phase::Content);
+                        if let Some(content_ttft) = stream.time_to_first_content_token() {
+                            let window = gen_duration.saturating_sub(content_ttft);
+                            if let Some(tpot) = decode_tpot(window, stream.content_tokens() as u64)
+                            {
+                                Metrics::record_tpot(tpot, Phase::Content);
+                            }
                         }
                     }
 
@@ -1830,7 +1881,8 @@ impl BenchmarkRunner {
         }
 
         if !is_warmup {
-            Metrics::record_conversation_latency(conversation_start.elapsed());
+            // Perceived conversation latency includes the first-turn queue wait.
+            Metrics::record_conversation_latency(arrival.elapsed());
             Metrics::record_conversation_complete(!conversation_failed);
         }
 
@@ -1872,10 +1924,15 @@ impl BenchmarkRunner {
         default_max_tokens: Option<u32>,
         bust_prefix: String,
         expected_hit: bool,
+        arrival: Instant,
     ) -> Result<()> {
         debug!("Executing request {} (warmup: {})", index, is_warmup);
 
         let request_start = Instant::now();
+        // Schedule slip: how long this request waited between its scheduled
+        // arrival and actually being sent (i.e. waiting for an in-flight slot in
+        // QPS mode). ~0 in closed-loop modes where arrival == send.
+        let slip = request_start.saturating_duration_since(arrival);
 
         let guard = InflightGuard::new(!is_warmup);
 
@@ -1930,20 +1987,26 @@ impl BenchmarkRunner {
                 if !is_warmup {
                     use crate::metrics::Phase;
 
-                    // TTFT — first token of any kind (prefill latency)
+                    // Schedule slip — queueing time excluded from the send-relative
+                    // server metrics below but added back into perceived latency.
+                    Metrics::record_schedule_slip(slip);
+
+                    // TTFT — first token of any kind (prefill latency). Perceived
+                    // TTFT includes the queue wait (slip), so a saturated run shows
+                    // the real time-to-first-token rather than hiding the queue.
                     if let Some(ttft) = stream.time_to_first_token() {
-                        Metrics::record_ttft(ttft, input_tokens);
+                        Metrics::record_ttft(ttft + slip, input_tokens);
                         // Record cache outcome split by expected/actual hit using TTFT
                         let actual_hit = stream.server_usage().and_then(actual_cache_hit_option);
                         crate::metrics::Metrics::record_cache_outcome(
                             expected_hit,
                             actual_hit,
-                            ttft,
+                            ttft + slip,
                         );
                     }
                     // TTFT content — first visible content token
                     if let Some(ttft) = stream.time_to_first_content_token() {
-                        Metrics::record_ttft_content(ttft, input_tokens);
+                        Metrics::record_ttft_content(ttft + slip, input_tokens);
                     }
 
                     // Think duration
@@ -1951,7 +2014,7 @@ impl BenchmarkRunner {
                         Metrics::record_think_duration(think);
                     }
 
-                    // Phase-specific ITL
+                    // Phase-specific ITL (inter-token, slip-invariant)
                     for itl in stream.reasoning_inter_token_latencies() {
                         Metrics::record_itl(*itl, input_tokens, Phase::Reasoning);
                     }
@@ -1959,33 +2022,30 @@ impl BenchmarkRunner {
                         Metrics::record_itl(*itl, input_tokens, Phase::Content);
                     }
 
-                    let total_duration = request_start.elapsed();
-                    Metrics::record_latency(total_duration);
+                    // Generation window is send-relative; perceived latency adds
+                    // slip (matching the conversation path's `gen_duration + slip`).
+                    let gen_duration = request_start.elapsed();
+                    Metrics::record_latency(gen_duration + slip);
                     Metrics::record_tokens(
                         input_tokens,
                         stream.reasoning_tokens() as u64,
                         stream.content_tokens() as u64,
                     );
 
-                    // Phase-specific TPOT
-                    if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token()
-                        && stream.reasoning_tokens() > 1
-                    {
-                        let reasoning_end = stream
-                            .time_to_first_content_token()
-                            .unwrap_or(total_duration);
-                        let reasoning_gen = reasoning_end.saturating_sub(reasoning_ttft);
-                        let tpot_ns = reasoning_gen.as_nanos() as u64
-                            / (stream.reasoning_tokens() as u64 - 1);
-                        Metrics::record_tpot(Duration::from_nanos(tpot_ns), Phase::Reasoning);
+                    // Phase-specific TPOT — decode rate, send-relative (excludes slip)
+                    if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token() {
+                        let reasoning_end =
+                            stream.time_to_first_content_token().unwrap_or(gen_duration);
+                        let window = reasoning_end.saturating_sub(reasoning_ttft);
+                        if let Some(tpot) = decode_tpot(window, stream.reasoning_tokens() as u64) {
+                            Metrics::record_tpot(tpot, Phase::Reasoning);
+                        }
                     }
-                    if let Some(content_ttft) = stream.time_to_first_content_token()
-                        && stream.content_tokens() > 1
-                    {
-                        let content_gen = total_duration.saturating_sub(content_ttft);
-                        let tpot_ns =
-                            content_gen.as_nanos() as u64 / (stream.content_tokens() as u64 - 1);
-                        Metrics::record_tpot(Duration::from_nanos(tpot_ns), Phase::Content);
+                    if let Some(content_ttft) = stream.time_to_first_content_token() {
+                        let window = gen_duration.saturating_sub(content_ttft);
+                        if let Some(tpot) = decode_tpot(window, stream.content_tokens() as u64) {
+                            Metrics::record_tpot(tpot, Phase::Content);
+                        }
                     }
                 }
 
@@ -2154,6 +2214,27 @@ impl BenchmarkRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_tpot_needs_at_least_two_tokens() {
+        // No inter-token interval exists for fewer than two tokens.
+        assert_eq!(decode_tpot(Duration::from_nanos(100), 0), None);
+        assert_eq!(decode_tpot(Duration::from_nanos(100), 1), None);
+    }
+
+    #[test]
+    fn decode_tpot_divides_window_by_intervals() {
+        // 100ns over 5 tokens => 4 intervals => 25ns per token.
+        assert_eq!(
+            decode_tpot(Duration::from_nanos(100), 5),
+            Some(Duration::from_nanos(25))
+        );
+        // Two tokens => one interval => the whole window.
+        assert_eq!(
+            decode_tpot(Duration::from_nanos(99), 2),
+            Some(Duration::from_nanos(99))
+        );
+    }
 
     // --- ShareGPT system prompt preservation ---
 
