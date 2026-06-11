@@ -337,6 +337,147 @@ export const ACCELERATORS: AcceleratorSpec[] = [
     }]
   },
 
+  // === AMD Radeon (consumer RX + workstation PRO) ===
+  // GDDR6, not HBM — the hbm* fields hold GDDR capacity/bandwidth (see header).
+  // tflops.fp16/bf16 is the WMMA matrix (AI accelerator) rate, dense — the AMD
+  // equivalent of NVIDIA Tensor Core peak used by the RTX consumer entries above,
+  // NOT the vector/packed-FP16 shader rate. INT8 WMMA runs at 2× FP16 dense.
+  // RDNA3 (Navi 3x) has no native FP8 WMMA → fp8 omitted. RDNA4 (Navi 4x) adds
+  // FP8 WMMA and doubles per-CU matrix throughput: FP16 matrix dense = 4× FP32,
+  // FP8/INT8 dense = 2× FP16. AMD's marketing TOPS are sparse (2×) — halved here.
+  // Peak-only (no achievable tier): vendor-datasheet figures, matching the RTX rows.
+  {
+    id: 'rx-9070-xt', name: 'AMD Radeon RX 9070 XT', vendor: 'AMD', family: 'RDNA4',
+    releaseDate: '2025-03',
+    variants: [{
+      id: 'sku', label: '16GB', hbmCapacityGB: 16,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 48.7 → FP16 matrix dense 194.5; FP8/INT8 dense 389 (AMD quotes
+        // 389 sparse FP16 / 779 sparse FP8/INT8).
+        tflops: { fp16: 194.5, bf16: 194.5, fp8: 389, int8: 389 },
+        hbmBandwidthGBs: 640
+      }]
+    }]
+  },
+  {
+    id: 'rx-9070', name: 'AMD Radeon RX 9070', vendor: 'AMD', family: 'RDNA4',
+    releaseDate: '2025-03',
+    variants: [{
+      id: 'sku', label: '16GB', hbmCapacityGB: 16,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 36.1 → FP16 matrix dense 144.4; FP8/INT8 dense 289.
+        tflops: { fp16: 144.4, bf16: 144.4, fp8: 289, int8: 289 },
+        hbmBandwidthGBs: 640
+      }]
+    }]
+  },
+  {
+    id: 'radeon-ai-pro-r9700', name: 'AMD Radeon AI PRO R9700', vendor: 'AMD', family: 'RDNA4',
+    releaseDate: '2025-07',
+    variants: [{
+      id: 'sku', label: '32GB', hbmCapacityGB: 32,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // AMD datasheet: FP16 matrix 191 dense / 383 sparse; INT8 383 dense.
+        tflops: { fp16: 191, bf16: 191, fp8: 383, int8: 383 },
+        hbmBandwidthGBs: 644
+      }]
+    }]
+  },
+  {
+    id: 'rx-7900-xtx', name: 'AMD Radeon RX 7900 XTX', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2022-12',
+    variants: [{
+      id: 'sku', label: '24GB', hbmCapacityGB: 24,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // AMD: 122.8 TFLOPS FP16 matrix (= 2× FP32 61.4). INT8 WMMA = 2× FP16.
+        tflops: { fp16: 122.8, bf16: 122.8, int8: 245.6 },
+        hbmBandwidthGBs: 960
+      }]
+    }]
+  },
+  {
+    id: 'rx-7900-xt', name: 'AMD Radeon RX 7900 XT', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2022-12',
+    variants: [{
+      id: 'sku', label: '20GB', hbmCapacityGB: 20,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 51.5 → FP16 matrix 103; INT8 = 2× FP16.
+        tflops: { fp16: 103, bf16: 103, int8: 206 },
+        hbmBandwidthGBs: 800
+      }]
+    }]
+  },
+  {
+    id: 'rx-7900-gre', name: 'AMD Radeon RX 7900 GRE', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2024-02',
+    variants: [{
+      id: 'sku', label: '16GB', hbmCapacityGB: 16,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 46.0 → FP16 matrix 92; INT8 = 2× FP16.
+        tflops: { fp16: 92, bf16: 92, int8: 184 },
+        hbmBandwidthGBs: 576
+      }]
+    }]
+  },
+  {
+    id: 'rx-7800-xt', name: 'AMD Radeon RX 7800 XT', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2023-09',
+    variants: [{
+      id: 'sku', label: '16GB', hbmCapacityGB: 16,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 37.3 → FP16 matrix 74.6; INT8 = 2× FP16.
+        tflops: { fp16: 74.6, bf16: 74.6, int8: 149.2 },
+        hbmBandwidthGBs: 624
+      }]
+    }]
+  },
+  {
+    id: 'rx-7700-xt', name: 'AMD Radeon RX 7700 XT', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2023-09',
+    variants: [{
+      id: 'sku', label: '12GB', hbmCapacityGB: 12,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 35.2 → FP16 matrix 70.3; INT8 = 2× FP16.
+        tflops: { fp16: 70.3, bf16: 70.3, int8: 140.6 },
+        hbmBandwidthGBs: 432
+      }]
+    }]
+  },
+  {
+    id: 'radeon-pro-w7900', name: 'AMD Radeon PRO W7900', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2023-04',
+    variants: [{
+      id: 'sku', label: '48GB', hbmCapacityGB: 48,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 61.3 → FP16 matrix 122.6; INT8 = 2× FP16.
+        tflops: { fp16: 122.6, bf16: 122.6, int8: 245.2 },
+        hbmBandwidthGBs: 864
+      }]
+    }]
+  },
+  {
+    id: 'radeon-pro-w7800', name: 'AMD Radeon PRO W7800', vendor: 'AMD', family: 'RDNA3',
+    releaseDate: '2023-04',
+    variants: [{
+      id: 'sku', label: '32GB', hbmCapacityGB: 32,
+      operatingPoints: [{
+        id: 'peak', label: 'Peak',
+        // FP32 45.2 → FP16 matrix 90.4; INT8 = 2× FP16.
+        tflops: { fp16: 90.4, bf16: 90.4, int8: 180.8 },
+        hbmBandwidthGBs: 576
+      }]
+    }]
+  },
+
   // === Apple Silicon ===
   // Unified-memory architectures: capacity is shared with the OS and other workloads,
   // so usable headroom is materially lower than the figures below. No FP8/INT8/INT4
