@@ -56,6 +56,12 @@ pub struct TestConfiguration {
     pub duration_seconds: Option<u64>,
     pub warmup_requests: Option<usize>,
     pub warmup_duration: Option<u64>,
+    /// tiktoken vocabulary used for local token counts (e.g. "cl100k_base").
+    pub tokenizer: String,
+    /// True when the model isn't an OpenAI tiktoken model, so local token counts
+    /// (synthetic prompt sizing, and any per-token metric lacking server usage)
+    /// are estimates. Server-reported counts are preferred where available.
+    pub token_counts_estimated: bool,
     pub prompt_file: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
@@ -288,13 +294,15 @@ impl ReportBuilder {
 
         // Build test configuration from config
         let configuration = if let Some(ref config) = self.config {
+            let model = config
+                .endpoint
+                .model
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            let (model_type, estimated) = crate::tokenizer::select_model_type(&model);
             TestConfiguration {
                 endpoint: config.endpoint.base_url.clone(),
-                model: config
-                    .endpoint
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| "unknown".to_string()),
+                model,
                 load_pattern: if config.load.qps.is_some() {
                     "FixedQps".to_string()
                 } else {
@@ -306,6 +314,8 @@ impl ReportBuilder {
                 duration_seconds: config.load.duration_seconds,
                 warmup_requests: config.load.warmup_requests,
                 warmup_duration: config.load.warmup_duration,
+                tokenizer: model_type.encoder_name().to_string(),
+                token_counts_estimated: estimated,
                 prompt_file: config.input.file.display().to_string(),
                 seed: config.input.seed,
                 sample_size: config.input.sample_size,
@@ -326,6 +336,8 @@ impl ReportBuilder {
                 duration_seconds: None,
                 warmup_requests: None,
                 warmup_duration: None,
+                tokenizer: "unknown".to_string(),
+                token_counts_estimated: false,
                 prompt_file: "unknown".to_string(),
                 seed: None,
                 sample_size: None,
@@ -700,6 +712,13 @@ impl ReportBuilder {
             timestamp,
             report.duration.as_secs_f64()
         );
+        if report.configuration.token_counts_estimated {
+            println!(
+                "{} Note: local token counts use tiktoken {} as an ESTIMATE for '{}' \
+                 (not its real tokenizer); server-reported counts are used where available.",
+                timestamp, report.configuration.tokenizer, report.configuration.model
+            );
+        }
         println!(
             "{} Requests: Sent: {} Retries: {}",
             timestamp, report.summary.requests_total, report.summary.retries

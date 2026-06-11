@@ -116,12 +116,51 @@ pub(crate) fn compute_bust_prefix(expected_hit: bool, counter: &AtomicU64) -> St
 /// The window must be measured on the send-relative clock so that decode rate
 /// reflects only generation, never queueing/schedule slip.
 fn decode_tpot(gen_window: Duration, token_count: u64) -> Option<Duration> {
-    if token_count > 1 {
+    // A zero window means we never observed inter-token timing (e.g. the server
+    // batched all output into one SSE chunk). Server usage may still report many
+    // tokens, but dividing a zero window by that count would record a bogus 0ns
+    // decode rate, so skip it rather than corrupt the TPOT histogram.
+    if token_count > 1 && !gen_window.is_zero() {
         Some(Duration::from_nanos(
             gen_window.as_nanos() as u64 / (token_count - 1),
         ))
     } else {
         None
+    }
+}
+
+/// Effective output token counts `(reasoning, content)`, preferring the server's
+/// reported usage over locally counted per-chunk tokens.
+///
+/// Per-chunk counts undercount whenever a server batches multiple tokens into one
+/// SSE chunk (common under load), which would inflate TPOT and understate
+/// tokens/s. The server's `completion_tokens` is the ground truth. When the server
+/// also reports `reasoning_tokens` we split on it; when it reports only a total for
+/// a stream that did contain reasoning, we can't split it cleanly, so we keep the
+/// per-chunk split rather than mislabel the phases.
+fn effective_output_tokens(
+    server_usage: Option<&crate::client::Usage>,
+    chunk_reasoning: u64,
+    chunk_content: u64,
+    stream_has_reasoning: bool,
+) -> (u64, u64) {
+    match server_usage {
+        Some(usage) => {
+            let reasoning = usage
+                .completion_tokens_details
+                .as_ref()
+                .map(|d| d.reasoning_tokens as u64)
+                .unwrap_or(0);
+            if reasoning == 0 && stream_has_reasoning && chunk_reasoning > 0 {
+                // Server total without a reasoning breakdown — can't split a
+                // reasoning stream, so fall back to the per-chunk split.
+                (chunk_reasoning, chunk_content)
+            } else {
+                let content = (usage.completion_tokens as u64).saturating_sub(reasoning);
+                (reasoning, content)
+            }
+        }
+        None => (chunk_reasoning, chunk_content),
     }
 }
 
@@ -1800,27 +1839,28 @@ impl BenchmarkRunner {
                         // Generation window is send-relative; perceived latency adds slip.
                         let gen_duration = request_start.elapsed();
                         Metrics::record_latency(gen_duration + turn_slip);
-                        Metrics::record_tokens(
-                            input_tokens,
+
+                        // Prefer server-reported token counts over per-chunk counts.
+                        let (out_reasoning, out_content) = effective_output_tokens(
+                            stream.server_usage(),
                             stream.reasoning_tokens() as u64,
                             stream.content_tokens() as u64,
+                            stream.has_reasoning(),
                         );
+                        Metrics::record_tokens(input_tokens, out_reasoning, out_content);
 
                         // Phase-specific TPOT — decode rate, send-relative (excludes slip)
                         if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token() {
                             let reasoning_end =
                                 stream.time_to_first_content_token().unwrap_or(gen_duration);
                             let window = reasoning_end.saturating_sub(reasoning_ttft);
-                            if let Some(tpot) =
-                                decode_tpot(window, stream.reasoning_tokens() as u64)
-                            {
+                            if let Some(tpot) = decode_tpot(window, out_reasoning) {
                                 Metrics::record_tpot(tpot, Phase::Reasoning);
                             }
                         }
                         if let Some(content_ttft) = stream.time_to_first_content_token() {
                             let window = gen_duration.saturating_sub(content_ttft);
-                            if let Some(tpot) = decode_tpot(window, stream.content_tokens() as u64)
-                            {
+                            if let Some(tpot) = decode_tpot(window, out_content) {
                                 Metrics::record_tpot(tpot, Phase::Content);
                             }
                         }
@@ -2026,24 +2066,29 @@ impl BenchmarkRunner {
                     // slip (matching the conversation path's `gen_duration + slip`).
                     let gen_duration = request_start.elapsed();
                     Metrics::record_latency(gen_duration + slip);
-                    Metrics::record_tokens(
-                        input_tokens,
+
+                    // Prefer server-reported token counts over per-chunk counts,
+                    // which undercount when a server batches tokens per SSE chunk.
+                    let (out_reasoning, out_content) = effective_output_tokens(
+                        stream.server_usage(),
                         stream.reasoning_tokens() as u64,
                         stream.content_tokens() as u64,
+                        stream.has_reasoning(),
                     );
+                    Metrics::record_tokens(input_tokens, out_reasoning, out_content);
 
                     // Phase-specific TPOT — decode rate, send-relative (excludes slip)
                     if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token() {
                         let reasoning_end =
                             stream.time_to_first_content_token().unwrap_or(gen_duration);
                         let window = reasoning_end.saturating_sub(reasoning_ttft);
-                        if let Some(tpot) = decode_tpot(window, stream.reasoning_tokens() as u64) {
+                        if let Some(tpot) = decode_tpot(window, out_reasoning) {
                             Metrics::record_tpot(tpot, Phase::Reasoning);
                         }
                     }
                     if let Some(content_ttft) = stream.time_to_first_content_token() {
                         let window = gen_duration.saturating_sub(content_ttft);
-                        if let Some(tpot) = decode_tpot(window, stream.content_tokens() as u64) {
+                        if let Some(tpot) = decode_tpot(window, out_content) {
                             Metrics::record_tpot(tpot, Phase::Content);
                         }
                     }
@@ -2215,11 +2260,60 @@ impl BenchmarkRunner {
 mod tests {
     use super::*;
 
+    fn usage_with(completion: u32, reasoning: Option<u32>) -> crate::client::Usage {
+        crate::client::Usage {
+            prompt_tokens: 100,
+            completion_tokens: completion,
+            total_tokens: 100 + completion,
+            prompt_tokens_details: None,
+            completion_tokens_details: reasoning.map(|r| crate::client::CompletionTokensDetails {
+                reasoning_tokens: r,
+            }),
+        }
+    }
+
+    #[test]
+    fn effective_tokens_falls_back_to_chunk_counts_without_server_usage() {
+        // No server usage: per-chunk counts are all we have.
+        assert_eq!(effective_output_tokens(None, 3, 40, true), (3, 40));
+    }
+
+    #[test]
+    fn effective_tokens_uses_server_total_when_no_reasoning() {
+        // Server total, no reasoning breakdown, no reasoning stream:
+        // all completion tokens are content. Server count overrides chunk count.
+        let u = usage_with(50, None);
+        assert_eq!(effective_output_tokens(Some(&u), 0, 42, false), (0, 50));
+    }
+
+    #[test]
+    fn effective_tokens_splits_server_reasoning() {
+        // Server reports the reasoning breakdown: content = completion - reasoning.
+        let u = usage_with(50, Some(20));
+        assert_eq!(effective_output_tokens(Some(&u), 0, 0, true), (20, 30));
+    }
+
+    #[test]
+    fn effective_tokens_falls_back_when_server_cannot_split_reasoning() {
+        // Server gave a total but no reasoning breakdown for a reasoning stream —
+        // we can't split it, so keep the per-chunk split rather than mislabel.
+        let u = usage_with(50, None);
+        assert_eq!(effective_output_tokens(Some(&u), 18, 30, true), (18, 30));
+    }
+
     #[test]
     fn decode_tpot_needs_at_least_two_tokens() {
         // No inter-token interval exists for fewer than two tokens.
         assert_eq!(decode_tpot(Duration::from_nanos(100), 0), None);
         assert_eq!(decode_tpot(Duration::from_nanos(100), 1), None);
+    }
+
+    #[test]
+    fn decode_tpot_skips_zero_window() {
+        // A server that batches all output into one SSE chunk yields a ~0 timing
+        // window even though server usage reports many tokens. Dividing a zero
+        // window by a large server count would record a bogus 0ns TPOT, so skip it.
+        assert_eq!(decode_tpot(Duration::ZERO, 500), None);
     }
 
     #[test]
@@ -2346,6 +2440,7 @@ mod tests {
             completion_tokens: 10,
             total_tokens: 110,
             prompt_tokens_details: Some(crate::client::PromptTokensDetails { cached_tokens: 80 }),
+            completion_tokens_details: None,
         };
         assert_eq!(actual_cache_hit_option(&usage), Some(true));
     }
@@ -2358,6 +2453,7 @@ mod tests {
             completion_tokens: 10,
             total_tokens: 110,
             prompt_tokens_details: None,
+            completion_tokens_details: None,
         };
         assert!(actual_cache_hit_option(&usage).is_none());
     }

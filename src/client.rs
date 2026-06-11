@@ -106,6 +106,13 @@ pub struct PromptTokensDetails {
     pub cached_tokens: u32,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CompletionTokensDetails {
+    /// Reasoning tokens, reported by reasoning models (OpenAI o-series, vLLM, etc.).
+    #[serde(default)]
+    pub reasoning_tokens: u32,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
@@ -113,6 +120,8 @@ pub struct Usage {
     pub total_tokens: u32,
     #[serde(default)]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
+    #[serde(default)]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
 }
 
 // Streaming response types
@@ -1119,6 +1128,32 @@ mod tests {
         }"#;
         let usage: Usage = serde_json::from_str(json).unwrap();
         assert!(usage.prompt_tokens_details.is_none());
+    }
+
+    #[test]
+    fn usage_with_reasoning_tokens_parses() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "completion_tokens_details": {"reasoning_tokens": 20}
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            usage
+                .completion_tokens_details
+                .as_ref()
+                .unwrap()
+                .reasoning_tokens,
+            20
+        );
+    }
+
+    #[test]
+    fn usage_without_completion_details_is_none() {
+        let json = r#"{"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert!(usage.completion_tokens_details.is_none());
     }
 
     #[test]
