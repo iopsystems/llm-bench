@@ -133,6 +133,13 @@ pub static TTFT_CONTENT: HistogramGroup = HistogramGroup::new(CTX_COUNT, 7, 64);
 #[metric(name = "request_latency", metadata = { unit = "nanoseconds" })]
 pub static REQUEST_LATENCY: AtomicHistogram = AtomicHistogram::new(7, 64);
 
+// Schedule slip — in QPS (open-loop) mode, the delay between a request's scheduled
+// arrival and when it was actually sent (i.e. time spent waiting for an in-flight
+// slot). Near zero means the generator kept up; a growing distribution means the
+// run was effectively closed-loop and latency percentiles include real queueing.
+#[metric(name = "schedule_slip", metadata = { unit = "nanoseconds" })]
+pub static SCHEDULE_SLIP: AtomicHistogram = AtomicHistogram::new(7, 64);
+
 // TPOT — per phase
 #[metric(name = "tpot", metadata = { unit = "nanoseconds" })]
 pub static TPOT: HistogramGroup = HistogramGroup::new(PHASE_COUNT, 7, 64);
@@ -420,6 +427,12 @@ impl Metrics {
         let _ = REQUEST_LATENCY.increment(duration.as_nanos() as u64);
     }
 
+    /// Record schedule slip: how long a request waited between its scheduled
+    /// arrival and actually being sent (QPS/open-loop mode).
+    pub fn record_schedule_slip(duration: Duration) {
+        let _ = SCHEDULE_SLIP.increment(duration.as_nanos() as u64);
+    }
+
     pub fn record_retry() {
         REQUESTS.increment(REQ_RETRIED);
     }
@@ -499,5 +512,15 @@ mod tests {
     #[test]
     fn ttft_by_cache_hit_and_miss_indices_are_distinct() {
         assert_ne!(CACHE_EXPECTED_HIT_IDX, CACHE_EXPECTED_MISS_IDX);
+    }
+
+    #[test]
+    fn record_schedule_slip_writes_to_histogram() {
+        // The schedule-slip histogram captures how long a QPS-mode request waited
+        // between its scheduled arrival and actually being sent.
+        Metrics::record_schedule_slip(std::time::Duration::from_millis(5));
+        let h = SCHEDULE_SLIP.load().expect("histogram should load");
+        let total: u64 = h.iter().map(|b| b.count()).sum();
+        assert!(total >= 1, "recorded slip sample should be present");
     }
 }

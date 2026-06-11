@@ -32,6 +32,10 @@ pub struct BenchmarkReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation: Option<ConversationStats>,
 
+    // QPS-mode schedule slip (queueing wait), only present in QPS mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule_slip: Option<ScheduleSlipStats>,
+
     // Saturation search results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saturation: Option<crate::saturation::SaturationResults>,
@@ -95,6 +99,19 @@ pub struct ThroughputStats {
     pub output_tokens_per_second: f64,
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
+}
+
+/// QPS-mode schedule slip: time a request waited between its scheduled arrival
+/// and actually being sent. ~0 means the generator kept up (a clean open-loop
+/// measurement); large values mean the run was effectively closed-loop and the
+/// latency percentiles include real queueing.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScheduleSlipStats {
+    pub mean_ms: f64,
+    pub p50_ms: f64,
+    pub p90_ms: f64,
+    pub p95_ms: f64,
+    pub p99_ms: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -370,6 +387,22 @@ impl ReportBuilder {
 
         let cache = build_cache_report();
 
+        // Schedule slip is only meaningful in QPS (open-loop) mode.
+        let schedule_slip = if self.config.as_ref().and_then(|c| c.load.qps).is_some() {
+            crate::metrics::SCHEDULE_SLIP.load().map(|h| {
+                let (mean, p50, p90, p95, p99) = Self::extract_percentiles_ms(&h);
+                ScheduleSlipStats {
+                    mean_ms: mean,
+                    p50_ms: p50,
+                    p90_ms: p90,
+                    p95_ms: p95,
+                    p99_ms: p99,
+                }
+            })
+        } else {
+            None
+        };
+
         Ok(BenchmarkReport {
             timestamp,
             duration,
@@ -382,6 +415,7 @@ impl ReportBuilder {
             context_latency,
             context_itl,
             conversation,
+            schedule_slip,
             saturation: self.saturation_results.clone(),
             cache,
         })
@@ -764,6 +798,14 @@ impl ReportBuilder {
             report.latency.request_p95_ms,
             report.latency.request_p99_ms
         );
+
+        // QPS-mode schedule slip (queueing wait); ~0 means the generator kept up.
+        if let Some(ref slip) = report.schedule_slip {
+            println!(
+                "{} Schedule Slip (ms): mean: {:.1} p50: {:.1} p90: {:.1} p95: {:.1} p99: {:.1}",
+                timestamp, slip.mean_ms, slip.p50_ms, slip.p90_ms, slip.p95_ms, slip.p99_ms
+            );
+        }
 
         // Multi-turn conversation stats
         if let Some(ref conv) = report.conversation {
