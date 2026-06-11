@@ -102,6 +102,11 @@ pub static CONVERSATIONS: CounterGroup = CounterGroup::new(3);
 #[metric(name = "turns")]
 pub static TURNS: Counter = Counter::new();
 
+// Malformed streaming chunks — `data:` SSE lines that could not be decoded or
+// parsed and were skipped. A non-zero value means some tokens/usage were lost.
+#[metric(name = "malformed_chunks")]
+pub static MALFORMED_CHUNKS: Counter = Counter::new();
+
 #[metric(name = "conversation_latency", metadata = { unit = "nanoseconds" })]
 pub static CONVERSATION_LATENCY: AtomicHistogram = AtomicHistogram::new(7, 64);
 
@@ -435,6 +440,11 @@ impl Metrics {
 
     pub fn record_retry() {
         REQUESTS.increment(REQ_RETRIED);
+    }
+
+    /// Record a streaming `data:` line that could not be decoded/parsed and was skipped.
+    pub fn record_malformed_chunk() {
+        MALFORMED_CHUNKS.increment();
     }
 
     pub fn record_conversation_sent() {

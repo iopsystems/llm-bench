@@ -590,7 +590,7 @@ impl OpenAIClient {
             reasoning_tokens: 0,
             content_tokens: 0,
             pending_chunks: std::collections::VecDeque::new(),
-            partial_line: String::new(),
+            line_buffer: SseLineBuffer::default(),
             done: false,
             server_usage: None,
             collected_logprobs: Vec::new(),
@@ -645,6 +645,98 @@ fn classify_retriable(error: &anyhow::Error, retry_on_timeout: bool) -> bool {
     }
 }
 
+/// Accumulates raw stream bytes and yields complete lines (newline-terminated),
+/// preserving any incomplete trailing bytes — crucially including a multi-byte
+/// UTF-8 character split across reads — until the rest arrives. Decoding each raw
+/// HTTP chunk independently (the previous approach) corrupts such characters into
+/// replacement chars, which silently mangles content and can break JSON parsing.
+///
+/// The buffer is intentionally uncapped: SSE delimits every event with a newline,
+/// so a single buffered line is one event's bytes (a JSON chunk, well under a few
+/// KB in practice). A server that streamed unbounded bytes with no newline could
+/// grow this without limit, but that requires a severely broken server and matches
+/// the prior implementation's behavior.
+#[derive(Default)]
+struct SseLineBuffer {
+    buf: Vec<u8>,
+}
+
+impl SseLineBuffer {
+    /// Append `data` and return all now-complete lines (with the trailing `\n`
+    /// and any `\r` removed). Incomplete trailing bytes stay buffered.
+    fn push(&mut self, data: &[u8]) -> Vec<Vec<u8>> {
+        self.buf.extend_from_slice(data);
+        let mut lines = Vec::new();
+        let Some(last_nl) = self.buf.iter().rposition(|&b| b == b'\n') else {
+            return lines; // no complete line yet
+        };
+        // Split off the bytes after the last newline; they remain incomplete.
+        let tail = self.buf.split_off(last_nl + 1);
+        let complete = std::mem::replace(&mut self.buf, tail);
+        for raw in complete.split(|&b| b == b'\n') {
+            // `complete` ends in '\n', so the final split element is empty; blank
+            // SSE separator lines are also empty — skip both.
+            if raw.is_empty() {
+                continue;
+            }
+            let line = if raw.last() == Some(&b'\r') {
+                &raw[..raw.len() - 1]
+            } else {
+                raw
+            };
+            lines.push(line.to_vec());
+        }
+        lines
+    }
+}
+
+/// A classified SSE line.
+enum SseEvent {
+    Chunk(Box<ChatCompletionChunk>),
+    Done,
+    StreamError {
+        error_type: String,
+        message: String,
+    },
+    /// Non-data line, comment/keep-alive, or empty payload — ignore.
+    Ignore,
+    /// A `data:` line that could not be decoded or parsed — must be surfaced, not
+    /// silently dropped, since it represents lost tokens/usage.
+    Malformed,
+}
+
+/// Classify a single complete SSE line (no trailing newline).
+fn parse_sse_line(line: &[u8]) -> SseEvent {
+    // Only `data:` lines carry payload; comments (':' prefix) and event/id lines
+    // are keep-alives or metadata we ignore.
+    let Some(payload) = line.strip_prefix(b"data:") else {
+        return SseEvent::Ignore;
+    };
+    // The SSE spec allows an optional single space after `data:`.
+    let payload = payload.strip_prefix(b" ").unwrap_or(payload);
+
+    let json_str = match std::str::from_utf8(payload) {
+        Ok(s) => s.trim(),
+        Err(_) => return SseEvent::Malformed,
+    };
+    if json_str.is_empty() {
+        return SseEvent::Ignore; // keep-alive `data:` with no payload
+    }
+    if json_str == "[DONE]" {
+        return SseEvent::Done;
+    }
+    if let Ok(error_resp) = serde_json::from_str::<StreamErrorResponse>(json_str) {
+        return SseEvent::StreamError {
+            error_type: error_resp.error.error_type,
+            message: error_resp.error.message,
+        };
+    }
+    match serde_json::from_str::<ChatCompletionChunk>(json_str) {
+        Ok(chunk) => SseEvent::Chunk(Box::new(chunk)),
+        Err(_) => SseEvent::Malformed,
+    }
+}
+
 pub struct StreamResponse {
     response: reqwest::Response,
     start_time: Instant,
@@ -664,8 +756,9 @@ pub struct StreamResponse {
     content_tokens: u32,
     /// Buffer for parsed chunks when a single HTTP chunk contains multiple SSE events
     pending_chunks: std::collections::VecDeque<ChatCompletionChunk>,
-    /// Buffer for incomplete SSE lines split across HTTP chunks
-    partial_line: String,
+    /// Byte-level buffer for SSE lines split across HTTP chunks (preserves
+    /// multi-byte UTF-8 characters that straddle a read boundary).
+    line_buffer: SseLineBuffer,
     /// Set to true when we encounter the [DONE] marker
     done: bool,
     /// Server-reported token usage from the final streaming chunk
@@ -704,46 +797,36 @@ impl StreamResponse {
                 return Ok(None);
             };
 
-            // Prepend any partial line from the previous HTTP chunk
-            let text = if self.partial_line.is_empty() {
-                String::from_utf8_lossy(&data).into_owned()
-            } else {
-                let mut combined = std::mem::take(&mut self.partial_line);
-                combined.push_str(&String::from_utf8_lossy(&data));
-                combined
-            };
-
-            // Check if the text ends with a newline; if not, the last line is partial
-            let ends_with_newline = text.ends_with('\n') || text.ends_with('\r');
-            let lines: Vec<&str> = text.lines().collect();
-
-            for (i, line) in lines.iter().enumerate() {
-                // If this is the last line and the chunk didn't end with a newline,
-                // it's a partial line split across HTTP chunks
-                if i == lines.len() - 1 && !ends_with_newline {
-                    self.partial_line = line.to_string();
-                    continue;
-                }
-
-                if let Some(json_str) = line.strip_prefix("data: ") {
-                    if json_str == "[DONE]" {
+            // Append the raw bytes and process every now-complete line. Byte-level
+            // buffering keeps multi-byte UTF-8 characters intact across HTTP read
+            // boundaries instead of lossily decoding each read independently.
+            for line in self.line_buffer.push(&data) {
+                match parse_sse_line(&line) {
+                    SseEvent::Chunk(chunk) => self.pending_chunks.push_back(*chunk),
+                    SseEvent::Done => {
+                        // Stop at [DONE]; any chunks parsed before it this read are
+                        // already buffered and drained by the caller loop. Lines
+                        // after [DONE] in the same read are discarded (per spec, and
+                        // matching the prior behavior).
                         self.done = true;
                         break;
                     }
-
-                    // Try to parse as error response first
-                    if let Ok(error_resp) = serde_json::from_str::<StreamErrorResponse>(json_str) {
+                    SseEvent::StreamError {
+                        error_type,
+                        message,
+                    } => {
                         return Err(ClientError::StreamError {
-                            error_type: error_resp.error.error_type,
-                            message: error_resp.error.message,
+                            error_type,
+                            message,
                         }
                         .into());
                     }
-
-                    // Try to parse as normal completion chunk
-                    if let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(json_str) {
-                        self.pending_chunks.push_back(chunk);
+                    SseEvent::Malformed => {
+                        // Don't silently drop: surface lost tokens/usage.
+                        log::warn!("Skipping unparseable SSE data line ({} bytes)", line.len());
+                        crate::metrics::Metrics::record_malformed_chunk();
                     }
+                    SseEvent::Ignore => {}
                 }
             }
 
@@ -1245,6 +1328,60 @@ mod tests {
         };
         let client = OpenAIClient::new(config).unwrap();
         assert_eq!(client.timeout, Duration::from_secs(7));
+    }
+
+    #[test]
+    fn sse_buffer_preserves_multibyte_char_split_across_reads() {
+        // "🚀" is 4 bytes; split it across two reads. Byte-level buffering must
+        // reassemble it intact rather than lossily decoding each read (which would
+        // corrupt it to replacement chars).
+        let rocket = "🚀".as_bytes(); // [0xF0,0x9F,0x9A,0x80]
+        let mut buf = SseLineBuffer::default();
+
+        let mut chunk1 = b"data: x".to_vec();
+        chunk1.extend_from_slice(&rocket[..2]); // first half of the emoji, no newline
+        assert!(buf.push(&chunk1).is_empty(), "no complete line yet");
+
+        let mut chunk2 = rocket[2..].to_vec(); // second half
+        chunk2.push(b'\n');
+        let lines = buf.push(&chunk2);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(std::str::from_utf8(&lines[0]).unwrap(), "data: x🚀");
+    }
+
+    #[test]
+    fn sse_buffer_splits_multiple_lines_and_strips_crlf() {
+        let mut buf = SseLineBuffer::default();
+        let lines = buf.push(b"data: a\r\ndata: b\n");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], b"data: a"); // trailing \r stripped
+        assert_eq!(lines[1], b"data: b");
+    }
+
+    #[test]
+    fn sse_buffer_holds_incomplete_trailing_line() {
+        let mut buf = SseLineBuffer::default();
+        assert!(buf.push(b"data: hel").is_empty());
+        let lines = buf.push(b"lo\n");
+        assert_eq!(lines, vec![b"data: hello".to_vec()]);
+    }
+
+    #[test]
+    fn parse_sse_line_classifies_events() {
+        assert!(matches!(parse_sse_line(b"data: [DONE]"), SseEvent::Done));
+        assert!(matches!(parse_sse_line(b": keep-alive"), SseEvent::Ignore));
+        assert!(matches!(parse_sse_line(b"data: "), SseEvent::Ignore));
+        assert!(matches!(
+            parse_sse_line(b"data: {not valid json"),
+            SseEvent::Malformed
+        ));
+        // A complete data line that is not valid UTF-8 is malformed, not silently dropped.
+        assert!(matches!(
+            parse_sse_line(b"data: \xF0\x9F"),
+            SseEvent::Malformed
+        ));
+        let valid = br#"data: {"id":"1","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":"hi"}}]}"#;
+        assert!(matches!(parse_sse_line(valid), SseEvent::Chunk(_)));
     }
 
     #[test]

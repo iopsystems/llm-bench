@@ -96,6 +96,9 @@ pub struct Summary {
     pub requests_canceled: u64,
     pub success_rate: f64,
     pub retries: u64,
+    /// Streaming `data:` lines that could not be decoded/parsed and were skipped.
+    /// Non-zero means some tokens/usage were lost (e.g. server-side UTF-8 issues).
+    pub malformed_chunks: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -368,6 +371,7 @@ impl ReportBuilder {
                 0.0
             },
             retries,
+            malformed_chunks: crate::metrics::MALFORMED_CHUNKS.value(),
         };
 
         let throughput = ThroughputStats {
@@ -735,6 +739,13 @@ impl ReportBuilder {
             println!(
                 "{} Canceled: {}",
                 timestamp, report.summary.requests_canceled
+            );
+        }
+        if report.summary.malformed_chunks > 0 {
+            println!(
+                "{} Warning: {} malformed streaming chunk(s) skipped — some tokens/usage \
+                 were lost (often server-side UTF-8/detokenization issues).",
+                timestamp, report.summary.malformed_chunks
             );
         }
 
