@@ -246,6 +246,9 @@ impl BenchmarkRunner {
             retry_initial_delay_ms: config.endpoint.retry_initial_delay_ms,
             retry_max_delay_ms: config.endpoint.retry_max_delay_ms,
             pool_size: config.load.concurrent_requests, // Pool size matches concurrency
+            stream_idle_timeout: (config.endpoint.stream_idle_timeout > 0)
+                .then(|| Duration::from_secs(config.endpoint.stream_idle_timeout)),
+            retry_on_timeout: config.endpoint.retry_on_timeout,
             chat_template_kwargs: config.endpoint.chat_template_kwargs.clone(),
         })?;
 

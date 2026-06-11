@@ -41,6 +41,19 @@ timeout = 60
 # Maximum retry delay in milliseconds (caps exponential growth)
 # Default: 10000ms (10 seconds)
 # retry_max_delay_ms = 10000
+# Note: the configured `timeout` also bounds the TOTAL time of a logical request
+# including all retries and backoff, so retries never blow far past the timeout.
+
+# Per-read idle timeout for streaming responses, in seconds (0 = disabled, default).
+# Detects a stalled-but-open stream that the total request timeout can miss under
+# HTTP/2 keep-alive. Set to a value comfortably above the model's slowest expected
+# inter-token gap to avoid false timeouts.
+# stream_idle_timeout = 30
+
+# Retry requests that timed out. Default: false. A timed-out chat completion may
+# still be running server-side, so retrying re-fires an expensive, non-idempotent
+# generation. Connection and 5xx errors are always retried regardless of this.
+# retry_on_timeout = false
 
 # Server Readiness Check Configuration (Optional)
 # IMPORTANT: Readiness check is DISABLED by default (health_check_timeout = 0)

@@ -225,6 +225,11 @@ pub async fn run_evaluation(
         retry_initial_delay_ms: 1000,
         retry_max_delay_ms: 30000,
         pool_size: config.load.concurrent_requests,
+        // Non-streaming offline eval: no streaming idle timeout, and retrying
+        // timeouts is desirable here (no coordinated-omission concern), matching
+        // the prior retry-all-transient behavior.
+        stream_idle_timeout: None,
+        retry_on_timeout: true,
         chat_template_kwargs: None,
     };
 

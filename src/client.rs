@@ -39,6 +39,13 @@ pub struct OpenAIClient {
     retry_initial_delay_ms: u64,
     retry_max_delay_ms: u64,
     timeout: Duration,
+    /// Per-read idle timeout for streaming responses (None = disabled). Detects a
+    /// stalled-but-open stream that the total request timeout may not catch under
+    /// HTTP/2 keep-alive.
+    stream_idle_timeout: Option<Duration>,
+    /// Whether to retry requests that timed out (off by default; retrying re-fires
+    /// a possibly-still-running, non-idempotent generation).
+    retry_on_timeout: bool,
     chat_template_kwargs: Option<serde_json::Value>,
 }
 
@@ -225,6 +232,10 @@ pub struct ClientConfig {
     pub retry_max_delay_ms: u64,
     /// Connection pool size (should match concurrency for optimal performance)
     pub pool_size: usize,
+    /// Per-read idle timeout for streaming responses (None = disabled).
+    pub stream_idle_timeout: Option<Duration>,
+    /// Whether to retry requests that timed out (default false).
+    pub retry_on_timeout: bool,
     /// Additional kwargs forwarded to the model's chat template for every request.
     pub chat_template_kwargs: Option<serde_json::Value>,
 }
@@ -255,6 +266,8 @@ impl OpenAIClient {
     ///     retry_initial_delay_ms: 100,
     ///     retry_max_delay_ms: 10000,
     ///     pool_size: 10,
+    ///     stream_idle_timeout: None,
+    ///     retry_on_timeout: false,
     ///     chat_template_kwargs: None,
     /// };
     ///
@@ -280,6 +293,8 @@ impl OpenAIClient {
             retry_initial_delay_ms: config.retry_initial_delay_ms,
             retry_max_delay_ms: config.retry_max_delay_ms,
             timeout: config.timeout,
+            stream_idle_timeout: config.stream_idle_timeout,
+            retry_on_timeout: config.retry_on_timeout,
             chat_template_kwargs: config.chat_template_kwargs,
         })
     }
@@ -289,6 +304,12 @@ impl OpenAIClient {
         request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
         let mut attempt = 0;
+        // Overall budget for the whole logical request: enough for every attempt
+        // to use its full per-attempt timeout, but no more — this bounds total
+        // wall time (trimming trailing backoff) without defeating a legitimate
+        // retry after an attempt that consumed most of one timeout (e.g. a
+        // timed-out attempt when retry_on_timeout is enabled).
+        let deadline = Instant::now() + self.timeout.saturating_mul(self.max_retries + 1);
 
         loop {
             match self.chat_completion_internal(request.clone()).await {
@@ -299,8 +320,12 @@ impl OpenAIClient {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    if attempt < self.max_retries && Self::is_retriable_error(&e) {
+                    if attempt < self.max_retries && self.is_retriable_error(&e) {
                         let delay = self.calculate_backoff_delay(attempt);
+                        if Instant::now() + delay >= deadline {
+                            log::debug!("Retry budget exhausted; returning error: {}", e);
+                            return Err(e);
+                        }
                         log::debug!(
                             "Request failed (attempt {}/{}): {}. Retrying in {:?}",
                             attempt + 1,
@@ -430,6 +455,9 @@ impl OpenAIClient {
         request: ChatCompletionRequest,
     ) -> Result<StreamResponse> {
         let mut attempt = 0;
+        // Overall budget: enough for every attempt's full per-attempt timeout, but
+        // no more — bounds total wall time without defeating a legitimate retry.
+        let deadline = Instant::now() + self.timeout.saturating_mul(self.max_retries + 1);
 
         loop {
             match self.chat_completion_stream_internal(request.clone()).await {
@@ -441,11 +469,15 @@ impl OpenAIClient {
                 }
                 Err(e) => {
                     // Check if we should retry
-                    if attempt < self.max_retries && Self::is_retriable_error(&e) {
+                    if attempt < self.max_retries && self.is_retriable_error(&e) {
+                        let delay = self.calculate_backoff_delay(attempt);
+                        if Instant::now() + delay >= deadline {
+                            log::debug!("Retry budget exhausted; returning error: {}", e);
+                            return Err(e);
+                        }
                         // Record retry in metrics
                         crate::metrics::Metrics::record_retry();
 
-                        let delay = self.calculate_backoff_delay(attempt);
                         log::debug!(
                             "Request failed (attempt {}/{}): {}. Retrying in {:?}",
                             attempt + 1,
@@ -548,6 +580,7 @@ impl OpenAIClient {
         Ok(StreamResponse {
             response,
             start_time,
+            idle_timeout: self.stream_idle_timeout,
             first_reasoning_token_time: None,
             first_content_token_time: None,
             last_reasoning_token_time: None,
@@ -564,23 +597,9 @@ impl OpenAIClient {
         })
     }
 
-    /// Determine if an error should be retried
-    fn is_retriable_error(error: &anyhow::Error) -> bool {
-        if let Some(client_error) = error.downcast_ref::<ClientError>() {
-            match client_error {
-                ClientError::Connection(_) => true,   // Network issues
-                ClientError::Timeout(_) => true,      // Timeout
-                ClientError::Http5xx { .. } => true,  // Server errors
-                ClientError::Http4xx { .. } => false, // Client errors (don't retry)
-                ClientError::Parse(_) => false,       // Parse errors (don't retry)
-                ClientError::StreamError { .. } => false,
-                ClientError::Other(_) => false, // Unknown errors (don't retry)
-            }
-        } else {
-            // For non-ClientError types, check the error message
-            let err_str = error.to_string().to_lowercase();
-            err_str.contains("timeout") || err_str.contains("connection")
-        }
+    /// Determine if an error should be retried, honoring the configured timeout policy.
+    fn is_retriable_error(&self, error: &anyhow::Error) -> bool {
+        classify_retriable(error, self.retry_on_timeout)
     }
 
     /// Calculate exponential backoff delay with jitter
@@ -600,9 +619,37 @@ impl OpenAIClient {
     }
 }
 
+/// Classify whether an error should be retried.
+///
+/// Connection errors (pre-flight; the request demonstrably never reached the
+/// server) and 5xx server errors are always retriable. Timeouts are retried only
+/// when `retry_on_timeout` is set, since a timed-out chat completion may still be
+/// running server-side and retrying re-fires an expensive, non-idempotent
+/// generation. 4xx / parse / stream / other errors are never retried.
+fn classify_retriable(error: &anyhow::Error, retry_on_timeout: bool) -> bool {
+    if let Some(client_error) = error.downcast_ref::<ClientError>() {
+        match client_error {
+            ClientError::Connection(_) => true,
+            ClientError::Timeout(_) => retry_on_timeout,
+            ClientError::Http5xx { .. } => true,
+            ClientError::Http4xx { .. } => false,
+            ClientError::Parse(_) => false,
+            ClientError::StreamError { .. } => false,
+            ClientError::Other(_) => false,
+        }
+    } else {
+        // For non-ClientError types, fall back to message inspection. Connection
+        // hints are always retriable; timeout hints only when opted in.
+        let err_str = error.to_string().to_lowercase();
+        err_str.contains("connection") || (retry_on_timeout && err_str.contains("timeout"))
+    }
+}
+
 pub struct StreamResponse {
     response: reqwest::Response,
     start_time: Instant,
+    /// Per-read idle timeout (None = disabled).
+    idle_timeout: Option<Duration>,
     // Phase-specific TTFT tracking
     first_reasoning_token_time: Option<Duration>,
     first_content_token_time: Option<Duration>,
@@ -641,7 +688,16 @@ impl StreamResponse {
                 return Ok(None);
             }
 
-            let bytes = self.response.chunk().await?;
+            // Read the next chunk, optionally bounded by a per-read idle timeout so
+            // a stalled-but-open stream (which HTTP/2 keep-alive can hide from the
+            // total request timeout) is detected instead of hanging the worker.
+            let bytes = match self.idle_timeout {
+                Some(idle) => match tokio::time::timeout(idle, self.response.chunk()).await {
+                    Ok(result) => result?,
+                    Err(_) => return Err(ClientError::Timeout(idle).into()),
+                },
+                None => self.response.chunk().await?,
+            };
 
             // If no more data from server, stream is done
             let Some(data) = bytes else {
@@ -1183,10 +1239,39 @@ mod tests {
             retry_initial_delay_ms: 1,
             retry_max_delay_ms: 1,
             pool_size: 1,
+            stream_idle_timeout: None,
+            retry_on_timeout: false,
             chat_template_kwargs: None,
         };
         let client = OpenAIClient::new(config).unwrap();
         assert_eq!(client.timeout, Duration::from_secs(7));
+    }
+
+    #[test]
+    fn timeout_retry_is_opt_in() {
+        let timeout_err: anyhow::Error = ClientError::Timeout(Duration::from_secs(1)).into();
+        // Retrying a timeout re-fires a possibly-still-running generation, so it's
+        // off by default and only enabled when explicitly opted in.
+        assert!(!classify_retriable(&timeout_err, false));
+        assert!(classify_retriable(&timeout_err, true));
+    }
+
+    #[test]
+    fn connection_and_5xx_retry_regardless_of_timeout_flag() {
+        let conn: anyhow::Error = ClientError::Connection("refused".into()).into();
+        let s5: anyhow::Error = ClientError::Http5xx {
+            status: 503,
+            message: "busy".into(),
+        }
+        .into();
+        let s4: anyhow::Error = ClientError::Http4xx {
+            status: 400,
+            message: "bad".into(),
+        }
+        .into();
+        assert!(classify_retriable(&conn, false));
+        assert!(classify_retriable(&s5, false));
+        assert!(!classify_retriable(&s4, false));
     }
 
     #[test]
