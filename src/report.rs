@@ -200,6 +200,19 @@ impl Default for ReportBuilder {
     }
 }
 
+/// Divide while guaranteeing a finite result. Returns 0.0 when the denominator
+/// is non-positive or the quotient would be Infinity/NaN — non-finite floats
+/// serialize as bare `Infinity`/`NaN` tokens that make the report invalid JSON.
+fn safe_div(numerator: f64, denominator: f64) -> f64 {
+    if denominator > 0.0 {
+        let quotient = numerator / denominator;
+        if quotient.is_finite() {
+            return quotient;
+        }
+    }
+    0.0
+}
+
 impl ReportBuilder {
     pub fn new() -> Self {
         Self {
@@ -329,9 +342,9 @@ impl ReportBuilder {
         };
 
         let throughput = ThroughputStats {
-            requests_per_second: requests_success as f64 / duration_secs,
-            input_tokens_per_second: input_tokens as f64 / duration_secs,
-            output_tokens_per_second: output_tokens as f64 / duration_secs,
+            requests_per_second: safe_div(requests_success as f64, duration_secs),
+            input_tokens_per_second: safe_div(input_tokens as f64, duration_secs),
+            output_tokens_per_second: safe_div(output_tokens as f64, duration_secs),
             total_input_tokens: input_tokens,
             total_output_tokens: output_tokens,
         };
@@ -403,14 +416,18 @@ impl ReportBuilder {
 
     /// Extract percentiles from a histogram, returning (mean, p50, p90, p95, p99) in milliseconds.
     fn extract_percentiles_ms(histogram: &Histogram) -> (f64, f64, f64, f64, f64) {
+        // Approximate mean: weight each bucket by its center (not its upper edge,
+        // which would bias the mean high). Accumulate in u128 to avoid overflow
+        // over long runs with many samples.
         let mean = {
-            let mut sum = 0u64;
-            let mut count = 0u64;
+            let mut sum = 0u128;
+            let mut count = 0u128;
             for bucket in histogram.iter() {
                 let bucket_count = bucket.count();
                 if bucket_count > 0 {
-                    sum += bucket.end() * bucket_count;
-                    count += bucket_count;
+                    let center = (bucket.start() as u128 + bucket.end() as u128) / 2;
+                    sum += center * bucket_count as u128;
+                    count += bucket_count as u128;
                 }
             }
             if count > 0 {
@@ -869,6 +886,43 @@ pub fn build_cache_section() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn safe_div_never_produces_non_finite() {
+        // A zero-duration or zero-count run must not yield Infinity/NaN, which
+        // serde_json emits as bare tokens that make the whole report invalid JSON.
+        assert_eq!(safe_div(5.0, 0.0), 0.0); // would be +Infinity
+        assert_eq!(safe_div(0.0, 0.0), 0.0); // would be NaN
+        assert_eq!(safe_div(10.0, 2.0), 5.0); // normal case unaffected
+        assert!(safe_div(1.0, f64::NAN).is_finite());
+    }
+
+    #[test]
+    fn mean_uses_bucket_center_not_upper_edge() {
+        use metriken::AtomicHistogram;
+
+        // 1.5 ms lands in a wide histogram bucket (grouping_power=7), so the
+        // bucket's upper edge is strictly above its center.
+        let h = AtomicHistogram::new(7, 64);
+        h.increment(1_500_000).unwrap();
+        let loaded = h.load().unwrap();
+
+        // Derive the expected center from the histogram's own bucket geometry.
+        let bucket = loaded.iter().find(|b| b.count() > 0).unwrap();
+        // Integer-truncated center, matching the helper's u128 arithmetic.
+        let expected_center_ms = ((bucket.start() + bucket.end()) / 2) as f64 / 1_000_000.0;
+        let upper_edge_ms = bucket.end() as f64 / 1_000_000.0;
+        assert!(
+            upper_edge_ms > expected_center_ms,
+            "test precondition: bucket must be wide"
+        );
+
+        let (mean, _, _, _, _) = ReportBuilder::extract_percentiles_ms(&loaded);
+        assert!(
+            (mean - expected_center_ms).abs() < 1e-9,
+            "mean {mean} should be the bucket center {expected_center_ms}, not the upper edge {upper_edge_ms}"
+        );
+    }
 
     #[test]
     fn cache_section_absent_when_no_observations() {

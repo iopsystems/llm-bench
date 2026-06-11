@@ -6,9 +6,14 @@ fn strip_thinking_tags(text: &str) -> String {
     let tags = ["think", "thinking", "reasoning", "reflection"];
     let mut result = text.to_string();
     for tag in tags {
-        let pattern = format!(r"(?si)<{}>.*?</{}>", tag, tag);
-        let re = Regex::new(&pattern).unwrap();
-        result = re.replace_all(&result, "").to_string();
+        // Strip well-formed blocks first.
+        let closed = Regex::new(&format!(r"(?si)<{}>.*?</{}>", tag, tag)).unwrap();
+        result = closed.replace_all(&result, "").to_string();
+        // Then strip an unclosed opening tag to end-of-string: a response
+        // truncated mid-thought (no closing tag) contains only reasoning
+        // scratch, which must not be mined for a "final" answer.
+        let unclosed = Regex::new(&format!(r"(?si)<{}>.*", tag)).unwrap();
+        result = unclosed.replace_all(&result, "").to_string();
     }
     result
 }
@@ -38,7 +43,10 @@ pub fn extract_answer(text: &str) -> Option<char> {
 /// Stage 1: Match "answer is (X)" or "answer is X"
 fn extract_answer_is(text: &str) -> Option<char> {
     let re = Regex::new(r"(?i)answer is \(?([A-J])\)?").unwrap();
-    re.captures(text)
+    // Take the LAST occurrence: reasoning models often explore a wrong answer
+    // ("the answer is A, but...") before concluding with the correct one.
+    re.captures_iter(text)
+        .last()
         .and_then(|caps| caps.get(1))
         .and_then(|m| m.as_str().chars().next())
 }
@@ -46,7 +54,9 @@ fn extract_answer_is(text: &str) -> Option<char> {
 /// Stage 2: Match "Answer: X", "answer: X", "ANSWER: X", etc.
 fn extract_answer_colon(text: &str) -> Option<char> {
     let re = Regex::new(r"(?i)answer:\s*([A-J])").unwrap();
-    re.captures(text)
+    // Take the LAST occurrence (self-correction / few-shot echoes).
+    re.captures_iter(text)
+        .last()
         .and_then(|caps| caps.get(1))
         .and_then(|m| m.as_str().chars().next())
 }
@@ -113,5 +123,30 @@ mod tests {
     fn test_strip_multiline_thinking() {
         let text = "<think>\nLine 1\nLine 2\nthe answer is A\n</think>\nthe answer is (B)";
         assert_eq!(extract_answer(text), Some('B'));
+    }
+
+    #[test]
+    fn test_answer_is_takes_last_occurrence() {
+        // A reasoning model explores a wrong answer then concludes with the right one.
+        // Stage 1 must take the LAST "answer is" match, not the first.
+        let text = "First I thought the answer is A, but reconsidering, the answer is (C)";
+        assert_eq!(extract_answer(text), Some('C'));
+    }
+
+    #[test]
+    fn test_answer_colon_takes_last_occurrence() {
+        // Few-shot echoes / self-correction produce multiple "Answer:" lines;
+        // the final one is the model's actual answer.
+        let text = "Answer: A\n... wait, let me redo this ...\nAnswer: C";
+        assert_eq!(extract_answer(text), Some('C'));
+    }
+
+    #[test]
+    fn test_unclosed_thinking_tag_yields_no_false_answer() {
+        // Reasoning model truncated mid-thought: <think> never closes.
+        // The "answer is A" inside is reasoning scratch, not a final answer,
+        // so extraction should fail rather than score against the chain-of-thought.
+        let text = "<think>Let me work through this. If X then the answer is A, but I should check";
+        assert_eq!(extract_answer(text), None);
     }
 }

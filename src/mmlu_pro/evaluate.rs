@@ -76,11 +76,21 @@ fn load_existing_results(path: &Path) -> Vec<QuestionResult> {
     }
 }
 
+/// Atomically write `bytes` to `path` by writing a sibling temp file and
+/// renaming it into place. A crash or error mid-write leaves the existing
+/// file untouched, rather than truncating it (which would make resume discard
+/// all prior results for the category).
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 /// Save results to a category result file.
 fn save_results(results: &[QuestionResult], path: &Path) -> Result<()> {
     let json = serde_json::to_string_pretty(results)?;
-    std::fs::write(path, json)?;
-    Ok(())
+    write_atomic(path, json.as_bytes())
 }
 
 /// Save category summary to a JSON file.
@@ -129,8 +139,7 @@ fn save_summary(stats: &HashMap<String, CategoryStats>, path: &Path) -> Result<(
     );
 
     let json = serde_json::to_string_pretty(&summary)?;
-    std::fs::write(path, json)?;
-    Ok(())
+    write_atomic(path, json.as_bytes())
 }
 
 fn format_eta(secs: u64) -> String {
@@ -631,4 +640,65 @@ pub async fn run_evaluation(
         category_stats: all_stats,
         token_stats: all_token_stats,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_result(id: i64) -> QuestionResult {
+        QuestionResult {
+            question_id: id,
+            question: "q".to_string(),
+            category: "cat".to_string(),
+            options: vec!["A".to_string(), "B".to_string()],
+            answer: "A".to_string(),
+            answer_index: 0,
+            response: "the answer is (A)".to_string(),
+            pred: Some("A".to_string()),
+            prompt: None,
+        }
+    }
+
+    #[test]
+    fn save_results_roundtrips_through_load() {
+        let dir = std::env::temp_dir().join(format!("mmlu_rt_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cat_result.json");
+
+        let results = vec![sample_result(1), sample_result(2)];
+        save_results(&results, &path).unwrap();
+        let loaded = load_existing_results(&path);
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].question_id, 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn write_atomic_preserves_existing_file_when_write_fails() {
+        // A crash/failure mid-write must not destroy already-saved results.
+        let dir = std::env::temp_dir().join(format!("mmlu_atomic_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("results.json");
+        std::fs::write(&dest, b"GOOD").unwrap();
+
+        // Block the temp path by occupying it with a directory, so the temp
+        // write fails before any rename can touch the destination.
+        let tmp = dest.with_extension("tmp");
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let result = write_atomic(&dest, b"NEW");
+        assert!(
+            result.is_err(),
+            "write should fail when temp path is blocked"
+        );
+        assert_eq!(
+            std::fs::read(&dest).unwrap(),
+            b"GOOD",
+            "destination must retain its prior contents on a failed write"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

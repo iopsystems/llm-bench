@@ -1,6 +1,5 @@
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use rand::thread_rng;
 use rand_distr::{Distribution, Exp, Normal};
 use std::time::Duration;
 
@@ -12,8 +11,14 @@ pub struct RequestDistribution {
 }
 
 enum DistributionType {
-    Uniform { interval: Duration },
-    Exponential { exp_dist: Exp<f64> },
+    Uniform {
+        interval: Duration,
+    },
+    Exponential {
+        exp_dist: Exp<f64>,
+        // Boxed to keep the enum small (StdRng is ~320 bytes); allocated once.
+        rng: Box<StdRng>,
+    },
 }
 
 impl RequestDistribution {
@@ -22,12 +27,15 @@ impl RequestDistribution {
     /// # Arguments
     /// * `arrival_dist` - Type of distribution (uniform or poisson)
     /// * `qps` - Target queries per second
-    pub fn new(arrival_dist: &ArrivalDistribution, qps: f64) -> Self {
+    /// * `seed` - Seed for the Poisson arrival RNG, so runs are reproducible
+    pub fn new(arrival_dist: &ArrivalDistribution, qps: f64, seed: u64) -> Self {
         let dist_type = match arrival_dist {
             ArrivalDistribution::Uniform => {
-                let interval_ms = (1000.0 / qps) as u64;
+                // Keep sub-millisecond precision: integer-ms truncation biases the
+                // rate (e.g. 3 QPS → 333 ms → 3.003 QPS) and collapses to 0 ms for
+                // any rate above 1000 QPS, which would busy-spin.
                 DistributionType::Uniform {
-                    interval: Duration::from_millis(interval_ms),
+                    interval: Duration::from_secs_f64(1.0 / qps),
                 }
             }
             ArrivalDistribution::Poisson => {
@@ -35,7 +43,10 @@ impl RequestDistribution {
                 // λ (lambda) = rate = qps
                 let exp_dist =
                     Exp::new(qps).expect("QPS must be positive for exponential distribution");
-                DistributionType::Exponential { exp_dist }
+                DistributionType::Exponential {
+                    exp_dist,
+                    rng: Box::new(StdRng::seed_from_u64(seed)),
+                }
             }
         };
 
@@ -46,13 +57,12 @@ impl RequestDistribution {
     ///
     /// For uniform distribution, returns a fixed interval.
     /// For Poisson/exponential, samples from the distribution.
-    pub fn next_delay(&self) -> Duration {
-        match &self.dist_type {
+    pub fn next_delay(&mut self) -> Duration {
+        match &mut self.dist_type {
             DistributionType::Uniform { interval } => *interval,
-            DistributionType::Exponential { exp_dist } => {
-                let mut rng = thread_rng();
-                // Sample returns time in seconds
-                let wait_secs = exp_dist.sample(&mut rng);
+            DistributionType::Exponential { exp_dist, rng } => {
+                // Sample returns time in seconds, drawn from the seeded RNG.
+                let wait_secs = exp_dist.sample(rng.as_mut());
                 Duration::from_secs_f64(wait_secs)
             }
         }
@@ -124,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_uniform_distribution() {
-        let dist = RequestDistribution::new(&ArrivalDistribution::Uniform, 10.0);
+        let mut dist = RequestDistribution::new(&ArrivalDistribution::Uniform, 10.0, 0);
 
         // For 10 QPS, expect 100ms intervals
         let delay = dist.next_delay();
@@ -136,8 +146,25 @@ mod tests {
     }
 
     #[test]
+    fn uniform_interval_is_sub_millisecond_accurate() {
+        // 3 QPS → exactly 1/3 s. Integer-millisecond truncation (333 ms)
+        // understates the period and biases the achieved rate high.
+        let mut dist = RequestDistribution::new(&ArrivalDistribution::Uniform, 3.0, 0);
+        assert_eq!(dist.next_delay(), Duration::from_secs_f64(1.0 / 3.0));
+    }
+
+    #[test]
+    fn uniform_interval_supports_rates_above_1000_qps() {
+        // 2000 QPS → 0.5 ms. Integer-millisecond truncation collapses this to
+        // 0 ms, turning the generator into a busy-spin that ignores the target.
+        let mut dist = RequestDistribution::new(&ArrivalDistribution::Uniform, 2000.0, 0);
+        assert_eq!(dist.next_delay(), Duration::from_secs_f64(1.0 / 2000.0));
+        assert!(dist.next_delay() > Duration::ZERO);
+    }
+
+    #[test]
     fn test_poisson_distribution_variability() {
-        let dist = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0);
+        let mut dist = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0, 0);
 
         // Collect several samples
         let mut delays = Vec::new();
@@ -163,11 +190,22 @@ mod tests {
     }
 
     #[test]
+    fn poisson_is_deterministic_for_seed() {
+        // Two generators built with the same seed must produce identical
+        // Poisson arrival sequences, so a run can be reproduced for A/B testing.
+        let mut a = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0, 123);
+        let mut b = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0, 123);
+        let seq_a: Vec<Duration> = (0..50).map(|_| a.next_delay()).collect();
+        let seq_b: Vec<Duration> = (0..50).map(|_| b.next_delay()).collect();
+        assert_eq!(seq_a, seq_b);
+    }
+
+    #[test]
     fn test_distribution_name() {
-        let uniform = RequestDistribution::new(&ArrivalDistribution::Uniform, 10.0);
+        let uniform = RequestDistribution::new(&ArrivalDistribution::Uniform, 10.0, 0);
         assert_eq!(uniform.distribution_name(), "Uniform");
 
-        let poisson = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0);
+        let poisson = RequestDistribution::new(&ArrivalDistribution::Poisson, 10.0, 0);
         assert_eq!(poisson.distribution_name(), "Poisson");
     }
 

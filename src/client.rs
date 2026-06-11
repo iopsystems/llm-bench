@@ -38,6 +38,7 @@ pub struct OpenAIClient {
     max_retries: u32,
     retry_initial_delay_ms: u64,
     retry_max_delay_ms: u64,
+    timeout: Duration,
     chat_template_kwargs: Option<serde_json::Value>,
 }
 
@@ -269,6 +270,7 @@ impl OpenAIClient {
             max_retries: config.max_retries,
             retry_initial_delay_ms: config.retry_initial_delay_ms,
             retry_max_delay_ms: config.retry_max_delay_ms,
+            timeout: config.timeout,
             chat_template_kwargs: config.chat_template_kwargs,
         })
     }
@@ -329,7 +331,7 @@ impl OpenAIClient {
                 if e.is_connect() {
                     return Err(ClientError::Connection(e.to_string()).into());
                 } else if e.is_timeout() {
-                    return Err(ClientError::Timeout(Duration::from_secs(60)).into());
+                    return Err(ClientError::Timeout(self.timeout).into());
                 } else if e.is_request() {
                     let err_msg = e.to_string();
                     if err_msg.contains("connection closed")
@@ -489,7 +491,7 @@ impl OpenAIClient {
                 if e.is_connect() {
                     return Err(ClientError::Connection(e.to_string()).into());
                 } else if e.is_timeout() {
-                    return Err(ClientError::Timeout(Duration::from_secs(60)).into());
+                    return Err(ClientError::Timeout(self.timeout).into());
                 } else if e.is_request() {
                     // Check if this is a connection-related request error
                     let err_msg = e.to_string();
@@ -1132,6 +1134,24 @@ mod tests {
             usage.prompt_tokens_details.as_ref().unwrap().cached_tokens,
             0
         );
+    }
+
+    #[test]
+    fn client_retains_configured_timeout_for_timeout_errors() {
+        // Timeout errors must report the configured timeout, not a hard-coded 60s.
+        let config = ClientConfig {
+            base_url: "http://localhost:1".to_string(),
+            api_key: None,
+            model: "test".to_string(),
+            timeout: Duration::from_secs(7),
+            max_retries: 0,
+            retry_initial_delay_ms: 1,
+            retry_max_delay_ms: 1,
+            pool_size: 1,
+            chat_template_kwargs: None,
+        };
+        let client = OpenAIClient::new(config).unwrap();
+        assert_eq!(client.timeout, Duration::from_secs(7));
     }
 
     #[test]

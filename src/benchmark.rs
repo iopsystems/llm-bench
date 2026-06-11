@@ -1159,8 +1159,13 @@ impl BenchmarkRunner {
             .qps
             .expect("QPS must be specified for fixed_qps mode");
 
-        // Create request distribution
-        let distribution = RequestDistribution::new(&self.config.load.arrival_distribution, qps);
+        // Create request distribution. Seed the arrival RNG so Poisson runs are
+        // reproducible, matching the rest of the tool's seeded randomness.
+        let mut distribution = RequestDistribution::new(
+            &self.config.load.arrival_distribution,
+            qps,
+            self.config.input.seed.unwrap_or(42),
+        );
 
         info!(
             "Running in fixed QPS mode: {} requests/second, {} distribution, max {} in-flight",
