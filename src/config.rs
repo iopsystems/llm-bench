@@ -390,13 +390,17 @@ pub struct SaturationConfig {
     /// Duration to sample at each concurrency level (e.g. "60s", "2m")
     #[serde(default = "default_sample_window")]
     pub sample_window: String,
-    /// Number of consecutive SLO failures before stopping
+    /// Deprecated: the search now bisects and confirms rather than stopping after
+    /// N consecutive failures. Accepted for backward compatibility but unused.
     #[serde(default = "default_stop_after_failures")]
     pub stop_after_failures: u32,
     /// Maximum concurrency to try
     #[serde(default = "default_max_concurrency")]
     pub max_concurrency: usize,
-    /// Minimum ratio of achieved/expected output throughput (0.0–1.0)
+    /// Minimum throughput-efficiency ratio (0.0–1.0). A rung trips the throughput
+    /// gate when its output tokens/s falls below this fraction of the throughput
+    /// linearly projected from the previous rung (marginal, one step back) — i.e.
+    /// it detects the plateau where adding concurrency stops adding throughput.
     #[serde(default = "default_min_throughput_ratio")]
     pub min_throughput_ratio: f64,
 }
