@@ -317,15 +317,22 @@ level = "info"
 #
 # When enabled, the saturation search controls concurrency — the load section's
 # concurrent_requests is ignored. You still need duration_seconds or
-# total_requests set (the search terminates on SLO failures, not duration).
+# total_requests set (the search terminates on its own, not on duration).
+#
+# The search climbs concurrency multiplicatively until an SLO breaks, re-probes
+# from a drained state to rule out transient/metastable failures, then binary-
+# searches the exact ceiling and confirms it over several windows. The summary
+# reports the max compliant concurrency, the saturation onset (knee), and any
+# transient recoveries.
 #
 # [saturation]
 # start_concurrency = 1         # Starting concurrency level
-# step_multiplier = 1.5         # Concurrency increase per step (50% increase)
+# step_multiplier = 1.5         # Multiplicative climb step before the first SLO break
 # sample_window = "60s"         # How long to measure at each concurrency level
-# stop_after_failures = 3       # Stop after N consecutive SLO failures
 # max_concurrency = 256         # Absolute ceiling on concurrency
-# min_throughput_ratio = 0.9    # Achieved tokens/s must be >= 90% of linear scaling
+# min_throughput_ratio = 0.9    # Plateau gate: tokens/s must stay >= 90% of the
+#                               # throughput projected from the previous rung
+# # stop_after_failures = 3     # Deprecated/unused (kept for backward compat)
 #
 # # SLO thresholds — set any combination of TTFT, ITL, TPOT at p50/p99/p999.
 # # At least one threshold must be specified.

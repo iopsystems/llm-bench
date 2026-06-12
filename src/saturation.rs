@@ -28,16 +28,33 @@ struct StepPercentiles {
     tpot_p999: f64,
 }
 
-/// State machine for concurrency-based saturation search.
+/// Generous safety cap on total measured windows — real searches use far fewer;
+/// this only guards against a non-terminating loop.
+const SATURATION_WINDOW_BUDGET: u32 = 500;
+
+/// What the async driver should do after a window completes.
+pub enum AdvanceOutcome {
+    /// Search finished.
+    Completed,
+    /// Measure the next window at `target`; drain/settle first when `drain` is set.
+    Measure { target: usize, drain: bool },
+    /// Drop to `to` and drain (no measurement); then call `resume` for the next step.
+    Drain { to: usize },
+}
+
+/// State machine for concurrency-based saturation search. Owns the pure
+/// [`SearchPlanner`] and the per-window metric snapshotting; the async driver in
+/// the benchmark module applies the concurrency changes and drains.
 pub struct SaturationSearchState {
     config: SaturationConfig,
     semaphore: Arc<Semaphore>,
     sample_window: std::time::Duration,
+    planner: SearchPlanner,
 
     current_concurrency: usize,
-    last_good_concurrency: Option<usize>,
-    last_good_throughput: Option<f64>,
-    consecutive_failures: u32,
+    // Label + drain flag for the window currently being measured.
+    current_phase: String,
+    current_drained: bool,
     step_start: Instant,
 
     // Histogram snapshots at step start (for delta computation)
@@ -51,6 +68,7 @@ pub struct SaturationSearchState {
 
     results: Vec<SaturationStep>,
     completed: bool,
+    final_max: Option<usize>,
     header_printed: bool,
 }
 
@@ -73,12 +91,21 @@ pub struct SaturationStep {
     pub tpot_p999_ms: f64,
     pub slo_passed: bool,
     pub fail_reason: String,
+    /// Which search phase produced this rung: "climb", "bisect", or "confirm".
+    pub phase: String,
+    /// True if concurrency was drained/settled before this window was measured.
+    pub drained: bool,
 }
 
 /// Final saturation search results.
 #[derive(Debug, Clone, Serialize)]
 pub struct SaturationResults {
     pub max_compliant_concurrency: Option<usize>,
+    /// First genuinely-failing concurrency (saturation onset), if reached.
+    pub knee_concurrency: Option<usize>,
+    /// Concurrencies that failed once but passed after draining — transient/
+    /// metastable load, not a true capacity limit.
+    pub transient_recoveries: Vec<usize>,
     pub steps: Vec<SaturationStep>,
 }
 
@@ -86,15 +113,21 @@ impl SaturationSearchState {
     pub fn new(config: SaturationConfig, semaphore: Arc<Semaphore>) -> Self {
         let sample_window =
             humantime::parse_duration(&config.sample_window).expect("validated in Config");
+        let planner = SearchPlanner::new(
+            config.max_concurrency,
+            config.step_multiplier,
+            config.min_throughput_ratio,
+            SATURATION_WINDOW_BUDGET,
+        );
 
         Self {
             config,
             semaphore,
             sample_window,
+            planner,
             current_concurrency: 0, // set in initialize()
-            last_good_concurrency: None,
-            last_good_throughput: None,
-            consecutive_failures: 0,
+            current_phase: "climb".to_string(),
+            current_drained: false,
             step_start: Instant::now(),
             step_ttft_snapshot: None,
             step_itl_snapshot: None,
@@ -103,14 +136,32 @@ impl SaturationSearchState {
             step_requests_success: 0,
             results: Vec::new(),
             completed: false,
+            final_max: None,
             header_printed: false,
         }
     }
 
-    /// Take initial snapshots and record the starting state.
+    pub fn sample_window(&self) -> std::time::Duration {
+        self.sample_window
+    }
+
+    /// Set the starting concurrency and snapshot the first window.
     /// Must be called after warmup completes and before the control loop begins.
     pub fn initialize(&mut self) {
         self.current_concurrency = self.config.start_concurrency;
+        self.current_phase = "climb".to_string();
+        self.current_drained = false;
+        self.begin_window();
+    }
+
+    /// True once the current window has run for a full `sample_window`.
+    pub fn window_elapsed(&self) -> bool {
+        !self.completed && self.step_start.elapsed() >= self.sample_window
+    }
+
+    /// Reset per-window metric snapshots and restart the window clock. Call after
+    /// any (optional) drain so the measurement reflects the new steady state.
+    pub fn begin_window(&mut self) {
         self.step_start = Instant::now();
         self.step_ttft_snapshot = merge_histogram_group(&metrics::TTFT);
         self.step_itl_snapshot = merge_histogram_group(&metrics::ITL);
@@ -119,33 +170,75 @@ impl SaturationSearchState {
         self.step_requests_success = metrics::REQUESTS.value(metrics::REQ_SUCCESS).unwrap_or(0);
     }
 
-    /// Check if the sample window has elapsed and advance to the next step.
-    ///
-    /// Returns `true` if a step was completed.
-    pub fn check_and_advance(&mut self) -> bool {
-        if self.completed {
-            return false;
-        }
-
-        if self.step_start.elapsed() < self.sample_window {
-            return false;
-        }
-
+    /// Measure the just-finished window, advance the planner, apply the next
+    /// concurrency to the semaphore, and report what the driver should do next.
+    pub fn advance(&mut self) -> AdvanceOutcome {
         if !self.header_printed {
             print_header();
             self.header_printed = true;
         }
 
-        let elapsed_secs = self.step_start.elapsed().as_secs_f64();
+        let outcome = self.record_window();
+        let action = self.planner.on_step(outcome);
+        self.apply_action(action)
+    }
 
-        // Snapshot current state
+    /// Follow-up after a `Drain` completes (no window was measured).
+    pub fn resume(&mut self) -> AdvanceOutcome {
+        let action = self.planner.resume();
+        self.apply_action(action)
+    }
+
+    /// Apply a planner action to the semaphore and translate it for the driver.
+    fn apply_action(&mut self, action: Action) -> AdvanceOutcome {
+        match action {
+            Action::Done { max_compliant } => {
+                self.final_max = max_compliant;
+                self.completed = true;
+                print_summary(&self.results());
+                AdvanceOutcome::Completed
+            }
+            Action::Measure { target, drain } => {
+                self.apply_concurrency(target);
+                self.current_phase = self.planner.phase_label().to_string();
+                self.current_drained = drain;
+                AdvanceOutcome::Measure { target, drain }
+            }
+            Action::Drain { to } => {
+                self.apply_concurrency(to);
+                AdvanceOutcome::Drain { to }
+            }
+        }
+    }
+
+    /// Grow (add_permits) or shrink (forget_permits) the semaphore to `target`.
+    fn apply_concurrency(&mut self, target: usize) {
+        use std::cmp::Ordering;
+        match target.cmp(&self.current_concurrency) {
+            Ordering::Greater => self
+                .semaphore
+                .add_permits(target - self.current_concurrency),
+            Ordering::Less => {
+                self.semaphore
+                    .forget_permits(self.current_concurrency - target);
+            }
+            Ordering::Equal => {}
+        }
+        self.current_concurrency = target;
+    }
+
+    /// Compute the just-finished window's metrics, print + record the step, and
+    /// return the outcome the planner consumes. Latency SLO drives pass/fail here;
+    /// the planner applies the throughput (marginal-gain) gate from the throughput.
+    fn record_window(&mut self) -> StepOutcome {
+        let elapsed_secs = self.step_start.elapsed().as_secs_f64().max(1e-9);
+
         let current_ttft = merge_histogram_group(&metrics::TTFT);
         let current_itl = merge_histogram_group(&metrics::ITL);
         let current_tpot = merge_histogram_group(&metrics::TPOT);
         let current_output_tokens = output_tokens_total();
         let current_requests_success = metrics::REQUESTS.value(metrics::REQ_SUCCESS).unwrap_or(0);
 
-        // Compute deltas
         let delta_output_tokens = current_output_tokens.saturating_sub(self.step_output_tokens);
         let delta_requests = current_requests_success.saturating_sub(self.step_requests_success);
         let output_tokens_per_sec = delta_output_tokens as f64 / elapsed_secs;
@@ -155,7 +248,6 @@ impl SaturationSearchState {
         let delta_itl = compute_delta(&current_itl, &self.step_itl_snapshot);
         let delta_tpot = compute_delta(&current_tpot, &self.step_tpot_snapshot);
 
-        // Extract percentiles
         let (ttft_p50, ttft_p99, ttft_p999) = extract_percentiles_ms(&delta_ttft);
         let (itl_p50, itl_p99, itl_p999) = extract_percentiles_ms(&delta_itl);
         let (tpot_p50, tpot_p99, tpot_p999) = extract_percentiles_ms(&delta_tpot);
@@ -172,36 +264,8 @@ impl SaturationSearchState {
             tpot_p999,
         };
 
-        // Check SLO
         let latency_reason = self.slo_fail_reason(&percentiles);
-
-        // Check throughput ratio (skip on first step — no baseline yet)
-        let throughput_ok = if let Some(last_throughput) = self.last_good_throughput {
-            let last_concurrency = self.last_good_concurrency.unwrap_or(1) as f64;
-            let expected = last_throughput * (self.current_concurrency as f64 / last_concurrency);
-            let ratio = output_tokens_per_sec / expected;
-            ratio >= self.config.min_throughput_ratio
-        } else {
-            true
-        };
-
-        let slo_passed = throughput_ok && latency_reason.is_none();
-
-        let fail_reason = if slo_passed {
-            String::new()
-        } else if !throughput_ok {
-            let last_throughput = self.last_good_throughput.unwrap_or(0.0);
-            let last_concurrency = self.last_good_concurrency.unwrap_or(1) as f64;
-            let expected = last_throughput * (self.current_concurrency as f64 / last_concurrency);
-            let ratio = output_tokens_per_sec / expected;
-            format!(
-                "Throughput: {:.0}% of expected (need {:.0}%)",
-                ratio * 100.0,
-                self.config.min_throughput_ratio * 100.0
-            )
-        } else {
-            latency_reason.unwrap_or_default()
-        };
+        let latency_ok = latency_reason.is_none();
 
         let step = SaturationStep {
             concurrency: self.current_concurrency,
@@ -218,54 +282,20 @@ impl SaturationSearchState {
             tpot_p50_ms: tpot_p50,
             tpot_p99_ms: tpot_p99,
             tpot_p999_ms: tpot_p999,
-            slo_passed,
-            fail_reason,
+            slo_passed: latency_ok,
+            fail_reason: latency_reason.unwrap_or_default(),
+            phase: self.current_phase.clone(),
+            drained: self.current_drained,
         };
 
         print_step(self.results.len() + 1, &step);
         self.results.push(step);
 
-        // Update state
-        if slo_passed {
-            self.last_good_concurrency = Some(self.current_concurrency);
-            self.last_good_throughput = Some(output_tokens_per_sec);
-            self.consecutive_failures = 0;
-        } else {
-            self.consecutive_failures += 1;
+        StepOutcome {
+            concurrency: self.current_concurrency,
+            latency_ok,
+            throughput: output_tokens_per_sec,
         }
-
-        // Check termination
-        if self.consecutive_failures >= self.config.stop_after_failures {
-            self.completed = true;
-            print_summary(&self.results());
-            return true;
-        }
-
-        // Advance concurrency
-        let next = ((self.current_concurrency as f64 * self.config.step_multiplier).ceil()
-            as usize)
-            .max(self.current_concurrency + 1); // guarantee progress
-
-        if next > self.config.max_concurrency {
-            self.completed = true;
-            print_summary(&self.results());
-            return true;
-        }
-
-        // Grow the semaphore
-        let delta_permits = next - self.current_concurrency;
-        self.semaphore.add_permits(delta_permits);
-        self.current_concurrency = next;
-
-        // Reset step tracking
-        self.step_start = Instant::now();
-        self.step_ttft_snapshot = current_ttft;
-        self.step_itl_snapshot = current_itl;
-        self.step_tpot_snapshot = current_tpot;
-        self.step_output_tokens = current_output_tokens;
-        self.step_requests_success = current_requests_success;
-
-        true
     }
 
     /// Check all configured SLO thresholds, returning the first violation found.
@@ -306,17 +336,11 @@ impl SaturationSearchState {
         None
     }
 
-    pub fn is_completed(&self) -> bool {
-        self.completed
-    }
-
-    pub fn current_concurrency(&self) -> usize {
-        self.current_concurrency
-    }
-
     pub fn results(&self) -> SaturationResults {
         SaturationResults {
-            max_compliant_concurrency: self.last_good_concurrency,
+            max_compliant_concurrency: if self.completed { self.final_max } else { None },
+            knee_concurrency: self.planner.knee_concurrency(),
+            transient_recoveries: self.planner.transient_recoveries().to_vec(),
             steps: self.results.clone(),
         }
     }
@@ -432,11 +456,13 @@ fn print_header() {
 }
 
 fn print_step(step_num: usize, step: &SaturationStep) {
-    let result = if step.slo_passed {
+    let verdict = if step.slo_passed {
         "PASS".to_string()
     } else {
         format!("FAIL ({})", step.fail_reason)
     };
+    let drained = if step.drained { "*" } else { "" };
+    let result = format!("[{}{}] {}", step.phase, drained, verdict);
 
     println!(
         "{:>6} | {:>12} | {:>10.2} | {:>10.1} | {:>10.0}ms | {:>10.0}ms | {:>10.0}ms | {}",
@@ -483,5 +509,411 @@ fn print_summary(results: &SaturationResults) {
     } else {
         println!("  No compliant concurrency found — SLO failed at start_concurrency");
     }
+    if let Some(knee) = results.knee_concurrency {
+        println!("  Saturation onset (knee): concurrency {}", knee);
+    }
+    if !results.transient_recoveries.is_empty() {
+        println!(
+            "  Transient recoveries (failed once, passed after drain): {:?}",
+            results.transient_recoveries
+        );
+    }
     println!();
+}
+
+// ---------------------------------------------------------------------------
+// Search planner — pure decision logic for the concurrency search.
+//
+// Separated from all I/O (semaphore, metrics, printing) so the algorithm can be
+// unit-tested without a live server. The impure driver measures one window per
+// rung, builds a `StepOutcome`, calls `on_step`, and applies the returned `Action`.
+// ---------------------------------------------------------------------------
+
+/// Number of windows used to confirm the final boundary (M-of-N).
+const CONFIRM_WINDOWS: u32 = 3;
+
+/// Measured result of one concurrency rung.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StepOutcome {
+    pub concurrency: usize,
+    pub latency_ok: bool,
+    pub throughput: f64,
+}
+
+/// Next thing the driver should do.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Action {
+    /// Set concurrency to `target` (grow/shrink the semaphore), draining+settling
+    /// first when `drain` is true, then measure one window and call `on_step`.
+    Measure { target: usize, drain: bool },
+    /// Drop concurrency to `to` and drain to a clean slate WITHOUT measuring a
+    /// window (used to clear a metastable/congested state before re-probing). The
+    /// driver then calls `resume` for the follow-up action.
+    Drain { to: usize },
+    /// Search is complete.
+    Done { max_compliant: Option<usize> },
+}
+
+#[derive(Debug, Clone)]
+enum Phase {
+    Climbing,
+    /// Dropped to the last-good concurrency and drained; the next measurement
+    /// re-probes `failed_at` from a clean slate to decide transient vs genuine.
+    ReprobeMeasure {
+        failed_at: usize,
+    },
+    /// Binary search; `low` passes, `high` fails, `base` is the fixed throughput
+    /// baseline (the last-good rung when bisection began).
+    Bisecting {
+        low: usize,
+        high: usize,
+        base: (usize, f64),
+    },
+    /// Re-validate boundary `c` over several windows.
+    Confirming {
+        c: usize,
+        passes: u32,
+        total: u32,
+    },
+    Done,
+}
+
+/// Pure state machine driving the saturation search.
+pub struct SearchPlanner {
+    max_concurrency: usize,
+    step_multiplier: f64,
+    min_throughput_ratio: f64,
+    window_budget: u32,
+    windows_used: u32,
+    phase: Phase,
+    /// Highest known-good rung as (concurrency, throughput).
+    last_good: Option<(usize, f64)>,
+    reprobed: std::collections::HashSet<usize>,
+    knee_concurrency: Option<usize>,
+    transient_recoveries: Vec<usize>,
+}
+
+/// Throughput gate: the rung must deliver at least `min_ratio` of the throughput
+/// linearly projected from `base` for its concurrency. At a plateau the actual
+/// throughput stops scaling while the projection keeps rising, so the gate trips.
+fn throughput_ok(min_ratio: f64, base: Option<(usize, f64)>, conc: usize, tput: f64) -> bool {
+    match base {
+        Some((bc, bt)) if bc > 0 && bt > 0.0 => {
+            let expected = bt * (conc as f64 / bc as f64);
+            tput >= min_ratio * expected
+        }
+        _ => true, // no usable baseline → can't judge throughput, let latency decide
+    }
+}
+
+impl SearchPlanner {
+    pub fn new(
+        max_concurrency: usize,
+        step_multiplier: f64,
+        min_throughput_ratio: f64,
+        window_budget: u32,
+    ) -> Self {
+        Self {
+            max_concurrency,
+            step_multiplier,
+            min_throughput_ratio,
+            window_budget,
+            windows_used: 0,
+            phase: Phase::Climbing,
+            last_good: None,
+            reprobed: std::collections::HashSet::new(),
+            knee_concurrency: None,
+            transient_recoveries: Vec::new(),
+        }
+    }
+
+    pub fn knee_concurrency(&self) -> Option<usize> {
+        self.knee_concurrency
+    }
+
+    pub fn transient_recoveries(&self) -> &[usize] {
+        &self.transient_recoveries
+    }
+
+    /// Label for the phase that will produce the next measurement.
+    pub fn phase_label(&self) -> &'static str {
+        match self.phase {
+            Phase::Climbing => "climb",
+            Phase::ReprobeMeasure { .. } => "reprobe",
+            Phase::Bisecting { .. } => "bisect",
+            Phase::Confirming { .. } => "confirm",
+            Phase::Done => "done",
+        }
+    }
+
+    /// Follow-up action after a `Drain` completes (no window was measured). Only
+    /// valid in the reprobe phase, where it re-measures `failed_at` from the now
+    /// clean slate.
+    pub fn resume(&self) -> Action {
+        match self.phase {
+            Phase::ReprobeMeasure { failed_at } => Action::Measure {
+                target: failed_at,
+                drain: true,
+            },
+            _ => Action::Done {
+                max_compliant: self.last_good.map(|(c, _)| c),
+            },
+        }
+    }
+
+    /// Consume the just-measured rung's outcome and decide the next action.
+    pub fn on_step(&mut self, o: StepOutcome) -> Action {
+        self.windows_used += 1;
+        if self.windows_used > self.window_budget {
+            // Safety net against a non-terminating search; accept the best so far.
+            self.phase = Phase::Done;
+            return Action::Done {
+                max_compliant: self.last_good.map(|(c, _)| c),
+            };
+        }
+
+        match self.phase.clone() {
+            Phase::Climbing => self.on_climb(o),
+            Phase::ReprobeMeasure { failed_at } => self.on_reprobe(o, failed_at),
+            Phase::Bisecting { low, high, base } => self.on_bisect(o, low, high, base),
+            Phase::Confirming { c, passes, total } => self.on_confirm(o, c, passes, total),
+            Phase::Done => Action::Done {
+                max_compliant: self.last_good.map(|(c, _)| c),
+            },
+        }
+    }
+
+    fn on_climb(&mut self, o: StepOutcome) -> Action {
+        let passed = o.latency_ok
+            && throughput_ok(
+                self.min_throughput_ratio,
+                self.last_good,
+                o.concurrency,
+                o.throughput,
+            );
+        if passed {
+            self.last_good = Some((o.concurrency, o.throughput));
+            return self.climb_up(o.concurrency);
+        }
+        match self.last_good {
+            None => {
+                // Failed at the very first rung — nothing is compliant.
+                self.knee_concurrency = Some(o.concurrency);
+                self.phase = Phase::Done;
+                Action::Done {
+                    max_compliant: None,
+                }
+            }
+            Some((g, _)) => {
+                if self.reprobed.contains(&o.concurrency) {
+                    self.knee_concurrency = Some(o.concurrency);
+                    self.enter_bisect(g, o.concurrency)
+                } else {
+                    // Back off to the last-good rung and drain (no measurement)
+                    // before re-probing, to distinguish a transient/metastable
+                    // failure from a real one. The driver then `resume`s into the
+                    // re-measurement of `failed_at`.
+                    self.reprobed.insert(o.concurrency);
+                    self.phase = Phase::ReprobeMeasure {
+                        failed_at: o.concurrency,
+                    };
+                    Action::Drain { to: g }
+                }
+            }
+        }
+    }
+
+    fn on_reprobe(&mut self, o: StepOutcome, failed_at: usize) -> Action {
+        let passed = o.latency_ok
+            && throughput_ok(
+                self.min_throughput_ratio,
+                self.last_good,
+                o.concurrency,
+                o.throughput,
+            );
+        if passed {
+            // Recovered after draining → the first failure was transient.
+            self.transient_recoveries.push(failed_at);
+            self.last_good = Some((o.concurrency, o.throughput));
+            self.climb_up(o.concurrency)
+        } else {
+            self.knee_concurrency = Some(failed_at);
+            let g = self.last_good.map(|(c, _)| c).unwrap_or(0);
+            self.enter_bisect(g, failed_at)
+        }
+    }
+
+    fn climb_up(&mut self, c: usize) -> Action {
+        let next = ((c as f64 * self.step_multiplier).ceil() as usize).max(c + 1);
+        if next > self.max_concurrency {
+            self.enter_confirm(c)
+        } else {
+            self.phase = Phase::Climbing;
+            Action::Measure {
+                target: next,
+                drain: false,
+            }
+        }
+    }
+
+    fn enter_bisect(&mut self, low: usize, high: usize) -> Action {
+        let base = self.last_good.unwrap_or((low, 0.0));
+        self.bisect_advance(low, high, base)
+    }
+
+    fn bisect_advance(&mut self, low: usize, high: usize, base: (usize, f64)) -> Action {
+        if high.saturating_sub(low) <= 1 {
+            self.enter_confirm(low)
+        } else {
+            let mid = low + (high - low) / 2;
+            self.phase = Phase::Bisecting { low, high, base };
+            Action::Measure {
+                target: mid,
+                drain: true,
+            }
+        }
+    }
+
+    fn on_bisect(&mut self, o: StepOutcome, low: usize, high: usize, base: (usize, f64)) -> Action {
+        let mid = o.concurrency;
+        let passed =
+            o.latency_ok && throughput_ok(self.min_throughput_ratio, Some(base), mid, o.throughput);
+        let (nl, nh) = if passed {
+            self.last_good = Some((mid, o.throughput));
+            (mid, high)
+        } else {
+            (low, mid)
+        };
+        self.bisect_advance(nl, nh, base)
+    }
+
+    fn enter_confirm(&mut self, c: usize) -> Action {
+        self.phase = Phase::Confirming {
+            c,
+            passes: 0,
+            total: 0,
+        };
+        Action::Measure {
+            target: c,
+            drain: true,
+        }
+    }
+
+    fn on_confirm(&mut self, o: StepOutcome, c: usize, passes: u32, total: u32) -> Action {
+        let passes = passes + u32::from(o.latency_ok);
+        let total = total + 1;
+        if total >= CONFIRM_WINDOWS {
+            if passes * 2 > total {
+                self.phase = Phase::Done;
+                Action::Done {
+                    max_compliant: Some(c),
+                }
+            } else if c <= 1 {
+                self.phase = Phase::Done;
+                Action::Done {
+                    max_compliant: None,
+                }
+            } else {
+                // Boundary unstable across windows — drop one and re-confirm.
+                self.enter_confirm(c - 1)
+            }
+        } else {
+            self.phase = Phase::Confirming { c, passes, total };
+            Action::Measure {
+                target: c,
+                drain: false,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod planner_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Drive the planner against a model `(concurrency, nth_measurement) ->
+    /// (latency_ok, throughput)` until it finishes, returning the result + planner.
+    fn run<F: Fn(usize, usize) -> (bool, f64)>(
+        start: usize,
+        max: usize,
+        mult: f64,
+        min_ratio: f64,
+        budget: u32,
+        model: F,
+    ) -> (Option<usize>, SearchPlanner) {
+        let mut p = SearchPlanner::new(max, mult, min_ratio, budget);
+        let mut counts: HashMap<usize, usize> = HashMap::new();
+        // Bootstrap: the driver measures `start` first, then feeds the planner.
+        let mut next = Action::Measure {
+            target: start,
+            drain: false,
+        };
+        loop {
+            match next {
+                Action::Done { max_compliant } => return (max_compliant, p),
+                // A Drain measures no window — just fetch the follow-up action.
+                Action::Drain { .. } => next = p.resume(),
+                Action::Measure { target, .. } => {
+                    let n = counts.entry(target).or_insert(0);
+                    *n += 1;
+                    let (latency_ok, throughput) = model(target, *n);
+                    next = p.on_step(StepOutcome {
+                        concurrency: target,
+                        latency_ok,
+                        throughput,
+                    });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bisects_to_exact_latency_knee() {
+        // Server passes for concurrency <= 50, fails above. Throughput linear.
+        // A pure multiplicative climb (10,20,40,80) would report 40; bisection
+        // must pin the exact ceiling of 50.
+        let (mc, _) = run(10, 1000, 2.0, 0.9, 500, |c, _| (c <= 50, c as f64));
+        assert_eq!(mc, Some(50));
+    }
+
+    #[test]
+    fn no_compliant_when_start_fails() {
+        let (mc, p) = run(10, 1000, 2.0, 0.9, 500, |c, _| (c <= 5, c as f64));
+        assert_eq!(mc, None);
+        assert_eq!(p.knee_concurrency(), Some(10));
+    }
+
+    #[test]
+    fn transient_failure_recovers_after_drain() {
+        // 80 fails the first time it's measured but is fine afterward; the real
+        // latency knee is 200. The transient should be re-probed and recovered,
+        // and the search should continue to the true knee.
+        let (mc, p) = run(10, 1000, 2.0, 0.9, 500, |c, n| {
+            let latency_ok = if c == 80 && n == 1 { false } else { c <= 200 };
+            (latency_ok, c as f64)
+        });
+        assert_eq!(mc, Some(200));
+        assert!(p.transient_recoveries().contains(&80));
+    }
+
+    #[test]
+    fn detects_throughput_plateau() {
+        // Latency always fine, but throughput plateaus at 100 tokens/s. Relative
+        // to the pre-plateau baseline (80, 80), efficiency 100/c drops below 0.9
+        // at c > 111, so the compliant ceiling is 111.
+        let (mc, _) = run(10, 1000, 2.0, 0.9, 500, |c, _| (true, c.min(100) as f64));
+        assert_eq!(mc, Some(111));
+    }
+
+    #[test]
+    fn unstable_boundary_steps_down_on_confirm() {
+        // 50 passes once (so bisection lands on it) but fails every later window,
+        // so confirmation rejects it and steps down to a stable 49.
+        let (mc, _) = run(10, 1000, 2.0, 0.9, 500, |c, n| {
+            let ok = c <= 50 && !(c == 50 && n >= 2);
+            (ok, c as f64)
+        });
+        assert_eq!(mc, Some(49));
+    }
 }

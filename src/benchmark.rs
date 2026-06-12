@@ -164,6 +164,23 @@ fn effective_output_tokens(
     }
 }
 
+/// Drain in-flight requests after shrinking concurrency, then briefly settle, so
+/// the next saturation window measures the new steady state rather than the
+/// metastable congested tail left by the previous, higher concurrency. Bounded by
+/// `max_drain` so a server that never quiesces can't stall the search.
+async fn drain_and_settle(target: usize, max_drain: Duration) {
+    let start = Instant::now();
+    loop {
+        let inflight = crate::metrics::REQUESTS_INFLIGHT.value();
+        if inflight <= target as i64 || start.elapsed() >= max_drain {
+            break;
+        }
+        sleep(Duration::from_millis(200)).await;
+    }
+    // Brief settle so the new steady state establishes before measuring.
+    sleep(Duration::from_millis(500)).await;
+}
+
 /// Returns Some(true/false) if the server reported cache details, None otherwise.
 pub(crate) fn actual_cache_hit_option(usage: &crate::client::Usage) -> Option<bool> {
     usage
@@ -1188,11 +1205,32 @@ impl BenchmarkRunner {
             }));
         }
 
-        // Control loop — check saturation state periodically
-        loop {
+        // Control loop — each completed sample window advances the planner; when
+        // it asks to drop concurrency it drains to a clean state before measuring.
+        use crate::saturation::AdvanceOutcome;
+        'control: loop {
             sleep(Duration::from_secs(1)).await;
-            if sat_state.check_and_advance() && sat_state.is_completed() {
-                break;
+            if !sat_state.window_elapsed() {
+                continue;
+            }
+            // Apply planner actions until one starts a new measurement window.
+            let mut outcome = sat_state.advance();
+            loop {
+                match outcome {
+                    AdvanceOutcome::Completed => break 'control,
+                    AdvanceOutcome::Measure { target, drain } => {
+                        if drain {
+                            drain_and_settle(target, sat_state.sample_window()).await;
+                        }
+                        sat_state.begin_window();
+                        break;
+                    }
+                    AdvanceOutcome::Drain { to } => {
+                        // Drop + drain without measuring, then resume.
+                        drain_and_settle(to, sat_state.sample_window()).await;
+                        outcome = sat_state.resume();
+                    }
+                }
             }
         }
 
