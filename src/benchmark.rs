@@ -164,6 +164,16 @@ fn effective_output_tokens(
     }
 }
 
+/// Maximum outstanding (in-flight + queued) requests for QPS mode. When not set,
+/// a generous default that effectively never trips in a healthy run but bounds
+/// runaway accumulation under sustained overload: `max(concurrency * 100, 100k)`.
+fn effective_outstanding_cap(configured: Option<usize>, concurrency: usize) -> usize {
+    let cap = configured.unwrap_or_else(|| (concurrency.saturating_mul(100)).max(100_000));
+    // The cap must be at least the in-flight capacity, or it would drop requests
+    // before the pipe is even full and could starve `total_requests` termination.
+    cap.max(concurrency.max(1))
+}
+
 /// Select up to `sample_size` items by shuffling the full set (seeded for
 /// reproducibility) and then truncating. Shuffling *before* truncating makes the
 /// sample representative even when the source dataset is ordered (sorted by
@@ -1513,6 +1523,21 @@ impl BenchmarkRunner {
         // `next_send` and sleeping until it makes the schedule self-correcting.
         let mut next_send = Instant::now();
 
+        // Admission control: cap outstanding (queued + in-flight) requests. When
+        // the server can't sustain the offered rate, requests beyond the cap are
+        // shed (counted as overload) instead of queueing without bound.
+        let outstanding_cap =
+            effective_outstanding_cap(self.config.load.max_outstanding_requests, max_concurrent);
+        if let Some(configured) = self.config.load.max_outstanding_requests
+            && configured < max_concurrent
+        {
+            warn!(
+                "max_outstanding_requests ({}) is below concurrent_requests ({}); raised to {}",
+                configured, max_concurrent, outstanding_cap
+            );
+        }
+        let outstanding = Arc::new(AtomicUsize::new(0));
+
         // Main test loop
         loop {
             // Check termination conditions
@@ -1542,10 +1567,21 @@ impl BenchmarkRunner {
                 break;
             }
 
+            // Shed if too many requests are already outstanding (the server can't
+            // keep up at the offered rate): count it as overload and don't send it.
+            // Dropped slots are NOT counted toward `total_requests` (which means
+            // requests actually sent), so the run still sends `total` real requests.
+            if outstanding.load(Ordering::Relaxed) >= outstanding_cap {
+                crate::metrics::Metrics::record_dropped();
+                continue;
+            }
+            outstanding.fetch_add(1, Ordering::Relaxed);
+            let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
+
             // Spawn request
             let workloads = Arc::clone(&self.workloads);
-            let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
             let workload_idx = idx % workloads.len();
+            let outstanding_task = Arc::clone(&outstanding);
             let client = Arc::clone(&self.client);
             let tokenizer = Arc::clone(&self.tokenizer);
             let semaphore = Arc::clone(&semaphore);
@@ -1581,7 +1617,7 @@ impl BenchmarkRunner {
                     .acquire()
                     .await
                     .expect("semaphore should never be closed");
-                if let Some(timeout_duration) = request_timeout {
+                let result = if let Some(timeout_duration) = request_timeout {
                     // Execute with timeout based on remaining time
                     let request_future = Self::execute_workload(
                         &system_prompt_for_closure,
@@ -1629,15 +1665,16 @@ impl BenchmarkRunner {
                     .await;
                     completed.fetch_add(1, Ordering::Relaxed);
                     result
-                }
+                };
+                // No longer outstanding (queued + in-flight).
+                outstanding_task.fetch_sub(1, Ordering::Relaxed);
+                result
             });
             handles.push(handle);
 
             // Reap finished handles so the vec doesn't grow by one per request for
-            // the whole (healthy) run. Note: under sustained open-loop overload,
-            // tasks queued on the semaphore aren't finished yet, so offered-but-
-            // unserved requests still accumulate — inherent to QPS mode; bounding
-            // that would need a separate outstanding-request cap.
+            // the whole run. Outstanding work is bounded by `outstanding_cap`
+            // (admission control above); this just keeps the vec near in-flight size.
             if handles.len() >= max_concurrent + 256 {
                 handles.retain(|h| !h.is_finished());
             }
@@ -2341,6 +2378,19 @@ impl BenchmarkRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outstanding_cap_uses_generous_default_or_explicit() {
+        // Explicit value above concurrency is honored.
+        assert_eq!(effective_outstanding_cap(Some(500), 50), 500);
+        // Default: max(concurrency * 100, 100_000).
+        assert_eq!(effective_outstanding_cap(None, 50), 100_000);
+        assert_eq!(effective_outstanding_cap(None, 2000), 200_000);
+        // Never below concurrency — a cap under the in-flight capacity is degenerate
+        // (it can't fill the pipe) and would starve `total_requests` termination.
+        assert_eq!(effective_outstanding_cap(Some(10), 50), 50);
+        assert_eq!(effective_outstanding_cap(Some(0), 50), 50);
+    }
 
     #[test]
     fn sample_workloads_shuffles_before_truncating() {

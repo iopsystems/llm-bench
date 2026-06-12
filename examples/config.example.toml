@@ -97,6 +97,15 @@ concurrent_requests = 10
 # Default: "uniform"
 # arrival_distribution = "uniform"
 
+# QPS mode only: cap on outstanding (in-flight + queued) requests. When the server
+# can't sustain the offered rate, requests beyond the cap are dropped and counted
+# as overload (reported as "Overload: N of M offered dropped") instead of queueing
+# without bound. Default: max(concurrent_requests * 100, 100000) — generous enough
+# never to trip in a healthy run; set lower to model a bounded queue, or very high
+# to effectively disable. To find the sustainable rate/concurrency, prefer
+# saturation mode (see below).
+# max_outstanding_requests = 5000
+
 # --- Test Duration Settings ---
 # Specify EITHER total_requests OR duration_seconds (not both)
 
