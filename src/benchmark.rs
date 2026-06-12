@@ -164,6 +164,18 @@ fn effective_output_tokens(
     }
 }
 
+/// Select up to `sample_size` items by shuffling the full set (seeded for
+/// reproducibility) and then truncating. Shuffling *before* truncating makes the
+/// sample representative even when the source dataset is ordered (sorted by
+/// length, category, etc.) — taking the first N off an ordered file is biased.
+fn sample_workloads<T>(mut items: Vec<T>, sample_size: usize, seed: u64) -> Vec<T> {
+    use rand::seq::SliceRandom;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    items.shuffle(&mut rng);
+    items.truncate(sample_size);
+    items
+}
+
 /// Drain in-flight requests after shrinking concurrency, then briefly settle, so
 /// the next saturation window measures the new steady state rather than the
 /// metastable congested tail left by the previous, higher concurrency. Bounded by
@@ -293,21 +305,34 @@ impl BenchmarkRunner {
             let input_path = crate::dataset::resolve_input(&config.input.file).await?;
             let workloads = Self::load_workloads(&input_path).await?;
 
-            let workloads: Vec<Workload> = if let Some(sample_size) = config.input.sample_size {
-                workloads.into_iter().take(sample_size).collect()
-            } else {
-                workloads
-            };
-
-            // Deterministic shuffle if seed is set
-            if let Some(seed) = config.input.seed {
-                let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-                let mut shuffled = workloads;
-                shuffled.shuffle(&mut rng);
-                info!("Shuffled workloads with seed {}", seed);
-                shuffled
-            } else {
-                workloads
+            match config.input.sample_size {
+                Some(sample_size) => {
+                    if sample_size > workloads.len() {
+                        warn!(
+                            "sample_size {} exceeds dataset size {}; using all {} prompts",
+                            sample_size,
+                            workloads.len(),
+                            workloads.len()
+                        );
+                    }
+                    // Shuffle the full dataset before sampling so the sample is
+                    // representative (a sorted file would otherwise bias it).
+                    let seed = config.input.seed.unwrap_or(42);
+                    sample_workloads(workloads, sample_size, seed)
+                }
+                // No sampling: shuffle the whole set only when a seed is set (preserves
+                // prior file-ordered default when unseeded).
+                None => {
+                    if let Some(seed) = config.input.seed {
+                        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                        let mut shuffled = workloads;
+                        shuffled.shuffle(&mut rng);
+                        info!("Shuffled workloads with seed {}", seed);
+                        shuffled
+                    } else {
+                        workloads
+                    }
+                }
             }
         };
 
@@ -792,6 +817,11 @@ impl BenchmarkRunner {
                     result
                 });
                 handles.push(handle);
+
+                // Reap finished handles so the vec stays bounded over long runs.
+                if handles.len() >= self.config.load.concurrent_requests + 256 {
+                    handles.retain(|h| !h.is_finished());
+                }
             }
         } else if let Some(duration) = duration_limit {
             // Duration-based mode
@@ -1480,6 +1510,12 @@ impl BenchmarkRunner {
         // Capture system_prompt for the main test loop
         let system_prompt = Arc::clone(&self.system_prompt);
 
+        // Absolute send schedule. Sleeping a fresh inter-arrival delay each
+        // iteration would let per-iteration work accumulate as drift, biasing the
+        // achieved rate below target over a long run. Advancing an absolute
+        // `next_send` and sleeping until it makes the schedule self-correcting.
+        let mut next_send = Instant::now();
+
         // Main test loop
         loop {
             // Check termination conditions
@@ -1494,8 +1530,12 @@ impl BenchmarkRunner {
                 break;
             }
 
-            // Wait for rate limit (distribution-based)
-            tokio::time::sleep(distribution.next_delay()).await;
+            // Wait until this request's scheduled send time, then schedule the next.
+            tokio::time::sleep_until(next_send.into()).await;
+            // Scheduled arrival: latency is measured from here so any wait for an
+            // in-flight slot (schedule slip) is counted, not silently omitted.
+            let arrival = next_send;
+            next_send += distribution.next_delay();
 
             // Calculate remaining time if deadline exists
             let remaining = deadline.map(|d| d.saturating_duration_since(Instant::now()));
@@ -1504,11 +1544,6 @@ impl BenchmarkRunner {
             {
                 break;
             }
-
-            // Scheduled arrival: the moment the rate limiter releases this
-            // request. Latency is measured from here so any wait for an in-flight
-            // slot (schedule slip) is counted, not silently omitted.
-            let arrival = Instant::now();
 
             // Spawn request
             let workloads = Arc::clone(&self.workloads);
@@ -1600,6 +1635,15 @@ impl BenchmarkRunner {
                 }
             });
             handles.push(handle);
+
+            // Reap finished handles so the vec doesn't grow by one per request for
+            // the whole (healthy) run. Note: under sustained open-loop overload,
+            // tasks queued on the semaphore aren't finished yet, so offered-but-
+            // unserved requests still accumulate — inherent to QPS mode; bounding
+            // that would need a separate outstanding-request cap.
+            if handles.len() >= max_concurrent + 256 {
+                handles.retain(|h| !h.is_finished());
+            }
         }
 
         // Wait for all requests to complete with a grace period
@@ -2300,6 +2344,28 @@ impl BenchmarkRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sample_workloads_shuffles_before_truncating() {
+        // A sorted source must be shuffled BEFORE taking N, so the sample is
+        // representative rather than just the first N entries.
+        let items: Vec<usize> = (0..100).collect();
+        let sample = sample_workloads(items.clone(), 10, 7);
+        assert_eq!(sample.len(), 10);
+        assert_ne!(
+            sample,
+            (0..10).collect::<Vec<_>>(),
+            "must not be the first 10"
+        );
+        // Deterministic for a given seed.
+        assert_eq!(sample, sample_workloads(items, 10, 7));
+    }
+
+    #[test]
+    fn sample_workloads_caps_at_len() {
+        let items: Vec<usize> = (0..5).collect();
+        assert_eq!(sample_workloads(items, 100, 7).len(), 5);
+    }
 
     fn usage_with(completion: u32, reasoning: Option<u32>) -> crate::client::Usage {
         crate::client::Usage {
