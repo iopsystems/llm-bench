@@ -116,8 +116,11 @@ pub async fn periodic_stats(config: Config, warmup_complete: Arc<Notify>) {
     let start = Instant::now() - Duration::from_nanos(Utc::now().nanosecond() as u64)
         + Duration::from_secs(1);
 
-    // Create interval timer
+    // Create interval timer. Skip missed ticks rather than firing catch-up bursts
+    // back-to-back, which would produce compressed windows whose rates (divided by
+    // the actual elapsed time below) would otherwise be distorted.
     let mut interval = interval_at(start, interval_duration);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut window_id = 0;
 
     // Wait a bit for initial metrics
@@ -125,6 +128,10 @@ pub async fn periodic_stats(config: Config, warmup_complete: Arc<Notify>) {
 
     // Initialize previous snapshot
     let mut previous_snapshot = MetricsSnapshot::new();
+    // Wall-clock time the current window's baseline was taken, so rates divide by
+    // the ACTUAL elapsed time rather than the nominal interval (which drifts when
+    // a tick is delayed under load).
+    let mut last_window_time = Instant::now();
 
     while RUNNING.load(Ordering::Relaxed) {
         // Use timeout to check RUNNING flag periodically
@@ -151,26 +158,38 @@ pub async fn periodic_stats(config: Config, warmup_complete: Arc<Notify>) {
         let current_errors_stream = cg(&ERRORS, ERR_STREAM);
         let current_errors_other = cg(&ERRORS, ERR_OTHER);
 
-        // Calculate deltas for this window
-        let window_requests_sent = current_requests_sent - previous_snapshot.requests_sent;
-        let window_requests_success = current_requests_success - previous_snapshot.requests_success;
-        let window_requests_error = current_requests_error - previous_snapshot.requests_error;
-        let window_requests_timeout = current_requests_timeout - previous_snapshot.requests_timeout;
+        // Calculate deltas for this window. saturating_sub because the counters
+        // are read non-atomically across many statics — a concurrent increment
+        // between reads could otherwise underflow.
+        let window_requests_sent =
+            current_requests_sent.saturating_sub(previous_snapshot.requests_sent);
+        let window_requests_success =
+            current_requests_success.saturating_sub(previous_snapshot.requests_success);
+        let window_requests_error =
+            current_requests_error.saturating_sub(previous_snapshot.requests_error);
+        let window_requests_timeout =
+            current_requests_timeout.saturating_sub(previous_snapshot.requests_timeout);
         let window_requests_canceled =
-            current_requests_canceled - previous_snapshot.requests_canceled;
-        let window_tokens_input = current_tokens_input - previous_snapshot.tokens_input;
-        let window_tokens_output = current_tokens_output - previous_snapshot.tokens_output;
+            current_requests_canceled.saturating_sub(previous_snapshot.requests_canceled);
+        let window_tokens_input =
+            current_tokens_input.saturating_sub(previous_snapshot.tokens_input);
+        let window_tokens_output =
+            current_tokens_output.saturating_sub(previous_snapshot.tokens_output);
         let window_errors_connection =
-            current_errors_connection - previous_snapshot.errors_connection;
-        let window_errors_4xx = current_errors_4xx - previous_snapshot.errors_4xx;
-        let window_errors_5xx = current_errors_5xx - previous_snapshot.errors_5xx;
-        let window_errors_parse = current_errors_parse - previous_snapshot.errors_parse;
-        let window_errors_stream = current_errors_stream - previous_snapshot.errors_stream;
-        let window_errors_other = current_errors_other - previous_snapshot.errors_other;
+            current_errors_connection.saturating_sub(previous_snapshot.errors_connection);
+        let window_errors_4xx = current_errors_4xx.saturating_sub(previous_snapshot.errors_4xx);
+        let window_errors_5xx = current_errors_5xx.saturating_sub(previous_snapshot.errors_5xx);
+        let window_errors_parse =
+            current_errors_parse.saturating_sub(previous_snapshot.errors_parse);
+        let window_errors_stream =
+            current_errors_stream.saturating_sub(previous_snapshot.errors_stream);
+        let window_errors_other =
+            current_errors_other.saturating_sub(previous_snapshot.errors_other);
 
         // Skip window 0 since no requests have been sent yet
         if window_id == 0 {
             previous_snapshot.update();
+            last_window_time = Instant::now();
             window_id += 1;
             continue;
         }
@@ -181,7 +200,11 @@ pub async fn periodic_stats(config: Config, warmup_complete: Arc<Notify>) {
         output!("Window: {}", window_id);
 
         let requests_inflight = REQUESTS_INFLIGHT.value();
-        let interval_secs = interval_duration.as_secs_f64();
+        // Divide by the ACTUAL elapsed time since the last window, not the nominal
+        // interval, so a delayed tick doesn't distort the reported rates.
+        let now = Instant::now();
+        let interval_secs = (now - last_window_time).as_secs_f64().max(1e-9);
+        last_window_time = now;
 
         // Request statistics for this window (as rates)
         let sent_rate = window_requests_sent as f64 / interval_secs;
