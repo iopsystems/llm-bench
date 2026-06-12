@@ -756,17 +756,18 @@ impl BenchmarkRunner {
                 test_start = Instant::now();
             }
 
-            // Run main test requests
-            for _ in 0..total {
-                let workloads = Arc::clone(&self.workloads);
-                let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
-                let workload_idx = idx % workloads.len();
+            // Main test phase: a fixed pool of `concurrent_requests` workers, each
+            // pulling the next prompt and running it to completion before taking
+            // the next. The worker count *is* the concurrency, so there is no
+            // backlog of parked tasks (only N live tasks, not `total`), and being a
+            // true closed-loop pool it measures clean per-request service time.
+            let main_target = prompt_index.load(Ordering::Relaxed) + total;
+            for _ in 0..self.config.load.concurrent_requests {
                 let client = Arc::clone(&self.client);
                 let tokenizer = Arc::clone(&self.tokenizer);
-                let semaphore = Arc::clone(&semaphore);
                 let completed = Arc::clone(&completed);
-
-                // Capture system_prompt for this closure
+                let prompt_index = Arc::clone(&prompt_index);
+                let workloads = Arc::clone(&self.workloads);
                 let system_prompt = Arc::clone(&self.system_prompt);
                 let default_max_tokens = self.config.endpoint.max_tokens;
                 let shared_prefix = Arc::clone(&self.shared_prefix);
@@ -778,50 +779,46 @@ impl BenchmarkRunner {
                     .as_ref()
                     .map(|p| p.miss_rate)
                     .unwrap_or(0.0);
-                let expected_hit = if shared_prefix.is_some() {
-                    !crate::metrics::should_miss(miss_rate)
-                } else {
-                    true
-                };
-                let bust_prefix_str = if shared_prefix.is_some() {
-                    compute_bust_prefix(expected_hit, &miss_counter)
-                } else {
-                    String::new()
-                };
                 let conversation_cfg = self.config.conversation;
                 let delay_base_seed = self.config.input.seed.unwrap_or(42);
 
-                let handle = tokio::spawn(async move {
-                    let workload = &workloads[workload_idx];
-                    let _permit = semaphore
-                        .acquire()
-                        .await
-                        .expect("semaphore should never be closed");
-                    let result = Self::execute_workload(
-                        &system_prompt,
-                        client,
-                        tokenizer,
-                        workload,
-                        idx,
-                        false,
-                        default_max_tokens,
-                        bust_prefix_str,
-                        expected_hit,
-                        conversation_cfg,
-                        delay_base_seed,
-                        // Closed-loop: no scheduled arrival; measured from slot acquisition (slip ~0).
-                        Instant::now(),
-                    )
-                    .await;
-                    completed.fetch_add(1, Ordering::Relaxed);
-                    result
-                });
-                handles.push(handle);
-
-                // Reap finished handles so the vec stays bounded over long runs.
-                if handles.len() >= self.config.load.concurrent_requests + 256 {
-                    handles.retain(|h| !h.is_finished());
-                }
+                handles.push(tokio::spawn(async move {
+                    loop {
+                        let idx = prompt_index.fetch_add(1, Ordering::Relaxed);
+                        if idx >= main_target {
+                            break;
+                        }
+                        let workload = &workloads[idx % workloads.len()];
+                        let expected_hit = if shared_prefix.is_some() {
+                            !crate::metrics::should_miss(miss_rate)
+                        } else {
+                            true
+                        };
+                        let bust_prefix_str = if shared_prefix.is_some() {
+                            compute_bust_prefix(expected_hit, &miss_counter)
+                        } else {
+                            String::new()
+                        };
+                        let _ = Self::execute_workload(
+                            &system_prompt,
+                            client.clone(),
+                            tokenizer.clone(),
+                            workload,
+                            idx,
+                            false,
+                            default_max_tokens,
+                            bust_prefix_str,
+                            expected_hit,
+                            conversation_cfg,
+                            delay_base_seed,
+                            // Closed-loop: measured from when this worker began the request.
+                            Instant::now(),
+                        )
+                        .await;
+                        completed.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Ok::<(), anyhow::Error>(())
+                }));
             }
         } else if let Some(duration) = duration_limit {
             // Duration-based mode
