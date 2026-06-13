@@ -133,6 +133,12 @@ pub struct LoadConfig {
     pub warmup_requests: Option<usize>, // Number of warmup requests to exclude from metrics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warmup_duration: Option<u64>, // Warmup duration in seconds (alternative to warmup_requests)
+    /// QPS mode only: maximum outstanding (in-flight + queued) requests. When the
+    /// server can't sustain the offered rate, requests beyond this are dropped and
+    /// counted as overload rather than queued unbounded. `None` uses a generous
+    /// default; set explicitly to tune (or very high to effectively disable).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_outstanding_requests: Option<usize>,
 }
 
 fn default_common_prefix_sample_ratio() -> f64 {

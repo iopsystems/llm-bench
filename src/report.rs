@@ -99,6 +99,9 @@ pub struct Summary {
     /// Streaming `data:` lines that could not be decoded/parsed and were skipped.
     /// Non-zero means some tokens/usage were lost (e.g. server-side UTF-8 issues).
     pub malformed_chunks: u64,
+    /// QPS mode: requests shed because the outstanding-request cap was reached —
+    /// the server couldn't sustain the offered rate. Offered = total + dropped.
+    pub requests_dropped: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -372,6 +375,7 @@ impl ReportBuilder {
             },
             retries,
             malformed_chunks: crate::metrics::MALFORMED_CHUNKS.value(),
+            requests_dropped: cg(&REQUESTS, crate::metrics::REQ_DROPPED),
         };
 
         let throughput = ThroughputStats {
@@ -746,6 +750,17 @@ impl ReportBuilder {
                 "{} Warning: {} malformed streaming chunk(s) skipped — some tokens/usage \
                  were lost (often server-side UTF-8/detokenization issues).",
                 timestamp, report.summary.malformed_chunks
+            );
+        }
+        if report.summary.requests_dropped > 0 {
+            let offered = report.summary.requests_total + report.summary.requests_dropped;
+            println!(
+                "{} Overload: {} of {} offered requests dropped ({:.1}%) — server could not \
+                 sustain the target rate (outstanding-request cap reached).",
+                timestamp,
+                report.summary.requests_dropped,
+                offered,
+                report.summary.requests_dropped as f64 / offered.max(1) as f64 * 100.0
             );
         }
 

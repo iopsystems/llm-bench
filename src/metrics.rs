@@ -64,9 +64,12 @@ pub const REQ_ERROR: usize = 2;
 pub const REQ_TIMEOUT: usize = 3;
 pub const REQ_CANCELED: usize = 4;
 pub const REQ_RETRIED: usize = 5;
+/// Requests the QPS generator declined to send because the outstanding-request
+/// cap was reached (the server couldn't sustain the offered rate).
+pub const REQ_DROPPED: usize = 6;
 
 #[metric(name = "requests")]
-pub static REQUESTS: CounterGroup = CounterGroup::new(6);
+pub static REQUESTS: CounterGroup = CounterGroup::new(7);
 
 // Error counters — indexed by error type
 pub const ERR_CONNECTION: usize = 0;
@@ -440,6 +443,12 @@ impl Metrics {
 
     pub fn record_retry() {
         REQUESTS.increment(REQ_RETRIED);
+    }
+
+    /// Record a request the QPS generator declined to send due to the
+    /// outstanding-request cap (overload shedding).
+    pub fn record_dropped() {
+        REQUESTS.increment(REQ_DROPPED);
     }
 
     /// Record a streaming `data:` line that could not be decoded/parsed and was skipped.
