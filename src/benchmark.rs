@@ -164,6 +164,78 @@ fn effective_output_tokens(
     }
 }
 
+/// Resolve the best available tokenizer for prompt sizing, in priority order:
+/// an explicit `tokenizer.json` path or HF id (exact) → server `/tokenize`
+/// calibration (confident estimate) → tiktoken estimate. Never fails — falls back
+/// to the estimate on any error.
+async fn build_tokenizer(
+    client: &OpenAIClient,
+    configured: Option<&str>,
+    model: &str,
+) -> Result<Arc<Tokenizer>> {
+    // 1. Explicit exact tokenizer. On failure, fall through to calibration rather
+    //    than skipping straight to the rough estimate.
+    if let Some(src) = configured {
+        match load_configured_tokenizer(src).await {
+            Ok(tk) => {
+                info!("Tokenizer: {}", tk.source_label());
+                return Ok(Arc::new(tk));
+            }
+            Err(e) => warn!("Could not load configured tokenizer '{src}': {e}; falling back"),
+        }
+    }
+    // 2. Calibrate against the server's /tokenize, if available.
+    if let Some(ratio) = calibrate_tokenizer(client, model).await
+        && let Ok(tk) = Tokenizer::calibrated(model, ratio)
+    {
+        info!("Tokenizer: {}", tk.source_label());
+        return Ok(Arc::new(tk));
+    }
+    // 3. Rough tiktoken estimate (propagates the rare construction error).
+    Ok(Arc::new(Tokenizer::new(model)?))
+}
+
+/// Load an explicitly configured tokenizer: a local `tokenizer.json` file if the
+/// path exists, otherwise a HuggingFace model id (downloads/caches tokenizer.json).
+async fn load_configured_tokenizer(src: &str) -> Result<Tokenizer> {
+    let path = std::path::Path::new(src);
+    if path.is_file() {
+        Tokenizer::from_tokenizer_json(path)
+    } else {
+        let api = hf_hub::api::tokio::Api::new()?;
+        let file = api.model(src.to_string()).get("tokenizer.json").await?;
+        Tokenizer::from_tokenizer_json(&file)
+    }
+}
+
+/// Calibrate tiktoken against the server's `/tokenize` on a handful of samples.
+/// Returns the ratio (real / tiktoken), or `None` if `/tokenize` is unavailable.
+async fn calibrate_tokenizer(client: &OpenAIClient, model: &str) -> Option<f64> {
+    const SAMPLES: &[&str] = &[
+        "The quick brown fox jumps over the lazy dog.",
+        "In a hole in the ground there lived a hobbit, and it was a comfortable hole.",
+        "def fibonacci(n):\n    return n if n < 2 else fibonacci(n - 1) + fibonacci(n - 2)",
+        "Large language models are evaluated on throughput and latency.",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor.",
+    ];
+    let tiktoken = Tokenizer::new(model).ok()?;
+    let mut real_total = 0usize;
+    let mut tiktoken_total = 0usize;
+    for s in SAMPLES {
+        // Bail on the first failure — the server likely doesn't expose /tokenize.
+        let real = client.tokenize(s).await.ok()?;
+        real_total += real;
+        tiktoken_total += tiktoken.count_tokens(s);
+    }
+    if tiktoken_total == 0 {
+        return None;
+    }
+    Some(crate::tokenizer::calibration_ratio(
+        real_total,
+        tiktoken_total,
+    ))
+}
+
 /// Maximum outstanding (in-flight + queued) requests for QPS mode. When not set,
 /// a generous default that effectively never trips in a healthy run but bounds
 /// runaway accumulation under sustained overload: `max(concurrency * 100, 100k)`.
@@ -291,8 +363,9 @@ impl BenchmarkRunner {
             chat_template_kwargs: config.endpoint.chat_template_kwargs.clone(),
         })?;
 
-        // Create tokenizer
-        let tokenizer = Arc::new(Tokenizer::new(&model)?);
+        // Resolve the best available tokenizer for prompt sizing.
+        let tokenizer =
+            build_tokenizer(&client, config.endpoint.tokenizer.as_deref(), &model).await?;
 
         // Load or generate workloads
         let workloads: Vec<Workload> = if config.input.is_synthetic() {
@@ -539,7 +612,9 @@ impl BenchmarkRunner {
     /// # }
     /// ```
     pub async fn run(&self) -> Result<()> {
-        let report_builder = ReportBuilder::new().with_config(self.config.clone());
+        let report_builder = ReportBuilder::new()
+            .with_config(self.config.clone())
+            .with_tokenizer_info(self.tokenizer.source_label(), self.tokenizer.is_estimate());
         let start_instant = Instant::now();
 
         debug!("Starting benchmark run");

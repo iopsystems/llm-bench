@@ -425,6 +425,37 @@ impl OpenAIClient {
         self.create_messages_request(&[message], max_tokens, logprobs, top_logprobs)
     }
 
+    /// Count tokens for `text` using the server's own tokenizer via `/tokenize`
+    /// (vLLM/TGI-style, served at the root, not under `/v1`). Returns the count,
+    /// or an error if the server doesn't support it or responds unexpectedly — the
+    /// caller falls back to estimation.
+    pub async fn tokenize(&self, text: &str) -> Result<usize> {
+        // /tokenize is served at the server root. Strip any trailing slash(es)
+        // first, then an optional `/v1` suffix (handles `…/v1`, `…/v1/`, and `…`).
+        let root = self.base_url.trim_end_matches('/');
+        let root = root.strip_suffix("/v1").unwrap_or(root);
+        let url = format!("{root}/tokenize");
+        let mut req = self.client.post(&url).json(&serde_json::json!({
+            "model": self.model,
+            "prompt": text,
+        }));
+        if let Some(api_key) = &self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", api_key));
+        }
+        let resp = req.send().await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("/tokenize returned HTTP {}", resp.status());
+        }
+        let v: serde_json::Value = resp.json().await?;
+        if let Some(count) = v.get("count").and_then(|c| c.as_u64()) {
+            return Ok(count as usize);
+        }
+        if let Some(tokens) = v.get("tokens").and_then(|t| t.as_array()) {
+            return Ok(tokens.len());
+        }
+        anyhow::bail!("/tokenize response missing `count`/`tokens`")
+    }
+
     pub fn create_messages_request(
         &self,
         messages: &[Message],
