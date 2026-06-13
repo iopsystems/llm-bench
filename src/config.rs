@@ -402,10 +402,11 @@ pub struct SaturationConfig {
     /// Duration to sample at each concurrency level (e.g. "60s", "2m")
     #[serde(default = "default_sample_window")]
     pub sample_window: String,
-    /// Deprecated: the search now bisects and confirms rather than stopping after
-    /// N consecutive failures. Accepted for backward compatibility but unused.
-    #[serde(default = "default_stop_after_failures")]
-    pub stop_after_failures: u32,
+    /// Deprecated and ignored: the search now bisects and confirms rather than
+    /// stopping after N consecutive failures. Accepted for backward compatibility;
+    /// a warning is logged if set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_after_failures: Option<u32>,
     /// Maximum concurrency to try
     #[serde(default = "default_max_concurrency")]
     pub max_concurrency: usize,
@@ -415,6 +416,18 @@ pub struct SaturationConfig {
     /// it detects the plateau where adding concurrency stops adding throughput.
     #[serde(default = "default_min_throughput_ratio")]
     pub min_throughput_ratio: f64,
+    /// Windows used to confirm the final boundary (M-of-N); a higher value is more
+    /// robust to noise but slower. Default 3.
+    #[serde(default = "default_confirm_windows")]
+    pub confirm_windows: u32,
+    /// Settle time (ms) after draining before measuring a rung, letting the new
+    /// steady state establish. Default 500.
+    #[serde(default = "default_drain_settle_ms")]
+    pub drain_settle_ms: u64,
+    /// Max time (s) to wait for in-flight requests to drain before measuring a
+    /// down-stepped rung. `None` uses the sample window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drain_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -468,8 +481,12 @@ fn default_sample_window() -> String {
     "60s".to_string()
 }
 
-fn default_stop_after_failures() -> u32 {
+fn default_confirm_windows() -> u32 {
     3
+}
+
+fn default_drain_settle_ms() -> u64 {
+    500
 }
 
 fn default_max_concurrency() -> usize {
