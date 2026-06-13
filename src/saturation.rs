@@ -117,6 +117,7 @@ impl SaturationSearchState {
             config.max_concurrency,
             config.step_multiplier,
             config.min_throughput_ratio,
+            config.confirm_windows,
             SATURATION_WINDOW_BUDGET,
         );
 
@@ -529,9 +530,6 @@ fn print_summary(results: &SaturationResults) {
 // rung, builds a `StepOutcome`, calls `on_step`, and applies the returned `Action`.
 // ---------------------------------------------------------------------------
 
-/// Number of windows used to confirm the final boundary (M-of-N).
-const CONFIRM_WINDOWS: u32 = 3;
-
 /// Measured result of one concurrency rung.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StepOutcome {
@@ -583,6 +581,7 @@ pub struct SearchPlanner {
     max_concurrency: usize,
     step_multiplier: f64,
     min_throughput_ratio: f64,
+    confirm_windows: u32,
     window_budget: u32,
     windows_used: u32,
     phase: Phase,
@@ -611,12 +610,14 @@ impl SearchPlanner {
         max_concurrency: usize,
         step_multiplier: f64,
         min_throughput_ratio: f64,
+        confirm_windows: u32,
         window_budget: u32,
     ) -> Self {
         Self {
             max_concurrency,
             step_multiplier,
             min_throughput_ratio,
+            confirm_windows: confirm_windows.max(1),
             window_budget,
             windows_used: 0,
             phase: Phase::Climbing,
@@ -802,7 +803,7 @@ impl SearchPlanner {
     fn on_confirm(&mut self, o: StepOutcome, c: usize, passes: u32, total: u32) -> Action {
         let passes = passes + u32::from(o.latency_ok);
         let total = total + 1;
-        if total >= CONFIRM_WINDOWS {
+        if total >= self.confirm_windows {
             if passes * 2 > total {
                 self.phase = Phase::Done;
                 Action::Done {
@@ -842,7 +843,7 @@ mod planner_tests {
         budget: u32,
         model: F,
     ) -> (Option<usize>, SearchPlanner) {
-        let mut p = SearchPlanner::new(max, mult, min_ratio, budget);
+        let mut p = SearchPlanner::new(max, mult, min_ratio, 3, budget);
         let mut counts: HashMap<usize, usize> = HashMap::new();
         // Bootstrap: the driver measures `start` first, then feeds the planner.
         let mut next = Action::Measure {

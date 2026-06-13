@@ -329,9 +329,7 @@ level = "info"
 # Saturation Search Configuration (Optional)
 # =============================================================================
 # Automatically discover the maximum concurrency a server can handle while
-# maintaining SLO compliance. Geometrically steps up concurrency from
-# start_concurrency, measuring latency at each level, and stops after
-# consecutive SLO failures.
+# maintaining SLO compliance.
 #
 # When enabled, the saturation search controls concurrency — the load section's
 # concurrent_requests is ignored. You still need duration_seconds or
@@ -350,7 +348,12 @@ level = "info"
 # max_concurrency = 256         # Absolute ceiling on concurrency
 # min_throughput_ratio = 0.9    # Plateau gate: tokens/s must stay >= 90% of the
 #                               # throughput projected from the previous rung
-# # stop_after_failures = 3     # Deprecated/unused (kept for backward compat)
+# confirm_windows = 3           # Windows to confirm the final boundary (M-of-N);
+#                               # higher is more noise-robust but slower
+# drain_settle_ms = 500         # Settle time after draining before measuring a rung
+# # drain_timeout_secs = 60     # Max wait for in-flight to drain (default: sample_window)
+# # stop_after_failures = 3     # DEPRECATED and ignored (warns if set); the search
+# #                             # now bisects + confirms instead of stopping after N
 #
 # # SLO thresholds — set any combination of TTFT, ITL, TPOT at p50/p99/p999.
 # # At least one threshold must be specified.
