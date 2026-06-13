@@ -55,6 +55,15 @@ timeout = 60
 # generation. Connection and 5xx errors are always retried regardless of this.
 # retry_on_timeout = false
 
+# Exact tokenizer for sizing synthetic prompts and truncation. Either a local
+# tokenizer.json path or a HuggingFace model id (downloaded + cached). When unset,
+# llm-perf calibrates a tiktoken estimate against the server's /tokenize endpoint
+# if available, otherwise falls back to a rough tiktoken estimate (tiktoken does
+# NOT match non-OpenAI models like Llama/Qwen/Mistral). Server-reported token
+# counts are always used for the headline metrics where available.
+# tokenizer = "Qwen/Qwen2.5-7B-Instruct"     # HF model id
+# tokenizer = "/models/qwen/tokenizer.json"  # or a local path
+
 # Server Readiness Check Configuration (Optional)
 # IMPORTANT: Readiness check is DISABLED by default (health_check_timeout = 0)
 # When enabled, llm-perf polls /v1/models until the server is ready

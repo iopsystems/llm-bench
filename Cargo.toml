@@ -38,6 +38,10 @@ serde_json = "1.0"
 tempfile = "3.8"
 thiserror = "1.0"
 tiktoken-rs = "0.6"
+# Real model tokenizers (tokenizer.json). default-features off to drop the
+# training-only deps (progressbar, esaxx_fast); `onig` keeps the regex engine
+# byte-level BPE needs for inference.
+tokenizers = { version = "0.20", default-features = false, features = ["onig"] }
 tokio = { version = "1.35", features = ["full"] }
 tokio-stream = "0.1"
 toml = "0.8"

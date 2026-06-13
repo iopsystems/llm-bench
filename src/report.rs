@@ -221,6 +221,9 @@ pub struct ReportBuilder {
     config: Option<crate::config::Config>,
     duration: Option<Duration>,
     saturation_results: Option<crate::saturation::SaturationResults>,
+    /// Actual resolved tokenizer (label, is_estimate). Overrides the name-based
+    /// guess when the runtime cascade picked an exact/calibrated tokenizer.
+    tokenizer_info: Option<(String, bool)>,
 }
 
 impl Default for ReportBuilder {
@@ -249,11 +252,19 @@ impl ReportBuilder {
             config: None,
             duration: None,
             saturation_results: None,
+            tokenizer_info: None,
         }
     }
 
     pub fn with_config(mut self, config: crate::config::Config) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    /// Record the tokenizer actually resolved at runtime (label + whether counts
+    /// are estimates), shown in the report instead of the name-based guess.
+    pub fn with_tokenizer_info(mut self, label: String, estimated: bool) -> Self {
+        self.tokenizer_info = Some((label, estimated));
         self
     }
 
@@ -305,7 +316,15 @@ impl ReportBuilder {
                 .model
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string());
-            let (model_type, estimated) = crate::tokenizer::select_model_type(&model);
+            // Prefer the tokenizer actually resolved at runtime; fall back to the
+            // name-based guess if it wasn't supplied.
+            let (tokenizer_label, token_counts_estimated) = match &self.tokenizer_info {
+                Some((label, estimated)) => (label.clone(), *estimated),
+                None => {
+                    let (model_type, estimated) = crate::tokenizer::select_model_type(&model);
+                    (model_type.encoder_name().to_string(), estimated)
+                }
+            };
             TestConfiguration {
                 endpoint: config.endpoint.base_url.clone(),
                 model,
@@ -320,8 +339,8 @@ impl ReportBuilder {
                 duration_seconds: config.load.duration_seconds,
                 warmup_requests: config.load.warmup_requests,
                 warmup_duration: config.load.warmup_duration,
-                tokenizer: model_type.encoder_name().to_string(),
-                token_counts_estimated: estimated,
+                tokenizer: tokenizer_label,
+                token_counts_estimated,
                 prompt_file: config.input.file.display().to_string(),
                 seed: config.input.seed,
                 sample_size: config.input.sample_size,
@@ -720,11 +739,15 @@ impl ReportBuilder {
             timestamp,
             report.duration.as_secs_f64()
         );
+        println!(
+            "{} Tokenizer: {}",
+            timestamp, report.configuration.tokenizer
+        );
         if report.configuration.token_counts_estimated {
             println!(
-                "{} Note: local token counts use tiktoken {} as an ESTIMATE for '{}' \
-                 (not its real tokenizer); server-reported counts are used where available.",
-                timestamp, report.configuration.tokenizer, report.configuration.model
+                "{} Note: local token counts are an estimate, not the served model's exact \
+                 tokenizer; server-reported counts are used where available.",
+                timestamp
             );
         }
         println!(

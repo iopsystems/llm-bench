@@ -106,6 +106,12 @@ pub struct EndpointConfig {
     /// For example, set `{enable_thinking = false}` to disable thinking mode on Qwen3.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_template_kwargs: Option<serde_json::Value>,
+    /// Exact tokenizer for prompt sizing: a local `tokenizer.json` path OR a
+    /// HuggingFace model id (downloaded/cached). When unset, the tool calibrates a
+    /// tiktoken estimate against the server's `/tokenize` if available, else uses a
+    /// rough tiktoken estimate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
