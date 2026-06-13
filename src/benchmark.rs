@@ -2042,6 +2042,7 @@ impl BenchmarkRunner {
                             stream.has_reasoning(),
                         );
                         Metrics::record_tokens(input_tokens, out_reasoning, out_content);
+                        Metrics::record_content_chunks(stream.content_tokens() as u64);
 
                         // Phase-specific TPOT — decode rate, send-relative (excludes slip)
                         if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token() {
@@ -2270,6 +2271,7 @@ impl BenchmarkRunner {
                         stream.has_reasoning(),
                     );
                     Metrics::record_tokens(input_tokens, out_reasoning, out_content);
+                    Metrics::record_content_chunks(stream.content_tokens() as u64);
 
                     // Phase-specific TPOT — decode rate, send-relative (excludes slip)
                     if let Some(reasoning_ttft) = stream.time_to_first_reasoning_token() {

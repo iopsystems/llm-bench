@@ -148,6 +148,10 @@ pub struct LatencyStats {
     pub request_p90_ms: f64,
     pub request_p95_ms: f64,
     pub request_p99_ms: f64,
+    /// Mean content tokens delivered per streamed chunk. ~1.0 means ITL is truly
+    /// per-token; >1 means the server batched tokens per chunk, so ITL is
+    /// chunk-granular (each sample is one inter-chunk gap covering several tokens).
+    pub itl_tokens_per_chunk: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -533,7 +537,15 @@ impl ReportBuilder {
     }
 
     fn build_latency_stats(&self) -> Result<LatencyStats> {
-        use crate::metrics::{ITL, REQUEST_LATENCY, TPOT, TTFT};
+        use crate::metrics::{
+            ITL, REQUEST_LATENCY, STREAMED_CONTENT_CHUNKS, TOK_OUTPUT_CONTENT, TOKENS, TPOT, TTFT,
+        };
+
+        // Mean content tokens per streamed chunk (ITL granularity indicator).
+        let itl_tokens_per_chunk = safe_div(
+            TOKENS.value(TOK_OUTPUT_CONTENT).unwrap_or(0) as f64,
+            STREAMED_CONTENT_CHUNKS.value() as f64,
+        );
 
         // Aggregate TTFT (prefill latency) across context buckets
         let (ttft_mean, ttft_p50, ttft_p90, ttft_p95, ttft_p99) =
@@ -588,6 +600,7 @@ impl ReportBuilder {
             request_p90_ms: request_p90,
             request_p95_ms: request_p95,
             request_p99_ms: request_p99,
+            itl_tokens_per_chunk,
         })
     }
 
@@ -855,6 +868,14 @@ impl ReportBuilder {
                 report.latency.itl_p95_ms,
                 report.latency.itl_p99_ms
             );
+            if report.latency.itl_tokens_per_chunk > 1.5 {
+                println!(
+                    "{} Note: server streamed ~{:.1} tokens per chunk, so ITL is chunk-granular \
+                     (each sample is one inter-chunk gap covering several tokens) and overstates \
+                     true per-token latency.",
+                    timestamp, report.latency.itl_tokens_per_chunk
+                );
+            }
         }
 
         println!(

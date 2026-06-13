@@ -110,6 +110,13 @@ pub static TURNS: Counter = Counter::new();
 #[metric(name = "malformed_chunks")]
 pub static MALFORMED_CHUNKS: Counter = Counter::new();
 
+// Number of streamed content chunks (SSE events carrying content). Compared to the
+// content token total it reveals how many tokens the server packed per chunk: when
+// that ratio is >1, inter-token latency is chunk-granular (one gap per chunk covers
+// several tokens) rather than truly per-token.
+#[metric(name = "streamed_content_chunks")]
+pub static STREAMED_CONTENT_CHUNKS: Counter = Counter::new();
+
 #[metric(name = "conversation_latency", metadata = { unit = "nanoseconds" })]
 pub static CONVERSATION_LATENCY: AtomicHistogram = AtomicHistogram::new(7, 64);
 
@@ -449,6 +456,12 @@ impl Metrics {
     /// outstanding-request cap (overload shedding).
     pub fn record_dropped() {
         REQUESTS.increment(REQ_DROPPED);
+    }
+
+    /// Record how many content chunks a streamed response delivered (for the
+    /// tokens-per-chunk / ITL-granularity note).
+    pub fn record_content_chunks(chunks: u64) {
+        STREAMED_CONTENT_CHUNKS.add(chunks);
     }
 
     /// Record a streaming `data:` line that could not be decoded/parsed and was skipped.
