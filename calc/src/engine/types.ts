@@ -193,6 +193,10 @@ export type CloudProvider =
   | 'crusoe'
   | 'intel-tiber'
   | 'cerebras-cloud'
+  // Neocloud / IaaS long tail — verified against each provider's public
+  // pricing/instances page as of 2026-06-15.
+  | 'together'   // Together AI — gpu-clusters page lists HGX H100/H200/B200, GB200 NVL72
+  | 'nebius'     // Nebius AI Cloud — prices page lists HGX H100/H200/B200, GB200 NVL72
 
 export interface MultiAcceleratorSystem {
   id: string

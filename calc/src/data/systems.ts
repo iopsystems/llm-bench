@@ -32,7 +32,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
     },
     availability: {
       onPrem: true,
-      clouds: ['aws', 'azure', 'gcp', 'oci', 'coreweave', 'lambda', 'crusoe']
+      clouds: ['aws', 'azure', 'gcp', 'oci', 'coreweave', 'lambda', 'crusoe', 'together', 'nebius']
     },
     notes: 'Industry-standard 8× H100 SXM5 80GB baseboard. AWS P5.48xlarge, GCP A3, Azure ND H100 v5, OCI BM.GPU.H100.8. DGX H100 is NVIDIA-branded same baseboard + 2× Sapphire Rapids + 8× ConnectX-7 NDR.'
   },
@@ -53,7 +53,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
     },
     availability: {
       onPrem: true,
-      clouds: ['aws', 'azure', 'gcp', 'oci', 'coreweave', 'lambda', 'crusoe']
+      clouds: ['aws', 'azure', 'gcp', 'oci', 'coreweave', 'lambda', 'crusoe', 'together', 'nebius']
     },
     notes: 'Drop-in H200 refresh on the H100 baseboard: same NVLink 4 / NVSwitch v3 fabric, larger 141GB HBM3e per GPU. AWS P5e.48xlarge, GCP A3 Ultra, Azure ND H200 v5.'
   },
@@ -76,7 +76,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
     },
     availability: {
       onPrem: true,
-      clouds: ['aws', 'azure', 'gcp', 'coreweave', 'lambda', 'crusoe']
+      clouds: ['aws', 'azure', 'gcp', 'coreweave', 'lambda', 'crusoe', 'together', 'nebius']
     },
     notes: '8× B200 SXM 180GB baseboard via NVSwitch v4. DGX B200 is the NVIDIA-branded variant with 2× Intel Emerald Rapids + 8× ConnectX-8 XDR. AWS P6-B200, GCP A4, Azure ND B200 v6.'
   },
@@ -97,7 +97,7 @@ export const SYSTEMS: MultiAcceleratorSystem[] = [
     },
     availability: {
       onPrem: true,
-      clouds: ['aws', 'gcp', 'coreweave', 'lambda', 'crusoe']
+      clouds: ['aws', 'gcp', 'coreweave', 'lambda', 'crusoe', 'together', 'nebius']
     },
     notes: 'Pre-integrated rack: 72 Blackwell GPUs + 36 Grace CPUs across 18 compute trays, NVLink Switch trays providing 130 TB/s of non-blocking fabric. AWS P6e-GB200, GCP A4X, CoreWeave, Crusoe.'
   },
