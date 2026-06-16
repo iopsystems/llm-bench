@@ -8,7 +8,7 @@ import { ACCELERATORS } from '../../src/data'
 describe('AcceleratorSpec schema additions', () => {
   it('every accelerator has a tier', () => {
     for (const a of ACCELERATORS) {
-      expect(['datacenter', 'pro', 'consumer'], `accelerator ${a.id}: tier`).toContain(a.tier)
+      expect(['datacenter', 'consumer'], `accelerator ${a.id}: tier`).toContain(a.tier)
     }
   })
 

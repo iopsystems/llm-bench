@@ -27,7 +27,7 @@ export interface AcceleratorVariant {
   operatingPoints: AcceleratorOperatingPoint[]
 }
 
-export type AcceleratorTier = 'datacenter' | 'pro' | 'consumer'
+export type AcceleratorTier = 'datacenter' | 'consumer'
 
 export interface AcceleratorSpec {
   id: string
@@ -38,10 +38,10 @@ export interface AcceleratorSpec {
   // announcement teaser). Drives newer-first ordering in the SKU picker.
   releaseDate: string
   // Market tier — drives <optgroup> rendering in accelerator pickers and
-  // catalog filters. Heuristic: parts that only ship in datacenter form
-  // (Hopper/Blackwell SXM, MI300X, TPU, Trainium, Gaudi) are 'datacenter';
-  // workstation cards (RTX PRO 6000, L40S, Radeon PRO, Radeon AI PRO) are
-  // 'pro'; gaming/desktop cards (RTX 4090/5090, RX 7900/9070) are 'consumer'.
+  // catalog filters. Heuristic: parts that ship in datacenter form factors
+  // (Hopper/Blackwell SXM, MI300X, L40S, TPU, Trainium, Gaudi) are
+  // 'datacenter'; everything else (gaming/desktop cards, workstation cards
+  // including RTX PRO / Radeon PRO lines, Apple SoCs) is 'consumer'.
   tier: AcceleratorTier
   variants: AcceleratorVariant[]
 }

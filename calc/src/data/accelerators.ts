@@ -200,9 +200,9 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   {
     id: 'l40s', name: 'NVIDIA L40S', vendor: 'NVIDIA', family: 'Ada Lovelace',
     releaseDate: '2023-08',
-    // L40S = pro: Ada-Pro silicon in 350W PCIe form with display outputs,
-    // sold through the workstation channel despite the data-center URL.
-    tier: 'pro',
+    // L40S is sold under nvidia.com/en-us/data-center/l40s and ships in OEM
+    // 1U/2U inference nodes (Lenovo / Supermicro / Dell PowerEdge).
+    tier: 'datacenter',
     variants: [{
       id: 'pcie-48', label: 'PCIe 48GB', hbmCapacityGB: 48,
       // 350W per nvidia.com/en-us/data-center/l40s
@@ -273,7 +273,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   {
     id: 'rtx-pro-6000', name: 'NVIDIA RTX PRO 6000 Blackwell',
     vendor: 'NVIDIA', family: 'Blackwell', releaseDate: '2025-03',
-    tier: 'pro',
+    tier: 'consumer',
     variants: [{
       id: 'workstation-96', label: 'Workstation 96GB', hbmCapacityGB: 96,
       // 600W per NVIDIA RTX PRO 6000 Workstation Edition spec page (Max-Q
@@ -438,7 +438,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'radeon-ai-pro-r9700', name: 'AMD Radeon AI PRO R9700', vendor: 'AMD', family: 'RDNA4',
-    releaseDate: '2025-07', tier: 'pro',
+    releaseDate: '2025-07', tier: 'consumer',
     variants: [{
       id: 'sku', label: '32GB', hbmCapacityGB: 32,
       // 300W TDP per AMD AI PRO R9700 product brief (TechRadar/Phoronix)
@@ -528,7 +528,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'radeon-pro-w7900', name: 'AMD Radeon PRO W7900', vendor: 'AMD', family: 'RDNA3',
-    releaseDate: '2023-04', tier: 'pro',
+    releaseDate: '2023-04', tier: 'consumer',
     variants: [{
       id: 'sku', label: '48GB', hbmCapacityGB: 48,
       // 295W TBP per AMD PRO W7900 datasheet (dual-slot variant)
@@ -543,7 +543,7 @@ export const ACCELERATORS: AcceleratorSpec[] = [
   },
   {
     id: 'radeon-pro-w7800', name: 'AMD Radeon PRO W7800', vendor: 'AMD', family: 'RDNA3',
-    releaseDate: '2023-04', tier: 'pro',
+    releaseDate: '2023-04', tier: 'consumer',
     variants: [{
       id: 'sku', label: '32GB', hbmCapacityGB: 32,
       // 260W TBP per AMD PRO W7800 datasheet
