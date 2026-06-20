@@ -14,7 +14,7 @@ function model(p: Partial<ModelArch> & { id: string; publisher: string; releaseD
 
 function accel(id: string, vendor: string, releaseDate: string, hbms: number[], name?: string): AcceleratorSpec {
   return {
-    id, name: name ?? id, vendor, releaseDate,
+    id, name: name ?? id, vendor, releaseDate, tier: 'datacenter',
     variants: hbms.map((gb, i) => ({
       id: `v${i}`, label: `${gb}GB`, hbmCapacityGB: gb, operatingPoints: [],
     })),

@@ -17,8 +17,17 @@ export interface AcceleratorVariant {
   id: string
   label: string
   hbmCapacityGB: number
+  // TDP / power-cap in watts, sourced from the variant's own vendor datasheet
+  // (different form factors of the same chip — SXM vs PCIe, OAM vs NVL — have
+  // different thermal envelopes, so this lives on the variant). Optional:
+  // some entries (TPUs, Trainium, Apple SoCs, wafer-scale) have no publicly
+  // documented per-chip TDP and we'd rather omit than fabricate. For SXM-style
+  // baseboard parts this is the per-GPU figure, not the baseboard total.
+  powerCapW?: number
   operatingPoints: AcceleratorOperatingPoint[]
 }
+
+export type AcceleratorTier = 'datacenter' | 'consumer'
 
 export interface AcceleratorSpec {
   id: string
@@ -28,6 +37,12 @@ export interface AcceleratorSpec {
   // Public availability month, ISO `YYYY-MM` (general availability, not
   // announcement teaser). Drives newer-first ordering in the SKU picker.
   releaseDate: string
+  // Market tier — drives <optgroup> rendering in accelerator pickers and
+  // catalog filters. Heuristic: parts that ship in datacenter form factors
+  // (Hopper/Blackwell SXM, MI300X, L40S, TPU, Trainium, Gaudi) are
+  // 'datacenter'; everything else (gaming/desktop cards, workstation cards
+  // including RTX PRO / Radeon PRO lines, Apple SoCs) is 'consumer'.
+  tier: AcceleratorTier
   variants: AcceleratorVariant[]
 }
 

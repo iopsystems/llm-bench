@@ -7,6 +7,7 @@ export const testAccelerator: AcceleratorSpec = {
   name: 'Test Accelerator',
   vendor: 'test',
   releaseDate: '2025-01',
+  tier: 'datacenter',
   variants: [{
     id: 'v',
     label: 'V',
