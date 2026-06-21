@@ -27,6 +27,14 @@ function pickFastestDisaggFabric(): string {
 // out from under the fixed drawer instead of letting it overlap.
 export const showMath = writable(false)
 
+// In-memory toggle: when true, consumer-tier accelerators (RTX 4090/5090,
+// Apple M-series, Radeon RX, etc.) appear in the accelerator pickers and
+// the Info-tab catalog. Default false — the calc app is serving-focused so
+// datacenter SKUs are the primary surface. URL state isn't needed; the
+// auto-show-current-selection rule in `filterByTier` handles shared links
+// that point to a consumer SKU.
+export const showConsumerSkus = writable<boolean>(false)
+
 // `systemId` is empty string when user picks a single accelerator (no multi-device).
 // Non-empty when a MultiAcceleratorSystem is selected.
 export const acceleratorId = writable(defaultAccelerator.id)
