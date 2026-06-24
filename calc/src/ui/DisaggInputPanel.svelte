@@ -8,11 +8,12 @@
     heterogeneous,
     prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
     decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
+    showConsumerSkus,
   } from './stores'
   import { groupedDisaggFabrics, formatFabricLabel } from './disaggFabrics'
   import { ACCELERATORS } from '../data'
   import { SYSTEMS } from '../data/systems'
-  import { orderSkus } from './catalogOrder'
+  import { orderSkus, filterByTier } from './catalogOrder'
   import ParallelismPicker from './ParallelismPicker.svelte'
 
   // V2 heterogeneous: when $heterogeneous is on, both clusters get their own
@@ -21,7 +22,18 @@
   // toggle-on handler seeds both from shared so the user starts symmetric and
   // changes one cluster at a time.
   $: groups = groupedDisaggFabrics($acceleratorId)
-  $: skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
+  // Per-cluster sku groups so each picker keeps its own currently-selected id
+  // pinned via alwaysShowIds even when consumer filter is off.
+  $: prefillSkuGroups = orderSkus(
+    filterByTier(ACCELERATORS, $showConsumerSkus,
+      [$prefillAcceleratorId || $acceleratorId]),
+    SYSTEMS
+  )
+  $: decodeSkuGroups = orderSkus(
+    filterByTier(ACCELERATORS, $showConsumerSkus,
+      [$decodeAcceleratorId || $prefillAcceleratorId || $acceleratorId]),
+    SYSTEMS
+  )
 
   // Prefill cluster (= prefill-override stores). Once het is on the seed
   // handler / URL apply guarantees these are populated, so no fallback to
@@ -128,7 +140,7 @@
         <label>
           Accelerator
           <select value={prefillComboValue} on:change={onPrefillComboChange}>
-            {#each skuGroups as g}
+            {#each prefillSkuGroups as g}
               <optgroup label={g.publisher}>
                 {#each g.entries as e}
                   {#if e.kind === 'single'}
@@ -140,6 +152,10 @@
               </optgroup>
             {/each}
           </select>
+        </label>
+        <label class="show-consumer">
+          <input type="checkbox" bind:checked={$showConsumerSkus} />
+          Show consumer GPUs
         </label>
         {#if !$prefillSystemId}
           <label>
@@ -161,7 +177,7 @@
         <label>
           Accelerator
           <select value={decodeComboValue} on:change={onDecodeComboChange}>
-            {#each skuGroups as g}
+            {#each decodeSkuGroups as g}
               <optgroup label={g.publisher}>
                 {#each g.entries as e}
                   {#if e.kind === 'single'}
@@ -173,6 +189,10 @@
               </optgroup>
             {/each}
           </select>
+        </label>
+        <label class="show-consumer">
+          <input type="checkbox" bind:checked={$showConsumerSkus} />
+          Show consumer GPUs
         </label>
         {#if !$decodeSystemId}
           <label>
@@ -220,4 +240,10 @@
   @media (max-width: 800px) {
     .cluster-pair { grid-template-columns: 1fr; }
   }
+  .show-consumer {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    margin-left: 0.6rem;
+    font-size: 0.78rem; font-weight: 400; color: #666;
+  }
+  .show-consumer input[type=checkbox] { width: auto; margin: 0; }
 </style>
