@@ -138,7 +138,13 @@
       <div class="section-label">Prefill cluster</div>
       <div class="row">
         <label>
-          Accelerator
+          <span class="picker-label-row">
+            Accelerator
+            <label class="show-consumer">
+              <input type="checkbox" bind:checked={$showConsumerSkus} />
+              Show consumer GPUs
+            </label>
+          </span>
           <select value={prefillComboValue} on:change={onPrefillComboChange}>
             {#each prefillSkuGroups as g}
               <optgroup label={g.publisher}>
@@ -152,10 +158,6 @@
               </optgroup>
             {/each}
           </select>
-        </label>
-        <label class="show-consumer">
-          <input type="checkbox" bind:checked={$showConsumerSkus} />
-          Show consumer GPUs
         </label>
         {#if !$prefillSystemId}
           <label>
@@ -175,7 +177,13 @@
       <div class="section-label">Decode cluster</div>
       <div class="row">
         <label>
-          Accelerator
+          <span class="picker-label-row">
+            Accelerator
+            <label class="show-consumer">
+              <input type="checkbox" bind:checked={$showConsumerSkus} />
+              Show consumer GPUs
+            </label>
+          </span>
           <select value={decodeComboValue} on:change={onDecodeComboChange}>
             {#each decodeSkuGroups as g}
               <optgroup label={g.publisher}>
@@ -189,10 +197,6 @@
               </optgroup>
             {/each}
           </select>
-        </label>
-        <label class="show-consumer">
-          <input type="checkbox" bind:checked={$showConsumerSkus} />
-          Show consumer GPUs
         </label>
         {#if !$decodeSystemId}
           <label>
@@ -240,10 +244,13 @@
   @media (max-width: 800px) {
     .cluster-pair { grid-template-columns: 1fr; }
   }
+  .picker-label-row {
+    display: flex; align-items: center; gap: 0.6rem;
+  }
   .show-consumer {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    margin-left: 0.6rem;
+    display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem;
     font-size: 0.78rem; font-weight: 400; color: #666;
+    cursor: pointer;
   }
   .show-consumer input[type=checkbox] { width: auto; margin: 0; }
 </style>

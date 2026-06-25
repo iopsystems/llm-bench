@@ -144,7 +144,13 @@
     <legend>Hardware</legend>
     <div class="row">
       <label>
-        Accelerator
+        <span class="picker-label-row">
+          Accelerator
+          <label class="show-consumer">
+            <input type="checkbox" bind:checked={$showConsumerSkus} />
+            Show consumer GPUs
+          </label>
+        </span>
         <select value={comboValue} on:change={onComboChange}>
           {#each skuGroups as g}
             <optgroup label={g.publisher}>
@@ -158,10 +164,6 @@
             </optgroup>
           {/each}
         </select>
-      </label>
-      <label class="show-consumer">
-        <input type="checkbox" bind:checked={$showConsumerSkus} />
-        Show consumer GPUs
       </label>
       {#if !$systemId}
         <label>
@@ -318,10 +320,13 @@
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
   input.invalid { border-color: #b85b00; background: #fff7ec; }
   option.native { font-weight: 700; }
+  .picker-label-row {
+    display: flex; align-items: center; gap: 0.6rem;
+  }
   .show-consumer {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    margin-left: 0.6rem;
+    display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem;
     font-size: 0.78rem; font-weight: 400; color: #666;
+    cursor: pointer;
   }
   .show-consumer input[type=checkbox] { width: auto; margin: 0; }
 </style>
