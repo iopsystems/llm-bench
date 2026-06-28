@@ -725,6 +725,31 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 32_000_000_000
     }
   },
+  // K2.7-Code (moonshotai/Kimi-K2.7-Code, public, created 2026-06-11): same K2/K2.5
+  // text backbone — config text_config is DeepseekV3ForCausalLM, model_type kimi_k25,
+  // identical 61-layer MLA MoE (kv_lora 512, qk_rope 64, qk_nope 128, v 128; 384
+  // experts / 8 active / 1 shared). Deltas vs K2.5: ships **bf16** weights (config
+  // dtype bfloat16) rather than int4, at 256k context (generation max_length 262144).
+  // Card states 1T total / 32B activated; paramCount = the text tower (1.026T, same
+  // as K2/K2.5), excluding the multimodal vision encoder per the K2.5 convention.
+  {
+    id: 'kimi-k2.7-code', name: 'Kimi K2.7 Code', family: 'kimi',
+    publisher: 'Moonshot AI', releaseDate: '2026-06',
+    nativeDtype: 'bf16',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
+    paramCount: 1_026_000_000_000,
+    maxContext: 262144,
+    numNextnLayers: 0,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
+    architecture: {
+      type: 'moe',
+      numExperts: 384,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 32_000_000_000
+    }
+  },
   {
     id: 'kimi-linear', name: 'Kimi-Linear-48B-A3B', family: 'kimi',
     publisher: 'Moonshot AI', releaseDate: '2026-02',
@@ -1009,7 +1034,42 @@ export const MODELS: ModelArch[] = [
       numSharedExperts: 1,
       activeParamCount: 40_000_000_000
     },
-    numNextnLayers: 0
+    // config num_nextn_predict_layers: 1 (one MTP layer). Engine models this as
+    // mtpFactor = 1 + depth = 2× decode throughput (100%-acceptance ceiling),
+    // matching the DeepSeek V3+ entries' treatment of MTP.
+    numNextnLayers: 1
+  },
+  // GLM-5.2 (zai-org/GLM-5.2, config model_type glm_moe_dsa, created 2026-06-16):
+  // same MLA-DSA backbone as GLM-5 — identical 78 layers / 6144 hidden / 256-expert
+  // (8 active + 1 shared) MoE and identical attention geometry (kv_lora 512,
+  // qk_rope 64, qk_nope 192, v 256, index_topk 2048). The shipped change is context:
+  // max_position_embeddings 1,048,576 (1M) vs GLM-5's 202,752. paramCount 753B from
+  // the safetensors index (753,329,940,480 params, BF16); activeParamCount inherited
+  // from GLM-5's identical active path (card doesn't break it out). headDim 256
+  // follows the GLM-5 entry (inert for MLA — KV/attn key off kv_lora + rope, not
+  // headDim). numNextnLayers 1 matches config num_nextn_predict_layers and GLM-5.
+  {
+    id: 'glm-5.2', name: 'GLM-5.2', family: 'glm',
+    publisher: 'Zhipu AI', releaseDate: '2026-06',
+    nativeDtype: 'bf16',
+    layers: 78, hiddenDim: 6144, intermediateDim: 12288,
+    numHeads: 64, numKvHeads: 64, headDim: 256, vocabSize: 154880,
+    paramCount: 753_000_000_000,
+    maxContext: 1048576,
+    attention: {
+      type: 'mla-dsa',
+      kvLoraRank: 512, qkRopeHeadDim: 64,
+      qkNopeHeadDim: 192, vHeadDim: 256,
+      topK: 2048
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 40_000_000_000
+    },
+    numNextnLayers: 1
   },
   // === Phi ===
   {
