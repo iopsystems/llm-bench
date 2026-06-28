@@ -219,10 +219,13 @@
               strokeDasharray: '4,2', clip: true }
           )
         ] : []),
-        // Two dot marks share the same color/symbol scales but carry different
-        // tooltip channels: rows without an X-factor note skip the Note line so
-        // the tooltip doesn't render an empty "Note: " for them.
-        Plot.dot(data.points.filter(p => !p.note), {
+        // Single dot mark = single interactive tip. Splitting note/no-note
+        // points into two `tip`-bearing marks installs two competing pointer
+        // handlers that re-render each other's tip layer on every pointermove —
+        // the tooltip flickers and won't stick. One mark fixes that; the Note
+        // channel returns null for no-note points, and Plot's tip omits
+        // null-valued channel rows, so we still avoid an empty "Note: " line.
+        Plot.dot(data.points, {
           x: 'ai', y: 'perf',
           stroke: 'tier', fill: 'tier', fillOpacity: 0.7, symbol: 'phase',
           r: 7, strokeWidth: 1.5,
@@ -233,28 +236,8 @@
             Performance: { value: 'perf', label: 'Performance' },
             ' ': { value: () => '', label: ' ' },
             'Arithmetic Intensity': { value: 'ai', label: 'Arithmetic Intensity' },
-            Bottleneck: { value: 'regime', label: 'Bottleneck' }
-          },
-          tip: {
-            format: {
-              x: false, y: false,
-              stroke: false, fill: false,
-              Performance: (d: number) => fmtPerf(d) + '/s',
-              'Arithmetic Intensity': fmtAi,
-              Bottleneck: fmtRegime
-            }
-          }
-        }),
-        Plot.dot(data.points.filter(p => p.note), {
-          x: 'ai', y: 'perf',
-          stroke: 'tier', fill: 'tier', fillOpacity: 0.7, symbol: 'phase',
-          r: 7, strokeWidth: 1.5,
-          channels: {
-            Performance: { value: 'perf', label: 'Performance' },
-            ' ': { value: () => '', label: ' ' },
-            'Arithmetic Intensity': { value: 'ai', label: 'Arithmetic Intensity' },
             Bottleneck: { value: 'regime', label: 'Bottleneck' },
-            Note: { value: 'note', label: 'Note' }
+            Note: { value: (d: { note?: string }) => d.note ?? null, label: 'Note' }
           },
           tip: {
             format: {
