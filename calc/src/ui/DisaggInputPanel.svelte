@@ -8,11 +8,12 @@
     heterogeneous,
     prefillAcceleratorId, prefillVariantId, prefillSystemId, prefillParallelismOverride,
     decodeAcceleratorId, decodeVariantId, decodeSystemId, decodeParallelismOverride,
+    showConsumerSkus,
   } from './stores'
   import { groupedDisaggFabrics, formatFabricLabel } from './disaggFabrics'
   import { ACCELERATORS } from '../data'
   import { SYSTEMS } from '../data/systems'
-  import { orderSkus } from './catalogOrder'
+  import { orderSkus, filterByTier } from './catalogOrder'
   import ParallelismPicker from './ParallelismPicker.svelte'
 
   // V2 heterogeneous: when $heterogeneous is on, both clusters get their own
@@ -21,7 +22,18 @@
   // toggle-on handler seeds both from shared so the user starts symmetric and
   // changes one cluster at a time.
   $: groups = groupedDisaggFabrics($acceleratorId)
-  $: skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
+  // Per-cluster sku groups so each picker keeps its own currently-selected id
+  // pinned via alwaysShowIds even when consumer filter is off.
+  $: prefillSkuGroups = orderSkus(
+    filterByTier(ACCELERATORS, $showConsumerSkus,
+      [$prefillAcceleratorId || $acceleratorId]),
+    SYSTEMS
+  )
+  $: decodeSkuGroups = orderSkus(
+    filterByTier(ACCELERATORS, $showConsumerSkus,
+      [$decodeAcceleratorId || $prefillAcceleratorId || $acceleratorId]),
+    SYSTEMS
+  )
 
   // Prefill cluster (= prefill-override stores). Once het is on the seed
   // handler / URL apply guarantees these are populated, so no fallback to
@@ -126,9 +138,15 @@
       <div class="section-label">Prefill cluster</div>
       <div class="row">
         <label>
-          Accelerator
+          <span class="picker-label-row">
+            Accelerator
+            <label class="show-consumer">
+              <input type="checkbox" bind:checked={$showConsumerSkus} />
+              Show consumer GPUs
+            </label>
+          </span>
           <select value={prefillComboValue} on:change={onPrefillComboChange}>
-            {#each skuGroups as g}
+            {#each prefillSkuGroups as g}
               <optgroup label={g.publisher}>
                 {#each g.entries as e}
                   {#if e.kind === 'single'}
@@ -159,9 +177,15 @@
       <div class="section-label">Decode cluster</div>
       <div class="row">
         <label>
-          Accelerator
+          <span class="picker-label-row">
+            Accelerator
+            <label class="show-consumer">
+              <input type="checkbox" bind:checked={$showConsumerSkus} />
+              Show consumer GPUs
+            </label>
+          </span>
           <select value={decodeComboValue} on:change={onDecodeComboChange}>
-            {#each skuGroups as g}
+            {#each decodeSkuGroups as g}
               <optgroup label={g.publisher}>
                 {#each g.entries as e}
                   {#if e.kind === 'single'}
@@ -220,4 +244,13 @@
   @media (max-width: 800px) {
     .cluster-pair { grid-template-columns: 1fr; }
   }
+  .picker-label-row {
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .show-consumer {
+    display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem;
+    font-size: 0.78rem; font-weight: 400; color: #666;
+    cursor: pointer;
+  }
+  .show-consumer input[type=checkbox] { width: auto; margin: 0; }
 </style>

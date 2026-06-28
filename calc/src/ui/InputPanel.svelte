@@ -1,12 +1,12 @@
 <script lang="ts">
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
-  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill, concurrencyOverride, nMaxCalc } from './stores'
+  import { acceleratorId, variantId, systemId, modelId, quant, workload, disaggKvTransferFabricId, disaggFirstTokenOnPrefill, concurrencyOverride, nMaxCalc, showConsumerSkus } from './stores'
   import type { Dtype } from '../engine/types'
   import ParallelismPicker from './ParallelismPicker.svelte'
   import WorkloadPresetPicker from './WorkloadPresetPicker.svelte'
   import { parseTokenCount, formatTokenCount } from './parseTokens'
-  import { orderModels, orderSkus } from './catalogOrder'
+  import { orderModels, orderSkus, filterByTier } from './catalogOrder'
   import { groupedDisaggFabrics, formatFabricLabel } from './disaggFabrics'
 
   export let hideConcurrency = false
@@ -28,7 +28,12 @@
   // Picker ordering lives in catalogOrder.ts: publisher groups (newest-shipping
   // publisher first), then within a group newer/larger first. SKU groups also
   // put single accelerators ahead of multi-accelerator systems.
-  const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
+  // Reactive so toggling showConsumerSkus re-filters without losing the
+  // currently-selected id (alwaysShowIds keeps it visible either way).
+  $: skuGroups = orderSkus(
+    filterByTier(ACCELERATORS, $showConsumerSkus, [$acceleratorId]),
+    SYSTEMS
+  )
   const modelGroups = orderModels(MODELS)
 
   // Single combined value for the dropdown, prefixed to distinguish kind.
@@ -139,7 +144,13 @@
     <legend>Hardware</legend>
     <div class="row">
       <label>
-        Accelerator
+        <span class="picker-label-row">
+          Accelerator
+          <label class="show-consumer">
+            <input type="checkbox" bind:checked={$showConsumerSkus} />
+            Show consumer GPUs
+          </label>
+        </span>
         <select value={comboValue} on:change={onComboChange}>
           {#each skuGroups as g}
             <optgroup label={g.publisher}>
@@ -309,4 +320,13 @@
   select, input { font-size: 1rem; padding: 0.25rem; width: 100%; box-sizing: border-box; }
   input.invalid { border-color: #b85b00; background: #fff7ec; }
   option.native { font-weight: 700; }
+  .picker-label-row {
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .show-consumer {
+    display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem;
+    font-size: 0.78rem; font-weight: 400; color: #666;
+    cursor: pointer;
+  }
+  .show-consumer input[type=checkbox] { width: auto; margin: 0; }
 </style>

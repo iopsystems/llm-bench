@@ -136,3 +136,18 @@ export function orderSkus(
 
   return groups.map(g => ({ publisher: g.publisher, entries: g.rows.map(r => r.entry) }))
 }
+
+// Filter accelerators by tier, always preserving explicitly-selected ids so
+// a shared `?a=rtx-5090` URL still renders that option even when the
+// consumer toggle is off. Pure / order-preserving — no sort, no dedup.
+export function filterByTier(
+  accelerators: AcceleratorSpec[],
+  showConsumer: boolean,
+  alwaysShowIds: string[] = []
+): AcceleratorSpec[] {
+  return accelerators.filter(a =>
+    showConsumer ||
+    a.tier === 'datacenter' ||
+    alwaysShowIds.includes(a.id)
+  )
+}

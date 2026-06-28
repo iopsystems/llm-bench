@@ -2,9 +2,9 @@
 <script lang="ts">
   import { ACCELERATORS, MODELS } from '../data'
   import { SYSTEMS } from '../data/systems'
-  import { orderModels, orderSkus } from './catalogOrder'
+  import { orderModels, orderSkus, filterByTier } from './catalogOrder'
   import { route, navigate } from './route'
-  import { modelId, acceleratorId, systemId } from './stores'
+  import { modelId, acceleratorId, systemId, showConsumerSkus } from './stores'
   import ModelSpecSheet from './ModelSpecSheet.svelte'
   import SkuSpecSheet from './SkuSpecSheet.svelte'
 
@@ -15,7 +15,10 @@
   const modelGroups = _moonshotIdx > 0
     ? [_orderedModels[_moonshotIdx], ..._orderedModels.slice(0, _moonshotIdx), ..._orderedModels.slice(_moonshotIdx + 1)]
     : _orderedModels
-  const skuGroups = orderSkus(ACCELERATORS, SYSTEMS)
+  $: skuGroups = orderSkus(
+    filterByTier(ACCELERATORS, $showConsumerSkus, []),
+    SYSTEMS
+  )
 
   let section: 'models' | 'skus' = 'models'
   let cardOpen = true
@@ -96,6 +99,10 @@
       {/each}
     </div>
   {:else}
+    <label class="show-consumer catalog-toggle">
+      <input type="checkbox" bind:checked={$showConsumerSkus} />
+      Show consumer GPUs
+    </label>
     {#if activeSku}
       <div class="cardwrap">
         {#if cardOpen}
@@ -190,4 +197,10 @@
   }
   .entry:hover { background: #eef2f7; }
   .entry.pinned { font-weight: 700; }
+  .show-consumer {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.78rem; font-weight: 400; color: #666;
+  }
+  .show-consumer input[type=checkbox] { width: auto; margin: 0; }
+  .catalog-toggle { margin-bottom: 0.6rem; }
 </style>
