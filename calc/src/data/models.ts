@@ -1034,7 +1034,10 @@ export const MODELS: ModelArch[] = [
       numSharedExperts: 1,
       activeParamCount: 40_000_000_000
     },
-    numNextnLayers: 0
+    // config num_nextn_predict_layers: 1 (one MTP layer). Engine models this as
+    // mtpFactor = 1 + depth = 2× decode throughput (100%-acceptance ceiling),
+    // matching the DeepSeek V3+ entries' treatment of MTP.
+    numNextnLayers: 1
   },
   // GLM-5.2 (zai-org/GLM-5.2, config model_type glm_moe_dsa, created 2026-06-16):
   // same MLA-DSA backbone as GLM-5 — identical 78 layers / 6144 hidden / 256-expert
@@ -1042,8 +1045,9 @@ export const MODELS: ModelArch[] = [
   // qk_rope 64, qk_nope 192, v 256, index_topk 2048). The shipped change is context:
   // max_position_embeddings 1,048,576 (1M) vs GLM-5's 202,752. paramCount 753B from
   // the safetensors index (753,329,940,480 params, BF16); activeParamCount inherited
-  // from GLM-5's identical active path (card doesn't break it out). headDim 256 and
-  // numNextnLayers 0 follow the GLM-5 entry's modeling conventions for comparability.
+  // from GLM-5's identical active path (card doesn't break it out). headDim 256
+  // follows the GLM-5 entry (inert for MLA — KV/attn key off kv_lora + rope, not
+  // headDim). numNextnLayers 1 matches config num_nextn_predict_layers and GLM-5.
   {
     id: 'glm-5.2', name: 'GLM-5.2', family: 'glm',
     publisher: 'Zhipu AI', releaseDate: '2026-06',
@@ -1065,7 +1069,7 @@ export const MODELS: ModelArch[] = [
       numSharedExperts: 1,
       activeParamCount: 40_000_000_000
     },
-    numNextnLayers: 0
+    numNextnLayers: 1
   },
   // === Phi ===
   {

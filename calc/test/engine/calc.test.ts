@@ -496,6 +496,12 @@ describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', (
   const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const glm5 = MODELS.find(m => m.id === 'glm-5')!
 
+  it('models MTP — config has num_nextn_predict_layers: 1 (regression guard)', () => {
+    // GLM-5 ships one MTP layer; engine applies mtpFactor = 1 + depth = 2×
+    // decode (matches DeepSeek V3+ treatment). Guards against reverting to 0.
+    expect(glm5.numNextnLayers).toBe(1)
+  })
+
   it('GLM-5 at 32k prompt: MLA KV cache uses 78 layers (vs V3.2 61)', () => {
     const input: CalcInput = {
       accelerator: h100,
