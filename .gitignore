@@ -5,8 +5,6 @@ target/
 # AI
 .claude/*
 !.claude/skills/
-!.claude/hooks/
-!.claude/settings.json
 
 # IDE
 .idea/
