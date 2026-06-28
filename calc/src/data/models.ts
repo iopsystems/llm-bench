@@ -1011,6 +1011,37 @@ export const MODELS: ModelArch[] = [
     },
     numNextnLayers: 0
   },
+  // GLM-5.2 (zai-org/GLM-5.2, config model_type glm_moe_dsa, created 2026-06-16):
+  // same MLA-DSA backbone as GLM-5 — identical 78 layers / 6144 hidden / 256-expert
+  // (8 active + 1 shared) MoE and identical attention geometry (kv_lora 512,
+  // qk_rope 64, qk_nope 192, v 256, index_topk 2048). The shipped change is context:
+  // max_position_embeddings 1,048,576 (1M) vs GLM-5's 202,752. paramCount 753B from
+  // the safetensors index (753,329,940,480 params, BF16); activeParamCount inherited
+  // from GLM-5's identical active path (card doesn't break it out). headDim 256 and
+  // numNextnLayers 0 follow the GLM-5 entry's modeling conventions for comparability.
+  {
+    id: 'glm-5.2', name: 'GLM-5.2', family: 'glm',
+    publisher: 'Zhipu AI', releaseDate: '2026-06',
+    nativeDtype: 'bf16',
+    layers: 78, hiddenDim: 6144, intermediateDim: 12288,
+    numHeads: 64, numKvHeads: 64, headDim: 256, vocabSize: 154880,
+    paramCount: 753_000_000_000,
+    maxContext: 1048576,
+    attention: {
+      type: 'mla-dsa',
+      kvLoraRank: 512, qkRopeHeadDim: 64,
+      qkNopeHeadDim: 192, vHeadDim: 256,
+      topK: 2048
+    },
+    architecture: {
+      type: 'moe',
+      numExperts: 256,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 40_000_000_000
+    },
+    numNextnLayers: 0
+  },
   // === Phi ===
   {
     id: 'phi-4', name: 'Phi-4 14B', family: 'phi',

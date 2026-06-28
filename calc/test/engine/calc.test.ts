@@ -493,6 +493,45 @@ describe('calculate — GLM-5 (MLA + DSA + asymmetric head dims) integration', (
   })
 })
 
+describe('calculate — GLM-5.2 (GLM-5 backbone, 1M context) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const glm52 = MODELS.find(m => m.id === 'glm-5.2')!
+
+  it('reuses the GLM-5 MLA-DSA geometry (78 layers, kv_lora 512 + rope 64)', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: glm52,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // Same MLA KV formula as GLM-5: 78 × (kv_lora 512 + rope 64) × bytes(fp16) × seqlen
+    expect(r.memory.kvCachePerRequest).toBe(78 * (512 + 64) * 2 * 32768)
+  })
+
+  it('extends trained context to 1M (the field that distinguishes it from GLM-5)', () => {
+    expect(glm52.maxContext).toBe(1048576)
+  })
+
+  it('decode bytes/step use activeParams (40B), not paramCount (753B)', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: glm52,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    // 753B × 2 bytes = 1.5 TB → exceeds H100 SXM-80 (80 GB)
+    expect(r.memory.fits).toBe(false)
+    const activeBytes = 40_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 5e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
+
 describe('calculate — Kimi-Linear (linear + MLA hybrid) integration', () => {
   const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const kl = MODELS.find(m => m.id === 'kimi-linear')!
