@@ -725,6 +725,31 @@ export const MODELS: ModelArch[] = [
       activeParamCount: 32_000_000_000
     }
   },
+  // K2.7-Code (moonshotai/Kimi-K2.7-Code, public, created 2026-06-11): same K2/K2.5
+  // text backbone — config text_config is DeepseekV3ForCausalLM, model_type kimi_k25,
+  // identical 61-layer MLA MoE (kv_lora 512, qk_rope 64, qk_nope 128, v 128; 384
+  // experts / 8 active / 1 shared). Deltas vs K2.5: ships **bf16** weights (config
+  // dtype bfloat16) rather than int4, at 256k context (generation max_length 262144).
+  // Card states 1T total / 32B activated; paramCount = the text tower (1.026T, same
+  // as K2/K2.5), excluding the multimodal vision encoder per the K2.5 convention.
+  {
+    id: 'kimi-k2.7-code', name: 'Kimi K2.7 Code', family: 'kimi',
+    publisher: 'Moonshot AI', releaseDate: '2026-06',
+    nativeDtype: 'bf16',
+    layers: 61, hiddenDim: 7168, intermediateDim: 18432,
+    numHeads: 64, numKvHeads: 64, headDim: 192, vocabSize: 163840,
+    paramCount: 1_026_000_000_000,
+    maxContext: 262144,
+    numNextnLayers: 0,
+    attention: { type: 'mla', kvLoraRank: 512, qkRopeHeadDim: 64, qkNopeHeadDim: 128, vHeadDim: 128 },
+    architecture: {
+      type: 'moe',
+      numExperts: 384,
+      numExpertsActive: 8,
+      numSharedExperts: 1,
+      activeParamCount: 32_000_000_000
+    }
+  },
   {
     id: 'kimi-linear', name: 'Kimi-Linear-48B-A3B', family: 'kimi',
     publisher: 'Moonshot AI', releaseDate: '2026-02',

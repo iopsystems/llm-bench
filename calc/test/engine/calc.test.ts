@@ -384,6 +384,43 @@ describe('calculate — Kimi K2 integration', () => {
   })
 })
 
+describe('calculate — Kimi K2.7 Code (K2.5 backbone, bf16, 256k) integration', () => {
+  const h100 = ACCELERATORS.find(a => a.id === 'h100')!
+  const k27 = MODELS.find(m => m.id === 'kimi-k2.7-code')!
+
+  it('reuses the K2 MLA backbone (61 layers, kv_lora 512 + rope 64)', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: k27,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 32768, outputTokens: 0, concurrency: 1 }
+    }
+    const r = calculate(input)
+    expect(r.memory.kvCachePerRequest).toBe(61 * (512 + 64) * 2 * 32768)
+  })
+
+  it('ships bf16 weights at 256k context (the deltas vs K2.5 int4)', () => {
+    expect(k27.nativeDtype).toBe('bf16')
+    expect(k27.maxContext).toBe(262144)
+  })
+
+  it('decode bytes/step use activeParams (32B), not paramCount (1.026T)', () => {
+    const input: CalcInput = {
+      accelerator: h100,
+      acceleratorVariantId: 'sxm-80',
+      model: k27,
+      quant: { weights: 'fp16', kv: 'fp16', activations: 'fp16' },
+      workload: { promptTokens: 2048, outputTokens: 512, concurrency: 1 }
+    }
+    const r = calculate(input)
+    const activeBytes = 32_000_000_000 * 2
+    expect(r.perf['peak'].decode.bytesPerStep).toBeGreaterThan(activeBytes)
+    expect(r.perf['peak'].decode.bytesPerStep).toBeLessThan(activeBytes + 5e9)
+    expect(r.perf['peak'].decode.regime).toBe('memory')
+  })
+})
+
 describe('calculate — GLM-4.5-Air integration', () => {
   const h100 = ACCELERATORS.find(a => a.id === 'h100')!
   const glm = MODELS.find(m => m.id === 'glm-4.5-air')!
