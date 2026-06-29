@@ -677,6 +677,14 @@ impl BenchmarkRunner {
             None
         };
 
+        // Launch `rezolus record` for server-side metrics if a URL is configured.
+        let server_recorder = self
+            .config
+            .metrics
+            .as_ref()
+            .filter(|m| m.server_metrics_url.is_some())
+            .and_then(crate::server_metrics::ServerMetricsRecorder::spawn);
+
         // Run benchmark (without generating report)
         let (test_duration, sat_results) = if self.config.saturation.is_some() {
             let (d, r) = self
@@ -697,6 +705,11 @@ impl BenchmarkRunner {
 
         // Stop metrics capture
         crate::metrics::RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
+
+        // Stop the server-metrics recorder (SIGINT -> rezolus finalizes its parquet).
+        if let Some(rec) = server_recorder {
+            rec.finish().await;
+        }
 
         // Wait for background tasks to complete
         if let Some(handle) = stats_handle {

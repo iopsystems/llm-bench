@@ -303,6 +303,14 @@ level = "info"
 # output = "metrics.parquet"
 # interval = "1s"  # Snapshot interval (e.g., "1s", "500ms", "1m")
 # batch_size = 1000  # Parquet batch size
+#
+# Server-side metrics capture (optional): spawns `rezolus record` to scrape the
+# server-under-test's Prometheus /metrics on the same interval and write a parquet
+# time-aligned with the client metrics (join on the wall-clock timestamp).
+# Requires the `rezolus` binary on PATH (or set rezolus_bin).
+# server_metrics_url = "http://localhost:4242/metrics"
+# server_metrics_output = "metrics.server.parquet"  # default: <output-stem>.server.parquet
+# rezolus_bin = "rezolus"                             # binary to invoke
 
 # =============================================================================
 # Admin Server Configuration (Optional)
