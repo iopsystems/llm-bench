@@ -1,152 +1,125 @@
-# Server-side metrics scraping — design
+# Server-side metrics capture — design (shell out to `rezolus record`)
 
-**Date:** 2026-06-29. **Status:** design, pending implementation plan. **Repo:** llm-perf.
+**Date:** 2026-06-29. **Status:** design (revised — pivoted from an integrated
+scraper to shelling out). **Repo:** llm-perf.
 
 ## Goal
 
-While benchmarking an OpenAI-compatible server, scrape that server's Prometheus
-`/metrics` endpoint on the same interval as llm-perf's existing client-side
-metrics snapshots, and write the server-side time-series to a parquet file that
-is **time-aligned** (shared wall-clock timestamp grid) with the client parquet.
-This lets a run attribute client-observed behavior (TTFT/ITL/throughput) to a
-*server-side cause* (occupancy, prefill-admission share, KV pressure, queue
-depth, …) instead of inferring it.
+While benchmarking a server, capture that server's Prometheus `/metrics`
+time-series alongside llm-perf's client-side metrics, so a run can attribute
+client behavior (TTFT/ITL/throughput) to a server-side cause (occupancy,
+prefill-admission share, KV pressure). The two parquets join on a shared
+wall-clock timestamp.
 
-Concrete motivating case: the `ferallm-serve` engine exposes a Prometheus
-`/metrics` endpoint (occupancy, prefill-step share, pad-efficiency,
-cache-exhausted, KV blocks, …). A serving profile found that client TTFT collapse
-under load was caused by prefill-admission starvation — visible only in the
-server-side metrics. This feature captures those server metrics alongside the
-client metrics in one run.
-
-## Context: relationship to `rezolus record`
+## Approach: launch `rezolus record` as a child process
 
 `rezolus record` already scrapes Prometheus endpoints (via `prometheus_parse`)
-and writes parquet, with provenance tagging and `--duration`. This design
-deliberately **does not depend on rezolus** — llm-perf is distributed standalone
-(deb/rpm) and should capture server metrics self-contained. However, it **borrows
-rezolus's proven approach**: convert scraped Prometheus into a
-`metriken-exposition` `Snapshot` and run it through the *same*
-`MsgpackToParquet` pipeline llm-perf already uses for client snapshots. That
-reuse means: no new parquet dependency, and the server parquet is the **same
-schema family** as the client parquet (consistent analysis tooling, native
-timestamp join).
+and writes parquet, with provenance, histogram/label support, stable metric IDs,
+and a clean `ctrlc` shutdown that finalizes the parquet. Rather than reimplement
+that in llm-perf, when a server `/metrics` URL is configured llm-perf **spawns
+`rezolus record` as a child for the benchmark's lifetime** and stops it cleanly
+at the end.
+
+**Why this over an integrated scraper:** an in-tree converter would re-derive
+rezolus's parser, histogram-bucket conversion, and metriken-exposition coupling
+— the bulk of the work — for a strictly less capable result. Shelling out reuses
+the mature tool; new llm-perf code is a thin process launcher. Trade-off: a
+runtime dependency on the `rezolus` binary (graceful: if it's not found, warn
+and run the benchmark without server metrics).
+
+(An earlier revision of this spec designed an integrated scraper. The
+`prometheus_parse`-based converter from that attempt was reverted; the config
+fields `server_metrics_url`/`server_metrics_output` were kept.)
 
 ## Non-goals
 
-- Merging server metrics into the *client* parquet (a separate file, joined on
-  timestamp, keeps schemas clean and avoids metric-ID collisions).
-- Authentication / TLS to the scrape target (local benchmarking; add later if a
-  real need appears).
-- A live dashboard or alerting (this writes parquet for offline analysis).
-- Multiple scrape endpoints in one run (single `server_metrics_url`; the
-  provenance field is forward-compatible with multi-endpoint if needed later).
+- Reimplementing Prometheus parsing / parquet writing in llm-perf (that is
+  `rezolus record`'s job).
+- Auto-joining the two parquets (they share a wall-clock timestamp; join offline).
+- Bundling/installing rezolus (the user provides it on `PATH`, or sets a path).
 
 ## Architecture
 
-A sidecar tokio task mirroring the existing client snapshot task, decoupled from
-the metriken client registry.
-
 ```
 benchmark.rs run(): RUNNING=true
-  ├─ spawn stats task              (existing)
-  ├─ spawn snapshot task           (existing: client metriken → client parquet)
-  ├─ spawn capture_server_metrics  (NEW, only if server_metrics_url set)
-  ├─ run workers (concurrent / QPS / saturation)
-  └─ RUNNING=false → await snapshot_handle AND server_metrics_handle
+  ├─ spawn stats task            (existing)
+  ├─ spawn snapshot task         (existing: client metrics → client parquet)
+  ├─ ServerMetricsRecorder::spawn(...)  (NEW, if server_metrics_url set):
+  │     rezolus record --endpoint '<url>,source=<host>,protocol=prometheus'
+  │                    --interval <metrics.interval> <server_output>
+  ├─ run workers
+  └─ RUNNING=false → recorder.finish().await  (SIGINT → rezolus finalizes parquet)
+                   → await snapshot_handle (existing)
 ```
 
-- **`MetricsConfig` (src/config.rs)** gains two optional fields (below). The
-  struct is `#[serde(deny_unknown_fields)]`; additive optional fields are safe.
-- **New `src/server_metrics.rs`**, two units:
-  - `PrometheusConverter` — converts Prometheus text → `metriken-exposition`
-    `Snapshot`, tagging each series with metadata (`metric` name, the series
-    labels, `source`, `endpoint`) and assigning **stable numeric metric IDs
-    across scrapes** within a session (so parquet column identity is consistent).
-    Mirrors `rezolus/src/recorder/prometheus.rs` (~150 lines); uses
-    `prometheus_parse` + `metriken-exposition` (the latter is already a dep).
-  - `pub async fn capture_server_metrics(config: Config) -> Result<()>` — the
-    sidecar task, structured exactly like `snapshot.rs::capture_snapshots`.
-- **Wiring (src/benchmark.rs ~668):** spawn alongside the snapshot task when
-  `server_metrics_url` is set; `await` its handle after `RUNNING.store(false)`.
-- **New dependency:** `prometheus-parse` (the crate rezolus uses). No new parquet
-  dep — `MsgpackToParquet` from `metriken-exposition` is already used.
+- **`MetricsConfig` (src/config.rs)** — keeps `server_metrics_url: Option<String>`
+  and `server_metrics_output: Option<PathBuf>` (+ `resolved_server_output()`, all
+  already present); adds `rezolus_bin: Option<String>` (default `"rezolus"`).
+- **New `src/server_metrics.rs`** — a thin launcher (NOT a parser):
+  - `fn record_args(mc: &MetricsConfig) -> Vec<String>` — a **pure** function that
+    builds the `rezolus record` argument vector (endpoint spec, `--interval`,
+    output). Unit-tested without spawning.
+  - `struct ServerMetricsRecorder` holding the `tokio::process::Child`.
+  - `fn spawn(mc, bin) -> Option<ServerMetricsRecorder>` — spawns the child; on
+    spawn failure (binary missing) logs `warn!` and returns `None`.
+  - `async fn finish(self)` — send `SIGINT` to the child (`libc::kill`), then
+    `child.wait()` with a timeout fallback to `child.kill()`.
+- **Wiring (src/benchmark.rs):** create the recorder beside the snapshot-task
+  spawn; call `finish().await` after `RUNNING=false`, before awaiting the snapshot
+  handle.
+- **New dep:** `libc` (for `kill(pid, SIGINT)`). No `prometheus-parse` /
+  parquet code in llm-perf.
 
-## Data flow & timestamp alignment
+## `rezolus record` invocation
 
-1. `capture_server_metrics` parses `interval` (`humantime`, as `snapshot.rs`
-   does) and computes the **same second-aligned start** as `snapshot.rs` (line
-   ~32: `Instant::now() - Duration::from_nanos(Utc::now().nanosecond())`), so
-   server ticks land on the same boundaries as client snapshots.
-2. Build `PrometheusConverter::with_provenance(source, endpoint)` where `source`
-   is derived from the URL host:port and `endpoint` is the full URL.
-3. `reqwest::Client` with a 5 s per-scrape timeout (reqwest is already a dep).
-4. Loop while `RUNNING`: `timeout(Duration::from_secs(1), interval.tick())`; on a
-   tick, GET the URL → body text → `converter.convert(&text)` → `Snapshot` (its
-   `systemtime` field is `SystemTime::now()`, wall-clock) → `Snapshot::to_msgpack`
-   → append to the msgpack buffer (same buffering as `snapshot.rs`).
-5. On exit (`RUNNING=false`): flush the buffer and
-   `MsgpackToParquet::with_options(...).convert_file_path(temp, output)`.
-6. **Alignment:** both client and server snapshots use wall-clock `SystemTime`
-   on the same aligned interval, so they join on nearest timestamp. The client
-   parquet already carries the snapshot wall-clock timestamp; the server parquet
-   carries its own — a simple equi/nearest join on the timestamp column.
+CLI (confirmed): `rezolus record --endpoint <spec> --interval <i> [--duration <d>]
+<output>`. The endpoint spec is `url[,source=name][,protocol=prometheus]`. llm-perf
+builds: `--endpoint "<server_metrics_url>,source=<url-host>,protocol=prometheus"
+--interval <metrics.interval> <resolved_server_output>`. No `--duration` — the
+load's length is variable (e.g. `total_requests` mode); llm-perf bounds the
+recorder by signalling it at load end.
 
-## Config (`MetricsConfig`)
+## Lifecycle & shutdown
 
-```rust
-pub struct MetricsConfig {
-    pub output: PathBuf,
-    pub interval: String,
-    pub batch_size: Option<usize>,
-    /// Prometheus /metrics URL of the server under test. None ⇒ feature off.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_metrics_url: Option<String>,
-    /// Output parquet for server metrics. Defaults to `<output-stem>.server.parquet`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_metrics_output: Option<PathBuf>,
-}
-```
-
-Validation at config load: if `server_metrics_url` is `Some` but unparseable as a
-URL, error; if `Some` and `server_metrics_output` is `None`, derive the default
-(`output` stem + `.server.parquet`). An example block is added to
-`examples/config.example.toml`.
+`rezolus record` installs a `ctrlc` handler: the **first** SIGINT flips its state
+to `TERMINATING`, breaks its collection loop, flushes msgpack, and converts to
+parquet (verified in `rezolus/src/recorder/mod.rs`). So:
+1. `spawn` launches the child at load start.
+2. `finish` sends one `SIGINT` (`libc::kill(child.id(), SIGINT)`), then
+   `tokio::time::timeout(30s, child.wait())`. On timeout, `child.kill()` (SIGKILL)
+   as a backstop and `warn!` that the server parquet may be incomplete.
 
 ## Error handling
 
-- A scrape failure (connection refused, timeout, non-200) or a parse failure:
-  `log::warn!` and **skip that tick**, then continue — the server may be starting
-  or restarting, and a missed sample must not abort the load.
-- The sidecar's `tokio::spawn` wraps any returned error in a `log::error!`,
-  exactly like the existing snapshot task, so a scraper fault cannot take down
-  the benchmark.
-- If zero scrapes succeeded by the end: `log::warn!("no server metrics captured")`
-  and skip writing the parquet (no empty file).
+- `rezolus` not on `PATH` / spawn fails: `warn!` once and return `None` — the
+  benchmark runs normally without server metrics.
+- `child.id()` is `None` (already exited): `warn!`, skip the signal.
+- SIGINT/wait timeout: SIGKILL backstop + `warn!`.
+- None of these abort the load.
 
 ## Testing
 
-- **Unit — `PrometheusConverter::convert`:** feed a fixed Prometheus text sample
-  containing (a) ferallm's label-free counters/gauges, (b) a labeled series, and
-  (c) a histogram. Assert the resulting `Snapshot` contains the expected metric
-  names, values, labels, and types; assert **stable IDs** across two `convert()`
-  calls (same `(name, labels)` ⇒ same id); assert provenance metadata
-  (`source`, `endpoint`, `metric`) is attached.
-- **Integration — round trip:** start a tiny local `TcpListener`/hyper mock that
-  serves a fixed `/metrics` text; run `capture_server_metrics` for ~2 ticks at a
-  short interval with the `RUNNING` flag toggled off after; read back the parquet
-  and assert the metrics are present with ≥2 distinct wall-clock timestamps. No
-  model or real server required.
-- **e2e (manual):** run `llm-perf bench` with `server_metrics_url` pointed at a
-  live `ferallm serve` during a load; confirm `server_metrics.parquet` carries
-  `ferallm_decode_steps_total` / `prefill` / `pad` rows whose wall-clock
-  timestamps align to the client parquet (spot-check the join).
+- **Unit — `record_args`:** assert the built arg vector for a sample
+  `MetricsConfig` (endpoint spec with `source=` host + `protocol=prometheus`,
+  `--interval`, the resolved output path). Pure, no process spawned.
+- **Integration — lifecycle:** point `rezolus_bin` at a **stub script** (written
+  by the test) that traps SIGINT, writes a marker file, and exits 0. Run
+  `spawn` → sleep briefly → `finish().await`; assert the marker file exists (the
+  stub received SIGINT and shut down cleanly) and the child was reaped. This
+  tests the spawn/signal/wait machinery without depending on rezolus.
+- **e2e (manual):** real `rezolus record` against a live `ferallm serve` during
+  an `llm-perf bench` run with `server_metrics_url` set; confirm
+  `<output>.server.parquet` is written and carries `ferallm_*` series with
+  timestamps overlapping the client parquet.
 
 ## Files
 
-- Modify: `src/config.rs` (two `MetricsConfig` fields + validation/default).
-- Create: `src/server_metrics.rs` (`PrometheusConverter`, `capture_server_metrics`).
-- Modify: `src/benchmark.rs` (spawn + await the sidecar task).
-- Modify: `src/lib.rs` (or `main.rs` module list) — register `mod server_metrics;`.
-- Modify: `Cargo.toml` (add `prometheus-parse`).
-- Modify: `examples/config.example.toml` (document the two fields).
+- Modify: `src/config.rs` (add `rezolus_bin` field; `server_metrics_url/output`
+  already present).
+- Create: `src/server_metrics.rs` (`record_args`, `ServerMetricsRecorder`,
+  `spawn`, `finish`).
+- Modify: `src/lib.rs` (`pub mod server_metrics;`).
+- Modify: `src/benchmark.rs` (spawn + finish wiring).
+- Modify: `Cargo.toml` (add `libc`; the `prometheus-parse` dep added earlier may
+  be removed since the integrated parser was reverted).
+- Modify: `examples/config.example.toml` (document the fields).
