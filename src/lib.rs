@@ -11,7 +11,6 @@ pub mod metrics;
 pub mod mmlu_pro;
 pub mod report;
 pub mod saturation;
-pub mod server_metrics;
 pub mod snapshot;
 pub mod stats;
 pub mod synthetic;
