@@ -70,14 +70,22 @@ benchmark.rs run(): RUNNING=true
 - **New dep:** `libc` (for `kill(pid, SIGINT)`). No `prometheus-parse` /
   parquet code in llm-perf.
 
-## `rezolus record` invocation
+## `rezolus record` invocation (verified against live ferallm)
 
-CLI (confirmed): `rezolus record --endpoint <spec> --interval <i> [--duration <d>]
-<output>`. The endpoint spec is `url[,source=name][,protocol=prometheus]`. llm-perf
-builds: `--endpoint "<server_metrics_url>,source=<url-host>,protocol=prometheus"
---interval <metrics.interval> <resolved_server_output>`. No `--duration` — the
-load's length is variable (e.g. `total_requests` mode); llm-perf bounds the
-recorder by signalling it at load end.
+CLI: `rezolus record <URL> <OUTPUT> --interval <i>`. llm-perf builds the **plain
+positional** form: `record <server_metrics_url> <resolved_server_output>
+--interval <metrics.interval>`. rezolus **auto-detects the Prometheus protocol**
+via its startup probe (confirmed: a 6 s scrape of ferallm `/metrics` produced a
+7-snapshot parquet with a `timestamp` column + per-metric columns). No
+`--duration` — the load length is variable (e.g. `total_requests` mode); llm-perf
+bounds the recorder by signalling it at load end.
+
+**Why plain positional, not annotated** (both discovered to fail in e2e): the
+`--endpoint 'url,source=,protocol=prometheus'` form requires the output as the
+`[OUTPUT]` positional, which clap fills *after* the `[URL]` positional (whose
+`Url` value-parser then rejects the output path); and putting the annotated
+string in the positional `[URL]` makes rezolus take the commas literally and the
+probe fails. The plain positional URL + probe auto-detection is the working form.
 
 ## Lifecycle & shutdown
 
