@@ -340,6 +340,9 @@ pub struct MetricsConfig {
     /// Output parquet for server metrics. Defaults to `<output-stem>.server.parquet`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_metrics_output: Option<PathBuf>,
+    /// Binary to invoke for server-metrics capture. Default `"rezolus"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rezolus_bin: Option<String>,
 }
 
 impl MetricsConfig {
@@ -921,5 +924,22 @@ mod server_metrics_config_tests {
             cfg.resolved_server_output(),
             std::path::PathBuf::from("srv.parquet")
         );
+    }
+
+    #[test]
+    fn rezolus_bin_defaults_to_none_and_parses() {
+        let toml = r#"
+            output = "run.parquet"
+            server_metrics_url = "http://x/metrics"
+        "#;
+        let cfg: MetricsConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.rezolus_bin.is_none());
+
+        let toml2 = r#"
+            output = "run.parquet"
+            rezolus_bin = "/opt/rezolus"
+        "#;
+        let cfg2: MetricsConfig = toml::from_str(toml2).unwrap();
+        assert_eq!(cfg2.rezolus_bin.as_deref(), Some("/opt/rezolus"));
     }
 }
