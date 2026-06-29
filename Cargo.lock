@@ -1785,6 +1785,7 @@ dependencies = [
  "hf-hub",
  "histogram",
  "humantime",
+ "libc",
  "log",
  "metriken",
  "metriken-exposition",

@@ -334,6 +334,26 @@ pub struct MetricsConfig {
     /// Batch size for parquet files
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_size: Option<usize>,
+    /// Prometheus /metrics URL of the server under test. None => feature off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_metrics_url: Option<String>,
+    /// Output parquet for server metrics. Defaults to `<output-stem>.server.parquet`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_metrics_output: Option<PathBuf>,
+    /// Binary to invoke for server-metrics capture. Default `"rezolus"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rezolus_bin: Option<String>,
+}
+
+impl MetricsConfig {
+    /// Resolved server-metrics parquet path: the explicit `server_metrics_output`,
+    /// else the client `output` with its extension replaced by `.server.parquet`.
+    pub fn resolved_server_output(&self) -> std::path::PathBuf {
+        if let Some(p) = &self.server_metrics_output {
+            return p.clone();
+        }
+        self.output.with_extension("server.parquet")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -867,5 +887,59 @@ turn_delay_max_ms = 1000
 "#;
         let config: Config = toml::from_str(toml).expect("toml parses");
         assert!(config.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod server_metrics_config_tests {
+    use super::*;
+
+    #[test]
+    fn derives_default_server_output_from_client_output() {
+        let toml = r#"
+            output = "run.parquet"
+            interval = "1s"
+            server_metrics_url = "http://localhost:4242/metrics"
+        "#;
+        let cfg: MetricsConfig = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.server_metrics_url.as_deref(),
+            Some("http://localhost:4242/metrics")
+        );
+        assert_eq!(
+            cfg.resolved_server_output(),
+            std::path::PathBuf::from("run.server.parquet")
+        );
+    }
+
+    #[test]
+    fn explicit_server_output_overrides_default() {
+        let toml = r#"
+            output = "run.parquet"
+            server_metrics_url = "http://x/metrics"
+            server_metrics_output = "srv.parquet"
+        "#;
+        let cfg: MetricsConfig = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.resolved_server_output(),
+            std::path::PathBuf::from("srv.parquet")
+        );
+    }
+
+    #[test]
+    fn rezolus_bin_defaults_to_none_and_parses() {
+        let toml = r#"
+            output = "run.parquet"
+            server_metrics_url = "http://x/metrics"
+        "#;
+        let cfg: MetricsConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.rezolus_bin.is_none());
+
+        let toml2 = r#"
+            output = "run.parquet"
+            rezolus_bin = "/opt/rezolus"
+        "#;
+        let cfg2: MetricsConfig = toml::from_str(toml2).unwrap();
+        assert_eq!(cfg2.rezolus_bin.as_deref(), Some("/opt/rezolus"));
     }
 }

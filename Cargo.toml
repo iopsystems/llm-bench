@@ -23,6 +23,7 @@ humantime = "2.1"
 log = "0.4"
 metriken = { git = "https://github.com/iopsystems/metriken" }
 metriken-exposition = { git = "https://github.com/iopsystems/metriken", features = ["json", "msgpack"] }
+libc = "0.2"
 num_cpus = "1.16"
 parquet = { version = "56", default-features = false, features = ["arrow"] }
 rand = "0.8"
