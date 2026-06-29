@@ -10,23 +10,15 @@ use tokio::process::{Child, Command};
 /// `mc.server_metrics_url` MUST be Some (callers gate on it).
 pub fn record_args(mc: &MetricsConfig) -> Vec<String> {
     let url = mc.server_metrics_url.clone().unwrap_or_default();
-    let source = reqwest::Url::parse(&url)
-        .ok()
-        .and_then(|u| {
-            u.host_str().map(|h| match u.port() {
-                Some(p) => format!("{h}:{p}"),
-                None => h.to_string(),
-            })
-        })
-        .unwrap_or_else(|| "server".to_string());
-    let endpoint = format!("{url},source={source},protocol=prometheus");
     let output = mc.resolved_server_output();
-    // `rezolus record [URL] [OUTPUT]`: the endpoint is the FIRST positional (it
-    // accepts the `,source=,protocol=` annotation), the output the SECOND. Using
-    // `--endpoint` instead would push the output into the [URL] positional.
+    // `rezolus record <URL> <OUTPUT> --interval <i>`: plain positional URL — rezolus
+    // auto-detects the Prometheus protocol via its startup probe (verified against a
+    // live ferallm /metrics). NOTE: do NOT annotate the URL with `,source=,protocol=`
+    // — the positional `[URL]` is taken literally (commas break the probe), and the
+    // `--endpoint` annotated form collides with the `[OUTPUT]` positional on the CLI.
     vec![
         "record".to_string(),
-        endpoint,
+        url,
         output.to_string_lossy().into_owned(),
         "--interval".to_string(),
         mc.interval.clone(),
@@ -110,13 +102,10 @@ mod tests {
 
     #[test]
     fn record_args_builds_positional_url_output_then_interval() {
-        // rezolus record [URL] [OUTPUT] --interval <i>
+        // rezolus record <URL> <OUTPUT> --interval <i> (plain URL; protocol auto-detected)
         let args = record_args(&mc("http://localhost:4242/metrics", None));
         assert_eq!(args[0], "record");
-        assert_eq!(
-            args[1],
-            "http://localhost:4242/metrics,source=localhost:4242,protocol=prometheus"
-        );
+        assert_eq!(args[1], "http://localhost:4242/metrics");
         assert_eq!(args[2], "run.server.parquet"); // derived default output (positional)
         assert_eq!(args[3], "--interval");
         assert_eq!(args[4], "1s");
