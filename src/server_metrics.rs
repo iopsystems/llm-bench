@@ -21,13 +21,15 @@ pub fn record_args(mc: &MetricsConfig) -> Vec<String> {
         .unwrap_or_else(|| "server".to_string());
     let endpoint = format!("{url},source={source},protocol=prometheus");
     let output = mc.resolved_server_output();
+    // `rezolus record [URL] [OUTPUT]`: the endpoint is the FIRST positional (it
+    // accepts the `,source=,protocol=` annotation), the output the SECOND. Using
+    // `--endpoint` instead would push the output into the [URL] positional.
     vec![
         "record".to_string(),
-        "--endpoint".to_string(),
         endpoint,
+        output.to_string_lossy().into_owned(),
         "--interval".to_string(),
         mc.interval.clone(),
-        output.to_string_lossy().into_owned(),
     ]
 }
 
@@ -107,32 +109,34 @@ mod tests {
     }
 
     #[test]
-    fn record_args_builds_endpoint_interval_output() {
+    fn record_args_builds_positional_url_output_then_interval() {
+        // rezolus record [URL] [OUTPUT] --interval <i>
         let args = record_args(&mc("http://localhost:4242/metrics", None));
         assert_eq!(args[0], "record");
-        assert_eq!(args[1], "--endpoint");
         assert_eq!(
-            args[2],
+            args[1],
             "http://localhost:4242/metrics,source=localhost:4242,protocol=prometheus"
         );
+        assert_eq!(args[2], "run.server.parquet"); // derived default output (positional)
         assert_eq!(args[3], "--interval");
         assert_eq!(args[4], "1s");
-        assert_eq!(args[5], "run.server.parquet");
     }
 
     #[test]
-    fn record_args_uses_explicit_output() {
+    fn record_args_uses_explicit_output_as_second_positional() {
         let args = record_args(&mc("http://h/metrics", Some("srv.parquet")));
-        assert_eq!(args.last().unwrap(), "srv.parquet");
+        assert_eq!(args[2], "srv.parquet");
     }
 
     #[tokio::test]
     async fn spawn_and_finish_signals_child_cleanly() {
         let dir = tempfile::tempdir().unwrap();
         let stub = dir.path().join("fake_rezolus.sh");
+        // Stub invoked as `record <endpoint> <output> --interval <i>`: the OUTPUT
+        // positional is $3. Trap SIGINT, write it (mimics rezolus finalizing), exit.
         std::fs::write(
             &stub,
-            "#!/bin/sh\nfor a in \"$@\"; do out=\"$a\"; done\n\
+            "#!/bin/sh\nout=\"$3\"\n\
              trap 'echo done > \"$out\"; exit 0' INT\n\
              while true; do sleep 0.05; done\n",
         )
