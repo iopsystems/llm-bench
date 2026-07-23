@@ -189,9 +189,9 @@ fn cache_dir() -> Result<PathBuf> {
 /// Resolve a `trace` value to a local file path and its format.
 ///
 /// If `spec` is an existing path it is used directly (format auto-detected unless
-/// overridden). Otherwise `spec` is looked up in [`KNOWN_TRACES`] and downloaded to
-/// the on-disk cache on first use; the known trace's canonical format wins unless
-/// the caller forced one.
+/// overridden). Otherwise `spec` is looked up in the known-trace table and
+/// downloaded to the on-disk cache on first use; the known trace's canonical format
+/// wins unless the caller forced one.
 pub async fn resolve_trace(spec: &str, format: TraceFormat) -> Result<(PathBuf, TraceFormat)> {
     let path = Path::new(spec);
     if path.exists() {
