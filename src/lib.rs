@@ -16,6 +16,7 @@ pub mod snapshot;
 pub mod stats;
 pub mod synthetic;
 pub mod tokenizer;
+pub mod trace;
 
 pub use benchmark::BenchmarkRunner;
 pub use cli::Cli;

@@ -47,6 +47,9 @@ pub struct OpenAIClient {
     /// a possibly-still-running, non-idempotent generation).
     retry_on_timeout: bool,
     chat_template_kwargs: Option<serde_json::Value>,
+    /// When set, every request carries `ignore_eos: true` and `min_tokens` equal to
+    /// its `max_tokens`, forcing the server to emit exactly that many output tokens.
+    force_output_len: bool,
 }
 
 // Request types for OpenAI Chat Completions API
@@ -76,6 +79,15 @@ pub struct ChatCompletionRequest {
     pub top_logprobs: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_template_kwargs: Option<serde_json::Value>,
+    /// vLLM/SGLang extension: keep generating past the EOS token so the response
+    /// reaches `max_tokens`. Used by trace replay to reproduce recorded output
+    /// lengths. Omitted from the request body when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ignore_eos: Option<bool>,
+    /// vLLM/SGLang extension: force at least this many output tokens. Paired with
+    /// `ignore_eos` by trace replay. Omitted when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,6 +250,9 @@ pub struct ClientConfig {
     pub retry_on_timeout: bool,
     /// Additional kwargs forwarded to the model's chat template for every request.
     pub chat_template_kwargs: Option<serde_json::Value>,
+    /// Force exact output lengths by sending `ignore_eos` + `min_tokens` (vLLM/SGLang
+    /// extensions). Used by trace replay; leave false for stock OpenAI servers.
+    pub force_output_len: bool,
 }
 
 impl OpenAIClient {
@@ -269,6 +284,7 @@ impl OpenAIClient {
     ///     stream_idle_timeout: None,
     ///     retry_on_timeout: false,
     ///     chat_template_kwargs: None,
+    ///     force_output_len: false,
     /// };
     ///
     /// let client = OpenAIClient::new(config).unwrap();
@@ -296,6 +312,7 @@ impl OpenAIClient {
             stream_idle_timeout: config.stream_idle_timeout,
             retry_on_timeout: config.retry_on_timeout,
             chat_template_kwargs: config.chat_template_kwargs,
+            force_output_len: config.force_output_len,
         })
     }
 
@@ -477,6 +494,14 @@ impl OpenAIClient {
             logprobs,
             top_logprobs,
             chat_template_kwargs: self.chat_template_kwargs.clone(),
+            // Force exact output lengths for replay: keep decoding past EOS and
+            // require min_tokens == max_tokens so the response is exactly max_tokens.
+            ignore_eos: self.force_output_len.then_some(true),
+            min_tokens: if self.force_output_len {
+                max_tokens
+            } else {
+                None
+            },
         }
     }
 
@@ -1356,6 +1381,7 @@ mod tests {
             stream_idle_timeout: None,
             retry_on_timeout: false,
             chat_template_kwargs: None,
+            force_output_len: false,
         };
         let client = OpenAIClient::new(config).unwrap();
         assert_eq!(client.timeout, Duration::from_secs(7));

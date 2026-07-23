@@ -1,0 +1,48 @@
+# Trace-replay mode: replay a public LLM inference trace against the endpoint.
+#
+# The [replay] section takes over as the run mode. Requests are dispatched on the
+# trace's own arrival schedule, each with a synthetic prompt sized to the recorded
+# input length and max_tokens set to the recorded output length. This reproduces a
+# real production workload's arrival burstiness and token-length distribution.
+[endpoint]
+base_url = "http://localhost:8080/v1"
+# Leave model unset to auto-detect, and leave max_tokens UNSET so each request's
+# per-row output length from the trace applies.
+timeout = 120
+
+[load]
+# Replay is open-loop: do not set qps or total_requests (the trace bounds the run).
+# concurrent_requests caps in-flight requests — set it high so it doesn't throttle
+# the offered schedule.
+concurrent_requests = 256
+
+[input]
+# Unused in replay mode, but the [input] section is still required by the schema.
+file = "unused"
+# Seed for synthesizing prompt text (reproducible runs).
+seed = 42
+
+[replay]
+# A known trace name (auto-downloaded and cached) or a path to a local trace file.
+# The Azure 2024 week-long conversation trace is a good realistic default.
+trace = "azure-conv-2024"
+# format = "auto"      # auto | azure | burstgpt | mooncake | jsonl
+# speed = 1.0          # 2.0 replays twice as fast; 0.5 half speed
+# skip = 0
+max_requests = 5000    # replay the first 5000 requests
+# model_filter = "GPT-4"     # BurstGPT only
+# max_input_tokens = 8192    # clamp huge contexts
+# max_output_tokens = 4096
+# force_output_len = true    # ignore_eos + min_tokens (vLLM/SGLang) for exact lengths
+
+[output]
+format = "json"
+file = "replay-results.json"
+
+[log]
+level = "info"
+
+# Optional: capture high-resolution metrics during the replay.
+# [metrics]
+# output = "replay-metrics.parquet"
+# interval = "1s"

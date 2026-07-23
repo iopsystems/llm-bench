@@ -57,6 +57,7 @@ format = "json"
         stream_idle_timeout: None,
         retry_on_timeout: false,
         chat_template_kwargs: cfg.endpoint.chat_template_kwargs.clone(),
+        force_output_len: false,
     })
     .unwrap();
 

@@ -35,6 +35,66 @@ pub struct Config {
     /// If absent, behavior is identical to back-to-back turns (no delay).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation: Option<ConversationConfig>,
+    /// Replay a public inference trace (Azure, BurstGPT, Mooncake, or generic
+    /// JSONL) against the endpoint. When present, this takes over as the run mode:
+    /// requests are dispatched on the trace's own arrival schedule with synthetic
+    /// prompts sized to each recorded input length and `max_tokens` set to each
+    /// recorded output length. Mutually exclusive with `saturation` and `qps`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay: Option<ReplayConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayConfig {
+    /// A path to a trace file on disk, or the name of a known trace to
+    /// auto-download (e.g. "azure-conv-2024", "mooncake-conversation").
+    pub trace: String,
+    /// Trace format: "auto" (default), "azure", "burstgpt", "mooncake", "jsonl".
+    #[serde(default = "default_replay_format")]
+    pub format: String,
+    /// Time-scaling factor for the arrival schedule. 1.0 replays at the recorded
+    /// wall-clock rate; 2.0 replays twice as fast (inter-arrival gaps halved);
+    /// 0.5 replays half as fast. Must be > 0.
+    #[serde(default = "default_replay_speed")]
+    pub speed: f64,
+    /// Skip this many leading requests in the trace.
+    #[serde(default)]
+    pub skip: usize,
+    /// Replay at most this many requests (after `skip`). `None` = the whole trace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_requests: Option<usize>,
+    /// BurstGPT only: keep only rows whose model matches (e.g. "GPT-4", "ChatGPT").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_filter: Option<String>,
+    /// Drop trace entries with zero output tokens (failed requests). Default true.
+    #[serde(default = "default_true")]
+    pub drop_zero_output: bool,
+    /// Clamp recorded input token counts to at most this value (guards against
+    /// replaying pathologically large contexts). `None` = replay as recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_input_tokens: Option<usize>,
+    /// Clamp recorded output token counts to at most this value. `None` = as recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<usize>,
+    /// Ask the server to generate exactly the recorded number of output tokens by
+    /// sending `ignore_eos` and `min_tokens` alongside `max_tokens`. These are
+    /// vLLM/SGLang extensions; leave off for servers that reject unknown fields.
+    /// Default true (the point of a faithful replay is to reproduce output lengths).
+    #[serde(default = "default_true")]
+    pub force_output_len: bool,
+}
+
+fn default_replay_format() -> String {
+    "auto".to_string()
+}
+
+fn default_replay_speed() -> f64 {
+    1.0
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -578,8 +638,41 @@ impl Config {
     }
 
     pub fn validate(&self) -> anyhow::Result<()> {
-        if self.load.total_requests.is_none() && self.load.duration_seconds.is_none() {
+        // In replay mode the trace's own length bounds the run, so neither
+        // total_requests nor duration_seconds is required (though duration_seconds
+        // may still be set to cut a long trace short).
+        if self.replay.is_none()
+            && self.load.total_requests.is_none()
+            && self.load.duration_seconds.is_none()
+        {
             anyhow::bail!("Either total_requests or duration_seconds must be specified");
+        }
+
+        if let Some(ref replay) = self.replay {
+            if self.saturation.is_some() {
+                anyhow::bail!("replay mode is mutually exclusive with saturation mode");
+            }
+            if self.load.qps.is_some() {
+                anyhow::bail!(
+                    "replay mode drives arrivals from the trace; remove load.qps (they conflict)"
+                );
+            }
+            if self.load.total_requests.is_some() {
+                anyhow::bail!(
+                    "replay mode is bounded by the trace; use replay.max_requests, not load.total_requests"
+                );
+            }
+            if replay.speed <= 0.0 {
+                anyhow::bail!("replay.speed must be greater than 0");
+            }
+            if replay.trace.trim().is_empty() {
+                anyhow::bail!("replay.trace must not be empty");
+            }
+            // Surface an unknown format early rather than at parse time.
+            replay
+                .format
+                .parse::<crate::trace::TraceFormat>()
+                .map_err(|e| anyhow::anyhow!("replay.format: {e}"))?;
         }
 
         if self.load.total_requests.is_some() && self.load.duration_seconds.is_some() {
@@ -863,6 +956,101 @@ turn_delay_ms = 1500
         assert_eq!(conv.turn_delay_stdev_ms, 0);
         assert_eq!(conv.turn_delay_min_ms, 0);
         assert_eq!(conv.turn_delay_max_ms, 60_000);
+    }
+
+    #[test]
+    fn shipped_trace_replay_scenario_validates() {
+        // The example scenario must stay loadable so users can run it verbatim.
+        let toml = std::fs::read_to_string("examples/scenarios/trace-replay.toml")
+            .expect("trace-replay.toml exists");
+        let config: Config = toml::from_str(&toml).expect("trace-replay.toml parses");
+        config.validate().expect("trace-replay.toml validates");
+        let replay = config.replay.expect("[replay] present");
+        assert_eq!(replay.trace, "azure-conv-2024");
+        assert_eq!(replay.max_requests, Some(5000));
+    }
+
+    #[test]
+    fn replay_mode_needs_no_total_or_duration() {
+        // The trace length bounds the run, so neither total_requests nor
+        // duration_seconds is required when [replay] is present.
+        let toml = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+
+[load]
+concurrent_requests = 256
+
+[input]
+file = "unused"
+
+[output]
+format = "json"
+
+[replay]
+trace = "azure-conv-2024"
+"#;
+        let config: Config = toml::from_str(toml).expect("toml parses");
+        config.validate().expect("replay config is valid");
+        let replay = config.replay.expect("[replay] present");
+        assert_eq!(replay.speed, 1.0);
+        assert_eq!(replay.format, "auto");
+        assert!(replay.force_output_len);
+        assert!(replay.drop_zero_output);
+    }
+
+    #[test]
+    fn replay_rejects_conflicting_modes_and_bad_values() {
+        // replay + qps conflict.
+        let with_qps = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+[load]
+concurrent_requests = 8
+qps = 5.0
+[input]
+file = "unused"
+[output]
+format = "json"
+[replay]
+trace = "t.csv"
+"#;
+        let cfg: Config = toml::from_str(with_qps).expect("toml parses");
+        assert!(cfg.validate().is_err(), "replay + qps must be rejected");
+
+        // Bad speed.
+        let bad_speed = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+[load]
+concurrent_requests = 8
+[input]
+file = "unused"
+[output]
+format = "json"
+[replay]
+trace = "t.csv"
+speed = 0.0
+"#;
+        let cfg: Config = toml::from_str(bad_speed).expect("toml parses");
+        assert!(cfg.validate().is_err(), "speed must be > 0");
+
+        // Unknown format.
+        let bad_fmt = r#"
+[endpoint]
+base_url = "http://localhost:8000/v1"
+[load]
+concurrent_requests = 8
+[input]
+file = "unused"
+[output]
+format = "json"
+[replay]
+trace = "t.csv"
+format = "parquet"
+"#;
+        let cfg: Config = toml::from_str(bad_fmt).expect("toml parses");
+        assert!(cfg.validate().is_err(), "unknown format must be rejected");
     }
 
     #[test]
