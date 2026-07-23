@@ -98,6 +98,9 @@ pub struct BenchmarkRunner {
     system_prompt: Arc<Option<String>>, // Wrapped in Arc to avoid per-request cloning
     shared_prefix: Arc<Option<String>>,
     miss_counter: Arc<AtomicU64>,
+    /// Per-workload arrival offsets for trace replay (index-aligned with
+    /// `workloads`). `None` in every non-replay mode.
+    replay_arrivals: Option<Arc<Vec<Duration>>>,
 }
 
 pub(crate) fn compute_bust_prefix(expected_hit: bool, counter: &AtomicU64) -> String {
@@ -361,14 +364,56 @@ impl BenchmarkRunner {
                 .then(|| Duration::from_secs(config.endpoint.stream_idle_timeout)),
             retry_on_timeout: config.endpoint.retry_on_timeout,
             chat_template_kwargs: config.endpoint.chat_template_kwargs.clone(),
+            // Replay forces exact output lengths (ignore_eos + min_tokens) when the
+            // trace is being reproduced faithfully.
+            force_output_len: config
+                .replay
+                .as_ref()
+                .map(|r| r.force_output_len)
+                .unwrap_or(false),
         })?;
 
         // Resolve the best available tokenizer for prompt sizing.
         let tokenizer =
             build_tokenizer(&client, config.endpoint.tokenizer.as_deref(), &model).await?;
 
-        // Load or generate workloads
-        let workloads: Vec<Workload> = if config.input.is_synthetic() {
+        // Load or generate workloads. Replay mode builds them from a trace and also
+        // yields a per-workload arrival schedule; other modes leave it None.
+        let mut replay_arrivals: Option<Arc<Vec<Duration>>> = None;
+        let workloads: Vec<Workload> = if let Some(replay_cfg) = config.replay.clone() {
+            let fmt = replay_cfg
+                .format
+                .parse::<crate::trace::TraceFormat>()
+                .expect("replay.format validated in Config::validate");
+            let (path, fmt) = crate::trace::resolve_trace(&replay_cfg.trace, fmt).await?;
+            let opts = crate::trace::TraceOptions {
+                skip: replay_cfg.skip,
+                max_requests: replay_cfg.max_requests,
+                model_filter: replay_cfg.model_filter.clone(),
+                drop_zero_output: replay_cfg.drop_zero_output,
+                max_input_tokens: replay_cfg.max_input_tokens,
+                max_output_tokens: replay_cfg.max_output_tokens,
+            };
+            let entries = crate::trace::parse_trace(&path, fmt, &opts)?;
+            let span = entries.last().map(|e| e.arrival).unwrap_or_default();
+            let total_out: usize = entries.iter().map(|e| e.output_tokens).sum();
+            let total_in: usize = entries.iter().map(|e| e.input_tokens).sum();
+            info!(
+                "Replay: {} requests from {} ({:?}), trace span {:.1}s, \
+                 mean input {} tok, mean output {} tok",
+                entries.len(),
+                path.display(),
+                fmt,
+                span.as_secs_f64(),
+                total_in.checked_div(entries.len()).unwrap_or(0),
+                total_out.checked_div(entries.len()).unwrap_or(0),
+            );
+            let seed = config.input.seed.unwrap_or(42);
+            let (wl, arrivals) =
+                crate::trace::build_replay_workloads(&entries, Arc::clone(&tokenizer), seed);
+            replay_arrivals = Some(Arc::new(arrivals));
+            wl
+        } else if config.input.is_synthetic() {
             // Synthetic mode - generate random prompts
             // Config validation ensures synthetic.is_some() when is_synthetic() is true
             let synthetic_config = config.input.synthetic.as_ref().unwrap();
@@ -509,6 +554,7 @@ impl BenchmarkRunner {
             system_prompt, // Arc-wrapped to avoid per-request cloning
             shared_prefix,
             miss_counter: Arc::new(AtomicU64::new(0)),
+            replay_arrivals,
         })
     }
 
@@ -686,7 +732,12 @@ impl BenchmarkRunner {
             .and_then(crate::server_metrics::ServerMetricsRecorder::spawn);
 
         // Run benchmark (without generating report)
-        let (test_duration, sat_results) = if self.config.saturation.is_some() {
+        let (test_duration, sat_results) = if self.config.replay.is_some() {
+            let d = self
+                .run_replay_mode_internal(start_instant, warmup_complete)
+                .await?;
+            (d, None)
+        } else if self.config.saturation.is_some() {
             let (d, r) = self
                 .run_saturation_mode_internal(start_instant, warmup_complete)
                 .await?;
@@ -1392,6 +1443,149 @@ impl BenchmarkRunner {
         );
 
         Ok((test_duration, sat_results))
+    }
+
+    /// Replay a parsed inference trace: dispatch each request at its recorded
+    /// arrival offset (scaled by `replay.speed`), indexing `workloads` directly so
+    /// every request carries the input length and `max_tokens` from its trace row.
+    ///
+    /// This is an open-loop schedule — requests are offered on time regardless of
+    /// how fast the server drains them. In-flight concurrency is capped by
+    /// `concurrent_requests`; beyond `max_outstanding_requests` the offered request
+    /// is shed and counted as overload, exactly as in QPS mode.
+    async fn run_replay_mode_internal(
+        &self,
+        start_instant: Instant,
+        warmup_complete: Arc<tokio::sync::Notify>,
+    ) -> Result<Duration> {
+        let arrivals = self
+            .replay_arrivals
+            .clone()
+            .expect("replay_arrivals present in replay mode");
+        let speed = self
+            .config
+            .replay
+            .as_ref()
+            .map(|r| r.speed)
+            .unwrap_or(1.0)
+            .max(f64::MIN_POSITIVE);
+
+        info!(
+            "Running in replay mode: {} requests, speed {:.2}x, max {} in-flight",
+            arrivals.len(),
+            speed,
+            self.config.load.concurrent_requests
+        );
+
+        // Replay has no warmup phase; let periodic stats begin immediately.
+        warmup_complete.notify_one();
+
+        let max_concurrent = self.config.load.concurrent_requests;
+        let semaphore = Arc::new(Semaphore::new(max_concurrent));
+        let outstanding_cap =
+            effective_outstanding_cap(self.config.load.max_outstanding_requests, max_concurrent);
+        let outstanding = Arc::new(AtomicUsize::new(0));
+        let completed = Arc::new(AtomicUsize::new(0));
+        let sent = Arc::new(AtomicUsize::new(0));
+
+        let test_start = Instant::now();
+        // Optional hard duration cap cuts a long trace short.
+        let deadline = self
+            .config
+            .load
+            .duration_seconds
+            .map(|s| test_start + Duration::from_secs(s));
+
+        let mut handles = Vec::new();
+
+        for (idx, offset) in arrivals.iter().enumerate() {
+            // Absolute scheduled send time; sleeping until it makes the schedule
+            // self-correcting (per-iteration work never accumulates as drift).
+            let arrival = test_start + offset.div_f64(speed);
+            tokio::time::sleep_until(arrival.into()).await;
+
+            if let Some(deadline) = deadline
+                && Instant::now() >= deadline
+            {
+                break;
+            }
+
+            // Shed if too many requests are already outstanding (the server can't
+            // keep up with the offered schedule). Dropped requests are counted as
+            // overload rather than queued without bound.
+            if outstanding.load(Ordering::Relaxed) >= outstanding_cap {
+                crate::metrics::Metrics::record_dropped();
+                continue;
+            }
+            outstanding.fetch_add(1, Ordering::Relaxed);
+            sent.fetch_add(1, Ordering::Relaxed);
+
+            let workloads = Arc::clone(&self.workloads);
+            let outstanding_task = Arc::clone(&outstanding);
+            let client = Arc::clone(&self.client);
+            let tokenizer = Arc::clone(&self.tokenizer);
+            let semaphore = Arc::clone(&semaphore);
+            let completed = Arc::clone(&completed);
+            let system_prompt = Arc::clone(&self.system_prompt);
+            let default_max_tokens = self.config.endpoint.max_tokens;
+            let conversation_cfg = self.config.conversation;
+            let delay_base_seed = self.config.input.seed.unwrap_or(42);
+
+            let handle = tokio::spawn(async move {
+                let workload = &workloads[idx];
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("semaphore should never be closed");
+                let result = Self::execute_workload(
+                    &system_prompt,
+                    client.clone(),
+                    tokenizer.clone(),
+                    workload,
+                    idx,
+                    false,
+                    default_max_tokens,
+                    // No cache-busting prefix: prefix reuse (if any) is baked into the
+                    // synthesized prompts from the trace's own hash_ids.
+                    String::new(),
+                    true,
+                    conversation_cfg,
+                    delay_base_seed,
+                    arrival,
+                )
+                .await;
+                completed.fetch_add(1, Ordering::Relaxed);
+                outstanding_task.fetch_sub(1, Ordering::Relaxed);
+                result
+            });
+            handles.push(handle);
+
+            // Reap finished handles so the vec stays near in-flight size.
+            if handles.len() >= max_concurrent + 256 {
+                handles.retain(|h| !h.is_finished());
+            }
+        }
+
+        // Drain remaining requests with a grace period.
+        let grace_period = Duration::from_secs(60);
+        for handle in handles {
+            match timeout(grace_period, handle).await {
+                Ok(result) => {
+                    let _ = result?;
+                }
+                Err(_) => debug!("Replay request did not complete within grace period"),
+            }
+        }
+
+        let test_duration = test_start.elapsed();
+        info!(
+            "Replay completed in {:.1}s total ({} sent, {} completed)",
+            start_instant.elapsed().as_secs_f64(),
+            sent.load(Ordering::Relaxed),
+            completed.load(Ordering::Relaxed),
+        );
+
+        Ok(test_duration)
     }
 
     async fn run_qps_mode_internal(

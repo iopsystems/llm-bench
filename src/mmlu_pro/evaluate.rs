@@ -231,6 +231,7 @@ pub async fn run_evaluation(
         stream_idle_timeout: None,
         retry_on_timeout: true,
         chat_template_kwargs: None,
+        force_output_len: false,
     };
 
     let client = Arc::new(OpenAIClient::new(client_config)?);
@@ -436,6 +437,8 @@ pub async fn run_evaluation(
                     logprobs: None,
                     top_logprobs: None,
                     chat_template_kwargs: None,
+                    ignore_eos: None,
+                    min_tokens: None,
                 };
 
                 let response = match client.chat_completion(request).await {

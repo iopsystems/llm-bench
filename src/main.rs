@@ -70,7 +70,12 @@ fn run_bench_mode(config_path: &std::path::Path) -> Result<()> {
         println!("   Config: {}", config_path.display());
         println!("   Target: {}", config.endpoint.base_url);
 
-        if let Some(ref sat) = config.saturation {
+        if let Some(ref replay) = config.replay {
+            println!(
+                "   Mode: Trace Replay ({}, {:.2}x speed)",
+                replay.trace, replay.speed
+            );
+        } else if let Some(ref sat) = config.saturation {
             println!(
                 "   Mode: Saturation Search (concurrency {}..{}, step {:.1}x, window {})",
                 sat.start_concurrency, sat.max_concurrency, sat.step_multiplier, sat.sample_window,
@@ -338,6 +343,7 @@ async fn run_logprobs_collection(
             .then(|| std::time::Duration::from_secs(config.endpoint.stream_idle_timeout)),
         retry_on_timeout: config.endpoint.retry_on_timeout,
         chat_template_kwargs: config.endpoint.chat_template_kwargs.clone(),
+        force_output_len: false,
     })?;
 
     // Load prompts

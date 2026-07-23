@@ -135,6 +135,66 @@ total_requests = 100
 # warmup_duration = 5
 
 # =============================================================================
+# Trace Replay (optional)
+# =============================================================================
+# Replay a public LLM inference trace against the endpoint. When [replay] is
+# present it becomes the run mode: requests are dispatched on the trace's own
+# arrival schedule, each with a synthetic prompt sized to the recorded input
+# length and max_tokens set to the recorded output length. This reproduces a real
+# production workload's arrival burstiness and token-length distribution.
+#
+# Traces are metadata-only (token counts + timing, no prompt text), so prompts are
+# synthesized to the right length. For Mooncake, per-request prefix-cache block IDs
+# (hash_ids) are honored — requests that share leading IDs share a literal prompt
+# prefix, so server-side KV-cache reuse is reproduced faithfully.
+#
+# In replay mode, do NOT set load.qps or load.total_requests (the trace bounds the
+# run); load.concurrent_requests still caps in-flight requests, so set it high
+# (e.g. 256+) to avoid throttling the offered schedule. Leave endpoint.max_tokens
+# UNSET so each request's per-row output length applies. duration_seconds may be
+# set to cut a long trace short.
+#
+# [replay]
+# Trace file on disk, OR a known trace name to auto-download and cache:
+#   azure-conv-2023       — Azure LLM Inference 2023 conversation (~19K reqs, ~1h; Splitwise)
+#   azure-code-2023       — Azure LLM Inference 2023 code (~8.8K reqs, ~1h; Splitwise)
+#   azure-conv-2024       — Azure LLM Inference 2024 conversation (1 week; DynamoLLM) [best default]
+#   azure-code-2024       — Azure LLM Inference 2024 code (1 week; DynamoLLM)
+#   mooncake-conversation — Mooncake conversation trace (~12K reqs, prefix-cache hash_ids; FAST'25)
+#   mooncake-toolagent    — Mooncake tool-agent trace (~23K reqs, prefix-cache hash_ids; FAST'25)
+#   mooncake-synthetic    — Mooncake synthetic trace (~4K reqs, prefix-cache hash_ids; FAST'25)
+# For BurstGPT, download a CSV from https://github.com/HPMLL/BurstGPT/releases and
+# point `trace` at the local file.
+# trace = "azure-conv-2024"
+#
+# Format: "auto" (default; detected from filename/contents), "azure", "burstgpt",
+# "mooncake", or "jsonl" (generic: {"arrival_ms":0,"input_tokens":10,"output_tokens":20}).
+# format = "auto"
+#
+# Time scaling of the arrival schedule. 1.0 = recorded wall-clock rate;
+# 2.0 = twice as fast (gaps halved); 0.5 = half speed. Default 1.0.
+# speed = 1.0
+#
+# Skip this many leading requests, and/or cap how many are replayed.
+# skip = 0
+# max_requests = 10000
+#
+# BurstGPT only: keep only rows for one model ("GPT-4" or "ChatGPT").
+# model_filter = "GPT-4"
+#
+# Drop trace rows with zero output tokens (failed requests). Default true.
+# drop_zero_output = true
+#
+# Clamp recorded token counts to protect against replaying huge contexts.
+# max_input_tokens = 8192
+# max_output_tokens = 4096
+#
+# Force the server to emit EXACTLY the recorded output length by sending
+# ignore_eos + min_tokens alongside max_tokens (vLLM/SGLang extensions). Default
+# true; set false for servers that reject unknown request fields.
+# force_output_len = true
+
+# =============================================================================
 # Input Configuration
 # =============================================================================
 [input]

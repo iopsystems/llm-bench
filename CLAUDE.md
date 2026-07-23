@@ -61,6 +61,7 @@ cargo clippy
 - `src/snapshot.rs` - Metrics snapshot to parquet pipeline
 - `src/admin.rs` - HTTP admin server for live metrics (Prometheus/JSON)
 - `src/distribution.rs` - Request arrival distributions (uniform, poisson)
+- `src/trace.rs` - Public inference-trace replay (Azure/BurstGPT/Mooncake/JSONL parsing, download, workload building)
 - `src/tokenizer.rs` - Token counting via tiktoken
 - `src/logprobs.rs` - Log probability collection and JSONL writer
 - `src/kl_divergence.rs` - KL divergence computation between logprob captures
